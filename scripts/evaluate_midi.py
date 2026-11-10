@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -66,8 +67,8 @@ def load_reference(path: Path) -> list[Event]:
                 onset = float(row["onset_seconds"])
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"Invalid onset_seconds on CSV line {line_number}") from exc
-            if onset < 0:
-                raise ValueError(f"Negative onset_seconds on CSV line {line_number}")
+            if not math.isfinite(onset) or onset < 0:
+                raise ValueError(f"Invalid or negative onset_seconds on CSV line {line_number}")
             instrument = normalize_instrument(row["instrument"])
             if not instrument:
                 raise ValueError(f"Empty instrument on CSV line {line_number}")
@@ -129,6 +130,7 @@ def _match_group(reference: list[Event], prediction: list[Event], tolerance: flo
         "recall": round(recall, 4),
         "f1": round(f1, 4),
         "mean_absolute_onset_error_ms": round(1000 * sum(errors) / len(errors), 2) if errors else None,
+        "_onset_error_sum_seconds": sum(errors),
     }
 
 
@@ -138,7 +140,7 @@ def evaluate(reference: Iterable[Event], prediction: Iterable[Event], tolerance:
     ref = list(reference)
     pred = list(prediction)
     labels = sorted({event.instrument for event in ref} | {event.instrument for event in pred})
-    per_instrument = {
+    group_results = {
         label: _match_group(
             [event for event in ref if event.instrument == label],
             [event for event in pred if event.instrument == label],
@@ -146,7 +148,30 @@ def evaluate(reference: Iterable[Event], prediction: Iterable[Event], tolerance:
         )
         for label in labels
     }
-    totals = _match_group(ref, pred, tolerance)
+    true_positives = sum(item["true_positives"] for item in group_results.values())
+    false_positives = sum(item["false_positives"] for item in group_results.values())
+    false_negatives = sum(item["false_negatives"] for item in group_results.values())
+    reference_count = sum(item["reference_events"] for item in group_results.values())
+    prediction_count = sum(item["predicted_events"] for item in group_results.values())
+    precision = true_positives / prediction_count if prediction_count else (1.0 if not reference_count else 0.0)
+    recall = true_positives / reference_count if reference_count else (1.0 if not prediction_count else 0.0)
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    error_sum = sum(item["_onset_error_sum_seconds"] for item in group_results.values())
+    totals = {
+        "reference_events": reference_count,
+        "predicted_events": prediction_count,
+        "true_positives": true_positives,
+        "false_positives": false_positives,
+        "false_negatives": false_negatives,
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1, 4),
+        "mean_absolute_onset_error_ms": round(1000 * error_sum / true_positives, 2) if true_positives else None,
+    }
+    per_instrument = {
+        label: {key: value for key, value in metrics.items() if not key.startswith("_")}
+        for label, metrics in group_results.items()
+    }
     return {
         "tolerance_ms": round(tolerance * 1000, 2),
         "overall": totals,
