@@ -2,7 +2,7 @@
 
 A web-based workspace for turning a full mixed song into an editable drum transcription.
 
-> **Status: P0 scaffold.** Upload/project plumbing and the UI foundation are being established. Automatic drum separation, event detection, notation editing, and exports are not yet integrated or validated.
+> **Status: active prototype.** Project upload/library, human reference annotation, persistent drum events, a 16th-note grid editor, a simplified percussion-staff preview, and MusicXML export are implemented on the development branch. Automatic transcription is not enabled in the product API, and no real-audio accuracy claim is made.
 
 ## Product direction
 
@@ -18,7 +18,7 @@ A web-based workspace for turning a full mixed song into an editable drum transc
 - **Backend:** FastAPI
 - **Initial persistence:** local filesystem + SQLite (project metadata)
 - **Audio/transcription engine:** planned evaluation of DrumScript + Demucs
-- **Notation display:** OpenSheetMusicDisplay (MusicXML rendering); a dedicated editor will be built separately
+- **Notation display:** lightweight React percussion-staff preview; OpenSheetMusicDisplay remains a candidate for richer MusicXML rendering
 
 ## Upstream audit and licensing
 
@@ -66,6 +66,7 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 
 - Audio upload creates a project record and stores the original file locally.
 - The analysis endpoint deliberately returns HTTP 501 until a transcription engine is integrated and validated.
+- MusicXML export currently assumes fixed BPM, 4/4 time, and nearest-sixteenth quantization; it does not preserve velocity, swing, tuplets, tempo maps, or microtiming.
 - No automatic transcription accuracy is claimed.
 - Local uploads are not yet authenticated or suitable for public multi-user deployment.
 - Do not upload copyrighted recordings unless you have the right to do so.
@@ -76,3 +77,4 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - [Architecture](docs/ARCHITECTURE.md)
 - [Engine validation runbook](docs/ENGINE_VALIDATION.md)
 - [Real-audio evaluation protocol](docs/REAL_AUDIO_EVALUATION.md)
+- [Project development log](docs/PROJECT_LOG.md)
