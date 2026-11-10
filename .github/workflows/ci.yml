@@ -36,3 +36,15 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+  evaluation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install evaluator test dependency
+        run: python -m pip install pytest
+      - name: Test MIDI evaluation metrics
+        run: pytest scripts/tests -q
