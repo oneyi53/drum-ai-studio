@@ -69,3 +69,15 @@ The earlier attempt to clone DrumScript failed because the environment could not
 - [ ] Record model weight source, checksum, and license/terms.
 
 No checkbox above should be marked complete without an actual recorded result.
+
+## 6. Reproducibility snapshot
+
+The initial metadata review above was rechecked against the following upstream file blobs:
+
+- DrumScript `pyproject.toml` blob: `2174e0986afef591ca609182b04dd53c68fad341`
+- DrumScript `README.md` blob: `82c275fb03244c31d022c4a9abc5b301cb7c4be7`
+- DrumScript `LICENSE` blob: `a1ddecaea03d3dd86664eee6d993b344cf9cfe60`
+
+The upstream README provides the supported Python API call `drumscript.transcribe(path, full_song=True, midi_only=True)` for a full-mix input. The repository now contains an isolated GitHub Actions workflow that attempts a clean Python 3.12 install, runs the upstream non-slow test suite, and sends a generated synthetic full mix through that API. This test is a pipeline smoke test, not an accuracy benchmark.
+
+The workflow result must be inspected before calling the engine validated. A passing synthetic smoke test does not prove reliable transcription on real music.
