@@ -31,6 +31,6 @@ The original onset seconds and velocity remain available in project reference ev
 
 ## Validation
 
-The browser E2E flow exports simultaneous kick and snare events, parses the downloaded document with the browser's XML parser, and checks for parser errors, chord notation, channel 10, GM percussion pitches, fixed tempo, staff display position, and the required duration-before-instrument note element order. A successful frontend build and this browser test do not by themselves prove full DTD/schema conformance or correct rendering in every notation application.
+The browser E2E flow exports simultaneous kick and snare events, parses the downloaded document with the browser's XML parser, and checks for parser errors, chord notation, channel 10, GM percussion pitches, fixed tempo, staff display position, and the required duration-before-instrument note element order. The same downloaded artifact is then validated in CI against the W3C MusicXML 4.0 XSD (with its imported XML and XLink schemas resolved locally). This establishes schema conformance for the exercised browser-generated fixture; it does not prove correct engraving or playback in every notation application.
 
 Before treating the export as production-ready, validate files with an independent MusicXML 4.0 schema validator and inspect them in at least one notation application (for example, MuseScore), including simultaneous hits, empty bars, all nine instruments, and events extending beyond four measures.
