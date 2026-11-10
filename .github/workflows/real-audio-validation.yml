@@ -19,6 +19,13 @@ jobs:
       - name: Check out repository test audio
         uses: actions/checkout@v4
 
+      - name: Fetch the committed test tracks from main
+        run: |
+          git fetch origin main
+          git checkout origin/main -- 'Creep (Album Version)_Radiohead.mp3' 'Psycho_Muse(1).mp3'
+          test -s 'Creep (Album Version)_Radiohead.mp3'
+          test -s 'Psycho_Muse(1).mp3'
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
