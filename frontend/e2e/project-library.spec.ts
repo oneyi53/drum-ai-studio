@@ -41,7 +41,7 @@ test("creates a project, persists annotations, and restores them after reload", 
   await page.getByRole("button", { name: /记录鼓点/ }).click();
   await expect(page.getByText("人工确认事件 · 1")).toBeVisible();
   await expect(page.getByText("已保存到项目服务器 · 1 条参考标注")).toBeVisible();
-  await expect(page.getByRole("button", { name: "snare 第2格 已有鼓点" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "snare 第3格 已有鼓点" })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("事件 1 力度").fill("86");
   await expect(page.getByText("已保存到项目服务器 · 1 条参考标注")).toBeVisible();
 
