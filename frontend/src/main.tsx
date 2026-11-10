@@ -43,7 +43,7 @@ function App() {
         <label className="dropzone">
           <input type="file" accept=".wav,.mp3,.flac,.m4a,.ogg,.aac,audio/*" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
           <span className="upload-icon">↑</span>
-          <strong>{file ? file.name : "选择或拖入音频文件"}</strong>
+          <strong>{file ? file.name : "选择音频文件"}</strong>
           <small>支持 WAV、MP3、FLAC、M4A、OGG、AAC · 当前上传上限 100 MB</small>
         </label>
         <div className="actions"><span>{message}</span><button disabled={!file || busy} onClick={upload}>{busy ? "处理中…" : "创建项目"}</button></div>
