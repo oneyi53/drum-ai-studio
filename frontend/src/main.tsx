@@ -44,10 +44,13 @@ function buildMusicXml(events: DrumEvent[], bpm: number): string {
     const tick = Math.max(0, Math.round(event.onset_seconds * bpm / 60 * 4));
     grouped.set(tick, [...(grouped.get(tick) ?? []), event]);
   }
-  const instruments = INSTRUMENTS.map((kind) => {
+  const scoreInstruments = INSTRUMENTS.map((kind) => {
     const id = "I" + kind;
-    return `      <score-instrument id="${id}"><instrument-name>${escapeXml(kind)}</instrument-name></score-instrument>
-      <midi-instrument id="${id}"><midi-channel>10</midi-channel><midi-program>1</midi-program><midi-unpitched>${GM_DRUM_PITCH[kind]}</midi-unpitched></midi-instrument>`;
+    return `      <score-instrument id="${id}"><instrument-name>${escapeXml(kind)}</instrument-name></score-instrument>`;
+  }).join("\n");
+  const midiInstruments = INSTRUMENTS.map((kind) => {
+    const id = "I" + kind;
+    return `      <midi-instrument id="${id}"><midi-channel>10</midi-channel><midi-program>1</midi-program><midi-unpitched>${GM_DRUM_PITCH[kind]}</midi-unpitched></midi-instrument>`;
   }).join("\n");
   const measures = Array.from({ length: measureCount }, (_, measureIndex) => {
     const start = measureIndex * ticksPerMeasure;
@@ -78,7 +81,7 @@ ${body.join("\n")}
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0"><work><work-title>DrumAI Studio drum transcription</work-title></work><identification><encoding><software>DrumAI Studio</software></encoding></identification>
   <part-list><score-part id="P1"><part-name>Drum set</part-name>
-${instruments}
+${scoreInstruments}\n${midiInstruments}
   </score-part></part-list>
   <part id="P1">
 ${measures}
