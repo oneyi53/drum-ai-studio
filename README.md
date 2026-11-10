@@ -74,3 +74,4 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 
 - [P0 audit](docs/P0_AUDIT.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Engine validation runbook](docs/ENGINE_VALIDATION.md)
