@@ -52,4 +52,4 @@ def test_audit_reports_empty_time_bins(tmp_path: Path) -> None:
         {"onset_seconds": "25.2", "instrument": "snare", "pitch": 38, "velocity": 90, "duration_seconds": "0.1"},
     ])
     report = audit_csv(path, bin_seconds=10)
-    assert report["empty_time_bins_seconds"] == [10.0, 20.0]
+    assert report["empty_time_bins_seconds"] == [10.0]
