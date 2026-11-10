@@ -63,7 +63,7 @@ def audit_csv(path: Path, bin_seconds: float = 10.0) -> dict:
         for (onset, instrument), count in simultaneous.items()
         if count > 1
     ]
-    unknown = sum(label.startswith("unknown_") for label in counts)
+    unknown = sum(count for label, count in counts.items() if label.startswith("unknown_"))
 
     bins = Counter(int(event["onset"] // bin_seconds) for event in events)
     max_bin = int(events[-1]["onset"] // bin_seconds) if events else -1
