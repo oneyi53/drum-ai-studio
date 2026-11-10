@@ -46,7 +46,7 @@ Latest previously confirmed baseline before the current MusicXML changes:
 - Result: completed successfully; backend, frontend build, evaluation, and Playwright browser E2E jobs passed.
 
 Latest MusicXML conformance-hardening changes:
-- Current branch head: `3529b34440493ef4e627fb31a430bbf9287a04b4`
+- Code commits: `28ab3f246ad8fd0df8af01c1fd329a3ba41a381c` (MusicXML note order) and `d92825506d5cb84e6b0319e918a39a77c0e0e0f9` (browser E2E coverage); documentation was updated afterward.
 - Changes include the MusicXML note child-order correction and browser E2E parsing of downloaded XML with simultaneous kick/snare notes, chord marker, GM pitches, MIDI channel 10, and tempo checks.
 - The prior green run does not cover these newer changes. No Actions run or local Playwright execution has yet been confirmed for this exact head; validation is pending.
 - Browser XML parsing checks well-formedness and selected structural invariants only. It is not a complete MusicXML 4.0 DTD/XSD validation and does not replace opening the file in a notation application.
