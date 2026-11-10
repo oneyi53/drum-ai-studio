@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -131,6 +132,45 @@ async def create_project(audio: UploadFile = File(...)) -> dict[str, str | int]:
         raise
     finally:
         await audio.close()
+
+
+@app.get("/api/projects")
+def list_projects() -> dict[str, list[dict[str, str | int]]]:
+    with sqlite3.connect(DB_PATH) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, original_filename, size_bytes, created_at, status
+            FROM projects
+            ORDER BY created_at DESC
+            """
+        ).fetchall()
+    return {
+        "projects": [
+            {
+                "id": row[0],
+                "filename": row[1],
+                "size_bytes": row[2],
+                "created_at": row[3],
+                "status": row[4],
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.get("/api/projects/{project_id}/audio")
+def get_project_audio(project_id: str) -> FileResponse:
+    with sqlite3.connect(DB_PATH) as connection:
+        row = connection.execute(
+            "SELECT original_filename, stored_filename FROM projects WHERE id = ?",
+            (project_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    audio_path = UPLOAD_DIR / row[1]
+    if not audio_path.is_file():
+        raise HTTPException(status_code=404, detail="Project audio file is missing.")
+    return FileResponse(audio_path, filename=row[0])
 
 
 class ReferenceEvent(BaseModel):
