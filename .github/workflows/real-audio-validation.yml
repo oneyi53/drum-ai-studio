@@ -2,6 +2,11 @@ name: Real repository MP3 validation
 
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/real-audio-evaluation-harness]
+    paths:
+      - ".github/workflows/real-audio-validation.yml"
+      - "scripts/validate_repository_audio.py"
 
 permissions:
   contents: read
