@@ -28,12 +28,13 @@ This log records implemented work and evidence. A passing CI run demonstrates th
 - The repository-audio workflow produces model predictions and structural diagnostics only. Predictions are not ground truth.
 - Upstream DrumScript pipeline smoke validation has passed in its Python 3.12 workflow; this proves that the tested pipeline can execute and emit MIDI, not that its output is accurate.
 
-### Editing and export milestone (current)
+### Editing and export milestone
 
 - Added a 4-bar, 4/4, 16th-note drum grid with adjustable fixed BPM and per-event velocity editing.
 - Added a simplified five-line percussion-staff preview derived from the same event list.
 - Added downloadable MusicXML 4.0 partwise output with percussion clef, a drum-set part, GM percussion pitch mapping, tempo marking, and events quantized to the nearest sixteenth note.
-- Added a browser E2E assertion for the exported MusicXML structure and expected snare mapping/tempo.
+- Added browser E2E coverage for MusicXML download, XML parsing, simultaneous kick/snare chord notation, channel 10, instrument pitch mapping, and note element order.
+- Corrected MusicXML note child ordering so duration precedes the instrument reference.
 - MusicXML currently uses one fixed BPM and 4/4 time. It does not encode a tempo map, swing, tuplets, expressive microtiming, or the source event's velocity. Original onset seconds and velocity remain in the project's event records; CSV reference export remains available.
 - The staff preview is intentionally a lightweight visual check, not a substitute for a dedicated notation engine or engraving review.
 
@@ -62,4 +63,5 @@ Latest MusicXML/export validation:
 
 | Date | Change |
 |---|---|
-| 2026-11-10 | Added initial MusicXML export, simplified percussion staff preview, browser E2E coverage, and this project log. CI validation is pending for these newest changes. |
+| 2026-11-10 | Added initial MusicXML export, simplified percussion staff preview, browser E2E coverage, and project documentation. |
+| 2026-11-11 | Corrected MusicXML note element order and expanded browser checks to parse the downloaded XML and cover simultaneous kick/snare events on MIDI channel 10. CI validation pending. |
