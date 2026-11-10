@@ -57,6 +57,6 @@ test("creates a project, persists annotations, and restores them after reload", 
   await expect(page.getByText(/已重新打开项目：playwright-e2e-tone\.wav/)).toBeVisible();
   await expect(page.getByText("已连接项目服务器；已载入 1 条参考标注")).toBeVisible();
   await expect(page.getByText("人工确认事件 · 1")).toBeVisible();
-  await expect(page.locator(".editable-event-row").filter({ has: page.getByLabel("事件 1 鼓件") })).toContainText("0.250");
+  await expect(page.getByLabel("事件 1 时间")).toHaveValue("0.25");
   await expect(page.getByLabel("事件 1 力度")).toHaveValue("86");
 });
