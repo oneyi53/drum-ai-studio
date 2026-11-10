@@ -275,6 +275,9 @@ function App() {
           <span>原始歌曲</span>
           <input type="file" accept="audio/*,.mp3,.wav,.flac,.m4a" onChange={(event) => {
             const selected = event.target.files?.[0] ?? null;
+            setProjectId(null);
+            setServerReady(false);
+            setSelectedProjectId("");
             setAudioFile(selected);
             setCurrentTime(0);
             setManualTime("0");
