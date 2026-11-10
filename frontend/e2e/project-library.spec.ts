@@ -44,6 +44,16 @@ test("creates a project, persists annotations, and restores them after reload", 
   await expect(page.getByRole("button", { name: "snare 第3格 已有鼓点" })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("事件 1 力度").fill("86");
   await expect(page.getByText("已保存到项目服务器 · 1 条参考标注")).toBeVisible();
+  const musicXmlDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出 MusicXML" }).click();
+  const musicXml = await (await musicXmlDownload).createReadStream();
+  const musicXmlChunks: Buffer[] = [];
+  for await (const chunk of musicXml) musicXmlChunks.push(Buffer.from(chunk));
+  const musicXmlText = Buffer.concat(musicXmlChunks).toString("utf8");
+  expect(musicXmlText).toContain("<score-partwise version=\"4.0\">");
+  expect(musicXmlText).toContain("<midi-unpitched>38</midi-unpitched>");
+  expect(musicXmlText).toContain("<per-minute>120</per-minute>");
+  expect(musicXmlText).toContain("<display-step>C</display-step>");
 
   await page.reload();
   await expect(page.getByLabel("选择已有项目")).toContainText(audio.name);
