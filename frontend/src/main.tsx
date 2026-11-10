@@ -63,7 +63,7 @@ function buildMusicXml(events: DrumEvent[], bpm: number): string {
       const simultaneous = grouped.get(tick) ?? [];
       simultaneous.forEach((event, index) => {
         const position = STAFF_POSITION[event.instrument];
-        body.push(`      <note>${index ? "<chord/>" : ""}<unpitched><display-step>${position.step}</display-step><display-octave>${position.octave}</display-octave></unpitched><instrument id="I${event.instrument}"/><duration>1</duration><voice>1</voice><type>16th</type><notehead>${event.instrument.includes("hat") || event.instrument === "crash" || event.instrument === "ride" ? "x" : "normal"}</notehead></note>`);
+        body.push(`      <note>${index ? "<chord/>" : ""}<unpitched><display-step>${position.step}</display-step><display-octave>${position.octave}</display-octave></unpitched><duration>1</duration><instrument id="I${event.instrument}"/><voice>1</voice><type>16th</type><notehead>${event.instrument.includes("hat") || event.instrument === "crash" || event.instrument === "ride" ? "x" : "normal"}</notehead></note>`);
       });
       cursor = tick + 1;
     }
