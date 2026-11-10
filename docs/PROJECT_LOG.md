@@ -51,6 +51,9 @@ Latest MusicXML conformance-hardening changes:
 - The prior green run does not cover these newer changes. No Actions run or local Playwright execution has yet been confirmed for this exact head; validation is pending.
 - The browser XML parser check covers well-formedness and selected structural invariants. A new CI step downloads the official W3C MusicXML 4.0 XSD and its imported XML/XLink schemas, then validates the saved browser-generated artifact with lxml. The first run exposed a Playwright test bug (the download event Promise was not awaited before calling `saveAs`); the test now awaits the event before saving. The corrected test and schema-validation step are awaiting a fresh CI run; schema conformance still does not replace opening the file in a notation application.
 
+
+- Latest CI run for head `e59dad0f3abd8494e428e57b3d220184555a4173`: [42857592824](https://github.com/oneyi53/drum-ai-studio/actions/runs/42857592824) failed in browser E2E after project reopen. The assertion expected the transient “已连接项目服务器；已载入 2 条参考标注” message, but the app immediately replaces it with the subsequent “已保存到项目服务器” status. Backend tests, frontend build, and evaluation tests passed; the MusicXML XSD step was skipped because E2E failed. The test is being corrected to assert the durable restored event count and values instead of a transient status string. XSD conformance remains unverified.
+
 ## Next engineering gates
 
 1. Obtain a CI run for the latest schema-validation change and inspect every job, including the W3C MusicXML 4.0 XSD validation.
