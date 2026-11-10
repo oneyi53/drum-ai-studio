@@ -131,8 +131,8 @@ function App() {
   React.useEffect(() => {
     if (!projectId || !serverReady) return;
     const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
-    const snapshot = events.map(({ id, onset_seconds, instrument: kind }) => ({
-      id, onset_seconds, instrument: kind, velocity,
+    const snapshot = events.map(({ id, onset_seconds, instrument: kind, velocity: eventVelocity }) => ({
+      id, onset_seconds, instrument: kind, velocity: eventVelocity,
     }));
     saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(async () => {
       const response = await fetch(`${base}/api/projects/${projectId}/reference-events`, {
@@ -288,7 +288,8 @@ function App() {
               const key = "drumai:annotations:" + selected.name + ":" + selected.size + ":" + selected.lastModified;
               try {
                 const stored = window.localStorage.getItem(key);
-                const restored = stored ? JSON.parse(stored) as DrumEvent[] : [];
+                const restoredRaw = stored ? JSON.parse(stored) as Partial<DrumEvent>[] : [];
+                const restored = restoredRaw.map((item) => ({ ...item, velocity: Number.isInteger(item.velocity) ? item.velocity! : 100 })) as DrumEvent[];
                 if (Array.isArray(restored) && restored.every((item) => Number.isFinite(item.id) && Number.isFinite(item.onset_seconds) && item.onset_seconds >= 0 && INSTRUMENTS.includes(item.instrument))) {
                   setEvents(restored);
                   setNextId(restored.reduce((max, item) => Math.max(max, item.id), 0) + 1);
