@@ -45,15 +45,15 @@ Latest previously confirmed baseline before the current MusicXML changes:
 - GitHub Actions run: [42846309942](https://github.com/oneyi53/drum-ai-studio/actions/runs/42846309942)
 - Result: completed successfully; backend, frontend build, evaluation, and Playwright browser E2E jobs passed.
 
-Latest MusicXML/export validation:
-- Commit: `b7876193c6ab5ae8c946dfe6fc01cc53e777b869`
-- GitHub Actions run: [42848609969](https://github.com/oneyi53/drum-ai-studio/actions/runs/42848609969)
-- Result: completed successfully on the exact commit above; backend, frontend build, evaluation, and Playwright browser E2E jobs all passed. The browser E2E includes downloading the generated MusicXML and checking the partwise root, snare GM mapping, tempo, and display-step fields.
-- This CI run does not independently validate the file against the complete MusicXML 4.0 DTD/schema or confirm rendering in a notation application; that remains a follow-up validation gate.
+Latest MusicXML conformance-hardening changes:
+- Current branch head: `3529b34440493ef4e627fb31a430bbf9287a04b4`
+- Changes include the MusicXML note child-order correction and browser E2E parsing of downloaded XML with simultaneous kick/snare notes, chord marker, GM pitches, MIDI channel 10, and tempo checks.
+- The prior green run does not cover these newer changes. No Actions run or local Playwright execution has yet been confirmed for this exact head; validation is pending.
+- Browser XML parsing checks well-formedness and selected structural invariants only. It is not a complete MusicXML 4.0 DTD/XSD validation and does not replace opening the file in a notation application.
 
 ## Next engineering gates
 
-1. Run the current feature branch CI and inspect every job, including the MusicXML browser download assertion.
+1. Obtain a CI run for the current head and inspect every job, including the stricter MusicXML browser parsing assertion.
 2. Validate the generated MusicXML with an independent MusicXML parser/notation application, then inspect rendered notation for all nine supported drum instruments.
 3. Decide and document how tempo maps, swing/tuplets, and velocity should be represented before promising faithful score/MIDI round trips.
 4. Add a rights-cleared, independently human-annotated evaluation set before reporting transcription metrics or enabling the analysis API.
