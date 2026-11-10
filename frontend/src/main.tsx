@@ -55,7 +55,7 @@ function buildMusicXml(events: DrumEvent[], bpm: number): string {
     let cursor = start;
     const body: string[] = [];
     for (const tick of ticks) {
-      if (tick > cursor) body.push(`      <note><rest/><duration>${tick - cursor}</duration><voice>1</voice><type>16th</type></note>`);
+      if (tick > cursor) body.push(`      <note><rest/><duration>${tick - cursor}</duration><voice>1</voice></note>`);
       const simultaneous = grouped.get(tick) ?? [];
       simultaneous.forEach((event, index) => {
         const position = STAFF_POSITION[event.instrument];
@@ -63,7 +63,7 @@ function buildMusicXml(events: DrumEvent[], bpm: number): string {
       });
       cursor = tick + 1;
     }
-    if (cursor < end) body.push(`      <note><rest/><duration>${end - cursor}</duration><voice>1</voice><type>whole</type></note>`);
+    if (cursor < end) body.push(`      <note><rest/><duration>${end - cursor}</duration><voice>1</voice></note>`);
     const attributes = measureIndex === 0
       ? `      <attributes><divisions>4</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>percussion</sign><line>2</line></clef></attributes>
       <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${bpm}</per-minute></metronome></direction-type><sound tempo="${bpm}"/></direction>`
