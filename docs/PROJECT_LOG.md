@@ -68,3 +68,5 @@ Latest MusicXML conformance-hardening changes:
 |---|---|
 | 2026-11-10 | Added initial MusicXML export, simplified percussion staff preview, browser E2E coverage, and project documentation. |
 | 2026-11-11 | Corrected MusicXML note element order and expanded browser checks to parse the downloaded XML and cover simultaneous kick/snare events on MIDI channel 10. Added a CI step to validate the exact browser-exported artifact against the W3C MusicXML 4.0 XSD. The first run exposed a missing await in the Playwright download flow; fixed it and awaiting CI rerun. |
+
+- CI run [42859921687](https://github.com/oneyi53/drum-ai-studio/actions/runs/42859921687): browser E2E passed (1 test), as did backend, frontend build, and evaluation. The XSD step failed before validating the generated XML because the W3C listing URLs without trailing slashes returned HTML rather than raw schema XML; lxml reported a mismatched HTML `link` tag. The schema download URLs were corrected to the W3C listing file endpoints with trailing slashes. This run does **not** establish MusicXML schema conformance.
