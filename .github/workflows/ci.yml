@@ -73,7 +73,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Start API and frontend
         run: |
-          mkdir -p /tmp/drumai-e2e-data
+          mkdir -p /tmp/drumai-e2e-data frontend/test-results
           cd backend
           DRUMAI_DATA_DIR=/tmp/drumai-e2e-data uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/drumai-api.log 2>&1 &
           cd ../frontend
@@ -90,6 +90,30 @@ jobs:
       - name: Run browser end-to-end tests
         working-directory: frontend
         run: npx playwright test
+      - name: Validate exported MusicXML against the W3C MusicXML 4.0 XSD
+        run: |
+          python -m pip install lxml
+          mkdir -p /tmp/musicxml-4.0-schema
+          curl -fsSL https://www.w3.org/2021/06/musicxml40/listings/musicxml.xsd -o /tmp/musicxml-4.0-schema/musicxml.xsd
+          curl -fsSL https://www.w3.org/2021/06/musicxml40/listings/xml.xsd -o /tmp/musicxml-4.0-schema/xml.xsd
+          curl -fsSL https://www.w3.org/2021/06/musicxml40/listings/xlink.xsd -o /tmp/musicxml-4.0-schema/xlink.xsd
+          python - <<'PY'
+          from pathlib import Path
+          schema = Path("/tmp/musicxml-4.0-schema/musicxml.xsd")
+          content = schema.read_text(encoding="utf-8")
+          content = content.replace("http://www.musicxml.org/xsd/xml.xsd", "xml.xsd")
+          content = content.replace("http://www.musicxml.org/xsd/xlink.xsd", "xlink.xsd")
+          schema.write_text(content, encoding="utf-8")
+          PY
+          python - <<'PY'
+          from lxml import etree
+          schema_path = "/tmp/musicxml-4.0-schema/musicxml.xsd"
+          xml_path = "frontend/test-results/drumai-transcription.musicxml"
+          schema = etree.XMLSchema(etree.parse(schema_path))
+          document = etree.parse(xml_path)
+          schema.assertValid(document)
+          print(f"MusicXML 4.0 XSD validation passed: {xml_path}")
+          PY
       - name: Upload browser test report on failure
         if: failure()
         uses: actions/upload-artifact@v4
