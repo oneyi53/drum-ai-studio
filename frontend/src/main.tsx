@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./style.css";
 
-type DrumEvent = { id: number; onset_seconds: number; instrument: string };
+type DrumEvent = { id: number; onset_seconds: number; instrument: string; velocity: number };
 type Project = { id: string; filename: string; size_bytes: number; created_at: string; status: string };
 
 const INSTRUMENTS = [
@@ -19,6 +19,8 @@ function App() {
   const [currentTime, setCurrentTime] = React.useState(0);
   const [manualTime, setManualTime] = React.useState("0");
   const [instrument, setInstrument] = React.useState("kick");
+  const [velocity, setVelocity] = React.useState(100);
+  const [tempo, setTempo] = React.useState(120);
   const [events, setEvents] = React.useState<DrumEvent[]>([]);
   const [nextId, setNextId] = React.useState(1);
   const [importMessage, setImportMessage] = React.useState("");
@@ -108,7 +110,7 @@ function App() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail ?? "读取服务器标注失败");
         if (cancelled) return;
-        const restored = Array.isArray(data.events) ? data.events as DrumEvent[] : [];
+        const restored = Array.isArray(data.events) ? (data.events as Omit<DrumEvent, "velocity">[]).map((item) => ({ ...item, velocity: Number.isInteger((item as DrumEvent).velocity) ? (item as DrumEvent).velocity : 100 })) : [];
         if (!restored.every((item) => Number.isInteger(item.id) && item.id > 0 &&
           Number.isFinite(item.onset_seconds) && item.onset_seconds >= 0 &&
           INSTRUMENTS.includes(item.instrument))) {
@@ -130,7 +132,7 @@ function App() {
     if (!projectId || !serverReady) return;
     const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
     const snapshot = events.map(({ id, onset_seconds, instrument: kind }) => ({
-      id, onset_seconds, instrument: kind,
+      id, onset_seconds, instrument: kind, velocity,
     }));
     saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(async () => {
       const response = await fetch(`${base}/api/projects/${projectId}/reference-events`, {
@@ -187,7 +189,7 @@ function App() {
       setImportMessage("时间必须是非负数，且不能超过音频时长。");
       return;
     }
-    setEvents((previous) => [...previous, { id: nextId, onset_seconds: onset, instrument }]
+    setEvents((previous) => [...previous, { id: nextId, onset_seconds: onset, instrument, velocity }]
       .sort((a, b) => a.onset_seconds - b.onset_seconds || a.id - b.id));
     setNextId((value) => value + 1);
     setImportMessage("");
@@ -210,7 +212,7 @@ function App() {
         if (!Number.isFinite(onset) || onset < 0 || !INSTRUMENTS.includes(kind)) {
           throw new Error("第 " + (index + 1) + " 行时间或鼓件无效。");
         }
-        imported.push({ id: index, onset_seconds: onset, instrument: kind });
+        imported.push({ id: index, onset_seconds: onset, instrument: kind, velocity: 100 });
       }
       imported.sort((a, b) => a.onset_seconds - b.onset_seconds || a.id - b.id);
       setEvents(imported);
@@ -306,15 +308,42 @@ function App() {
         <div className="annotation-controls">
           <label><span>时间（秒）</span><input type="number" min="0" step="0.001" value={manualTime} onChange={(event) => setManualTime(event.target.value)} /></label>
           <label><span>鼓件</span><select value={instrument} onChange={(event) => setInstrument(event.target.value)}>{INSTRUMENTS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+          <label><span>力度</span><input aria-label="默认力度" type="number" min="1" max="127" value={velocity} onChange={(event) => setVelocity(Math.min(127, Math.max(1, Number(event.target.value) || 1)))} /></label>
           <button className="add-event" disabled={!audioFile} onClick={addEvent}>＋ 记录鼓点</button>
         </div>
+        <section className="drum-grid-panel" aria-label="节奏网格编辑器">
+          <div className="grid-toolbar">
+            <div><strong>节奏网格</strong><small>4 小节 · 4/4 · 十六分音符；点击格子添加或移除鼓点</small></div>
+            <label>速度 BPM <input aria-label="网格速度 BPM" type="number" min="40" max="240" step="1" value={tempo} onChange={(event) => setTempo(Math.min(240, Math.max(40, Number(event.target.value) || 40)))} /></label>
+          </div>
+          <div className="drum-grid">
+            <div className="grid-corner">鼓件</div>
+            {Array.from({ length: 64 }, (_, step) => <div className={step % 16 === 0 ? "grid-step bar-start" : step % 4 === 0 ? "grid-step beat-start" : "grid-step"} key={step}>{step % 16 === 0 ? "小节 " + (step / 16 + 1) : step % 4 === 0 ? String((step % 16) / 4 + 1) : ""}</div>)}
+            {INSTRUMENTS.map((kind) => <React.Fragment key={kind}>
+              <div className="grid-instrument">{kind}</div>
+              {Array.from({ length: 64 }, (_, step) => {
+                const onset = step * 60 / tempo / 4;
+                const active = events.some((item) => item.instrument === kind && Math.abs(item.onset_seconds - onset) < 0.025);
+                return <button type="button" key={step} aria-label={kind + " 第" + (step + 1) + "格" + (active ? " 已有鼓点" : " 空")} aria-pressed={active} className={["grid-cell", step % 16 === 0 ? "bar-start" : "", active ? "active" : ""].join(" ")} onClick={() => {
+                  const match = events.find((item) => item.instrument === kind && Math.abs(item.onset_seconds - onset) < 0.025);
+                  if (match) setEvents((previous) => previous.filter((item) => item.id !== match.id));
+                  else setEvents((previous) => [...previous, { id: nextId, onset_seconds: onset, instrument: kind, velocity }].sort((a, b) => a.onset_seconds - b.onset_seconds || a.id - b.id));
+                  if (!match) setNextId((value) => value + 1);
+                }}>{active ? "●" : ""}</button>;
+              })}
+            </React.Fragment>)}
+          </div>
+          <p className="grid-note">网格按当前 BPM 显示；已有非网格时间的标注仍保留在下方事件列表中。</p>
+        </section>
         <div className="event-toolbar"><div><strong>人工确认事件 · {events.length}</strong><small className="save-status">{saveMessage}</small></div><div className="event-actions"><label className="import-button">导入参考 CSV<input type="file" accept=".csv,text/csv" onChange={(event) => { void importReference(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><button className="export-button" disabled={!events.length} onClick={exportReference}>导出参考 CSV</button></div></div>
         {importMessage && <p className="import-message" role="status">{importMessage}</p>}
         {events.length ? (
           <div className="event-table">
-            <div className="event-row event-head"><span>时间（秒）</span><span>鼓件</span><span>操作</span></div>
-            {events.map((event) => <div className="event-row" key={event.id}>
-              <span>{event.onset_seconds.toFixed(3)}</span><span>{event.instrument}</span>
+            <div className="event-row event-head"><span>时间（秒）</span><span>鼓件</span><span>力度</span><span>操作</span></div>
+            {events.map((event) => <div className="event-row editable-event-row" key={event.id}>
+              <input aria-label={`事件 ${event.id} 时间`} type="number" min="0" step="0.001" value={event.onset_seconds} onChange={(change) => setEvents((previous) => previous.map((item) => item.id === event.id ? { ...item, onset_seconds: Math.max(0, Number(change.target.value) || 0) } : item).sort((a, b) => a.onset_seconds - b.onset_seconds || a.id - b.id))} />
+              <select aria-label={`事件 ${event.id} 鼓件`} value={event.instrument} onChange={(change) => setEvents((previous) => previous.map((item) => item.id === event.id ? { ...item, instrument: change.target.value } : item))}>{INSTRUMENTS.map((kind) => <option key={kind} value={kind}>{kind}</option>)}</select>
+              <input aria-label={`事件 ${event.id} 力度`} type="number" min="1" max="127" value={event.velocity} onChange={(change) => setEvents((previous) => previous.map((item) => item.id === event.id ? { ...item, velocity: Math.min(127, Math.max(1, Number(change.target.value) || 1)) } : item))} />
               <button aria-label={`删除 ${event.instrument} ${event.onset_seconds}`} onClick={() => setEvents((previous) => previous.filter((item) => item.id !== event.id))}>删除</button>
             </div>)}
           </div>
