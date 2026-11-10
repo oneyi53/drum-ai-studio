@@ -135,7 +135,7 @@ def _match_group(reference: list[Event], prediction: list[Event], tolerance: flo
 
 
 def evaluate(reference: Iterable[Event], prediction: Iterable[Event], tolerance: float = 0.05) -> dict:
-    if tolerance < 0:
+    if not math.isfinite(tolerance) or tolerance < 0:
         raise ValueError("tolerance must be non-negative")
     ref = list(reference)
     pred = list(prediction)
