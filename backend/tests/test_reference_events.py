@@ -26,8 +26,8 @@ def test_reference_events_round_trip(tmp_path, monkeypatch) -> None:
     with setup_client(tmp_path, monkeypatch) as client:
         project_id = create_project(client)
         events = [
-            {"id": 1, "onset_seconds": 0.125, "instrument": "kick"},
-            {"id": 2, "onset_seconds": 0.5, "instrument": "snare"},
+            {"id": 1, "onset_seconds": 0.125, "instrument": "kick", "velocity": 85},
+            {"id": 2, "onset_seconds": 0.5, "instrument": "snare", "velocity": 110},
         ]
         saved = client.put(
             f"/api/projects/{project_id}/reference-events",
@@ -45,7 +45,7 @@ def test_empty_list_clears_existing_events(tmp_path, monkeypatch) -> None:
         project_id = create_project(client)
         client.put(
             f"/api/projects/{project_id}/reference-events",
-            json={"events": [{"id": 1, "onset_seconds": 0.25, "instrument": "kick"}]},
+            json={"events": [{"id": 1, "onset_seconds": 0.25, "instrument": "kick", "velocity": 100}]},
         )
         cleared = client.put(
             f"/api/projects/{project_id}/reference-events", json={"events": []}
@@ -90,7 +90,7 @@ def test_duplicate_event_ids_are_rejected(tmp_path, monkeypatch) -> None:
             f"/api/projects/{project_id}/reference-events",
             json={
                 "events": [
-                    {"id": 1, "onset_seconds": 0.1, "instrument": "kick"},
+                    {"id": 1, "onset_seconds": 0.1, "instrument": "kick", "velocity": 100},
                     {"id": 1, "onset_seconds": 0.2, "instrument": "snare"},
                 ]
             },
