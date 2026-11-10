@@ -43,7 +43,9 @@ test("creates a project, persists annotations, and restores them after reload", 
   await expect(page.getByText("已保存到项目服务器 · 1 条参考标注")).toBeVisible();
   await expect(page.getByRole("button", { name: "snare 第3格 已有鼓点" })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("事件 1 力度").fill("86");
-  await expect(page.getByText("已保存到项目服务器 · 1 条参考标注")).toBeVisible();
+  await page.getByRole("button", { name: "kick 第3格 空" }).click();
+  await expect(page.getByText("人工确认事件 · 2")).toBeVisible();
+  await expect(page.getByText("已保存到项目服务器 · 2 条参考标注")).toBeVisible();
   const musicXmlDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出 MusicXML" }).click();
   const musicXml = await (await musicXmlDownload).createReadStream();
@@ -52,8 +54,31 @@ test("creates a project, persists annotations, and restores them after reload", 
   const musicXmlText = Buffer.concat(musicXmlChunks).toString("utf8");
   expect(musicXmlText).toContain("<score-partwise version=\"4.0\">");
   expect(musicXmlText).toContain("<midi-unpitched>38</midi-unpitched>");
+  expect(musicXmlText).toContain("<midi-unpitched>36</midi-unpitched>");
+  expect(musicXmlText).toContain("<midi-channel>10</midi-channel>");
   expect(musicXmlText).toContain("<per-minute>120</per-minute>");
   expect(musicXmlText).toContain("<display-step>C</display-step>");
+  const parsedMusicXml = await page.evaluate((xml) => {
+    const document = new DOMParser().parseFromString(xml, "application/xml");
+    const notes = Array.from(document.getElementsByTagName("note"));
+    const unpitchedNotes = notes.filter((note) => note.getElementsByTagName("unpitched").length > 0);
+    return {
+      parserErrors: document.getElementsByTagName("parsererror").length,
+      noteCount: notes.length,
+      chordCount: document.getElementsByTagName("chord").length,
+      drumChannels: Array.from(document.getElementsByTagName("midi-instrument")).map((item) =>
+        item.getElementsByTagName("midi-channel")[0]?.textContent),
+      instrumentAfterDuration: unpitchedNotes.every((note) => {
+        const children = Array.from(note.children).map((child) => child.tagName);
+        return children.indexOf("duration") >= 0 &&
+          children.indexOf("instrument") > children.indexOf("duration");
+      }),
+    };
+  }, musicXmlText);
+  expect(parsedMusicXml.parserErrors).toBe(0);
+  expect(parsedMusicXml.chordCount).toBe(1);
+  expect(parsedMusicXml.drumChannels.every((channel) => channel === "10")).toBe(true);
+  expect(parsedMusicXml.instrumentAfterDuration).toBe(true);
 
   await page.reload();
   await expect(page.getByLabel("选择已有项目")).toContainText(audio.name);
@@ -65,8 +90,8 @@ test("creates a project, persists annotations, and restores them after reload", 
   await page.getByRole("button", { name: "打开项目" }).click();
 
   await expect(page.getByText(/已重新打开项目：playwright-e2e-tone\.wav/)).toBeVisible();
-  await expect(page.getByText("已连接项目服务器；已载入 1 条参考标注")).toBeVisible();
-  await expect(page.getByText("人工确认事件 · 1")).toBeVisible();
+  await expect(page.getByText("已连接项目服务器；已载入 2 条参考标注")).toBeVisible();
+  await expect(page.getByText("人工确认事件 · 2")).toBeVisible();
   await expect(page.getByLabel("事件 1 时间")).toHaveValue("0.25");
   await expect(page.getByLabel("事件 1 力度")).toHaveValue("86");
 });
