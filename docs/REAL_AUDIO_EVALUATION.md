@@ -13,7 +13,16 @@ Start with three contrasting recordings:
 
 Do not tune the evaluation set against the same song used for development. Keep at least one track held out.
 
-## 2. Create the reference annotation
+## 2. Inspect the prediction before annotating
+
+The real-audio validation workflow publishes, for each repository MP3:
+- The generated MIDI.
+- A `*_predicted-events.csv` event table with onset seconds, canonical instrument label, MIDI pitch, velocity, duration, and track index.
+- `summary.json` with track counts, unknown pitch count, and event totals.
+
+These CSV files are **predictions only**, not ground truth. They are provided to make listening-based review easier. Do not feed them to the evaluator as reference annotations; doing so would score the engine against itself.
+
+## 3. Create the reference annotation
 
 Annotate audible drum events by onset in seconds and instrument. Save a UTF-8 CSV with this header:
 
@@ -27,7 +36,9 @@ onset_seconds,instrument
 
 Supported canonical labels include `kick`, `snare`, `closed_hat`, `open_hat`, `low_tom`, `mid_tom`, `high_tom`, `crash`, and `ride`. Aliases such as `bass_drum` and `hihat` are normalized. Use one row per audible hit. Annotate the audible onset consistently; document uncertain or masked hits rather than silently omitting them.
 
-## 3. Run the evaluator
+For a defensible benchmark, annotate the original mix while listening, ideally with two annotators on a subset. Resolve disagreements before computing metrics. Do not treat a separated stem or the model's own event CSV as the sole reference.
+
+## 4. Run the evaluator
 
 The evaluator reads the reference CSV and a MIDI prediction with a percussion track (`is_drum=True`). It uses DrumScript's verified percussion pitch mapping and matches events one-to-one by instrument within a default 50 ms onset tolerance.
 
@@ -41,7 +52,7 @@ python scripts/evaluate_midi.py \
 
 The JSON report includes overall and per-instrument precision, recall, F1, false positives, false negatives, and mean absolute onset error for matched events.
 
-## 4. Interpret metrics
+## 5. Interpret metrics
 
 - Precision answers: of the predicted hits, how many matched a reference hit?
 - Recall answers: of the annotated hits, how many were found?
@@ -51,7 +62,7 @@ The JSON report includes overall and per-instrument precision, recall, F1, false
 
 Always report the tolerance alongside metrics. Review 25 ms, 50 ms, and 100 ms tolerances if timing sensitivity matters. Do not compare scores produced with different annotation conventions or tolerance windows.
 
-## 5. Known limitations
+## 6. Known limitations
 
 - The evaluator uses the exact pitch mapping in DrumScript's `DRUM_NOTATION_MAP` (36 kick, 38 snare, 41/45/48 toms, 42/46 hats, 49 crash, 51 ride) and requires a MIDI percussion track marked `is_drum=True`. This mapping was checked against the upstream `constants.py` and `midi_exporter.py` source.
 - Matching is greedy and chronological within each instrument; it is intended for a first benchmark, not a formal MIR challenge scorer.
