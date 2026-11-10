@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from evaluate_midi import Event, evaluate, normalize_instrument
+from evaluate_midi import DRUMSCRIPT_DRUM_MAP, Event, evaluate, normalize_instrument
 
 
 def test_perfect_match_has_perfect_metrics() -> None:
@@ -36,3 +36,17 @@ def test_wrong_instrument_is_not_counted_as_hit() -> None:
 def test_instrument_aliases_are_normalized() -> None:
     assert normalize_instrument("Bass Drum") == "kick"
     assert normalize_instrument("closed-hihat") == "closed_hat"
+
+
+def test_drumscript_pitch_map_matches_upstream_notation_constants() -> None:
+    assert DRUMSCRIPT_DRUM_MAP == {
+        36: "kick",
+        38: "snare",
+        41: "low_tom",
+        45: "mid_tom",
+        48: "high_tom",
+        42: "closed_hat",
+        46: "open_hat",
+        49: "crash",
+        51: "ride",
+    }
