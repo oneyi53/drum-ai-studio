@@ -61,7 +61,7 @@ function App() {
   function addEvent() {
     const onset = Number(manualTime);
     const duration = audioRef.current?.duration;
-    if (!Number.isFinite(onset) || onset < 0 || (Number.isFinite(duration) && onset > duration)) {
+    if (!Number.isFinite(onset) || onset < 0 || (duration !== undefined && Number.isFinite(duration) && onset > duration)) {
       setImportMessage("时间必须是非负数，且不能超过音频时长。");
       return;
     }
