@@ -92,7 +92,8 @@ test("creates a project, persists annotations, and restores them after reload", 
   await page.getByRole("button", { name: "打开项目" }).click();
 
   await expect(page.getByText(/已重新打开项目：playwright-e2e-tone\.wav/)).toBeVisible();
-  await expect(page.getByText("已连接项目服务器；已载入 2 条参考标注")).toBeVisible();
+  // The connection message is transient and is immediately replaced by the save status.
+  // The restored event count and field values below are the durable persistence assertions.
   await expect(page.getByText("人工确认事件 · 2")).toBeVisible();
   await expect(page.getByLabel("事件 1 时间")).toHaveValue("0.25");
   await expect(page.getByLabel("事件 1 力度")).toHaveValue("86");
