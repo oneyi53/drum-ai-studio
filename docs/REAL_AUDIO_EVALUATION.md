@@ -29,7 +29,7 @@ Supported canonical labels include `kick`, `snare`, `closed_hat`, `open_hat`, `l
 
 ## 3. Run the evaluator
 
-The evaluator reads the reference CSV and a MIDI prediction with a percussion track (`is_drum=True`). It maps General MIDI percussion pitches to instrument labels and matches events one-to-one by instrument within a default 50 ms onset tolerance.
+The evaluator reads the reference CSV and a MIDI prediction with a percussion track (`is_drum=True`). It uses DrumScript's verified percussion pitch mapping and matches events one-to-one by instrument within a default 50 ms onset tolerance.
 
 ```bash
 python scripts/evaluate_midi.py \
@@ -53,8 +53,9 @@ Always report the tolerance alongside metrics. Review 25 ms, 50 ms, and 100 ms t
 
 ## 5. Known limitations
 
-- The current evaluator assumes a General MIDI drum pitch mapping and a MIDI percussion track marked `is_drum=True`. Confirm the engine's output mapping before interpreting instrument scores.
+- The evaluator uses the exact pitch mapping in DrumScript's `DRUM_NOTATION_MAP` (36 kick, 38 snare, 41/45/48 toms, 42/46 hats, 49 crash, 51 ride) and requires a MIDI percussion track marked `is_drum=True`. This mapping was checked against the upstream `constants.py` and `midi_exporter.py` source.
 - Matching is greedy and chronological within each instrument; it is intended for a first benchmark, not a formal MIR challenge scorer.
+- DrumScript's score builder quantizes event times to a sixteenth-note grid before writing MIDI. The evaluator therefore scores the exported, quantized times, not the raw onset detector timestamps; timing results must be interpreted with that limitation in mind.
 - It does not yet evaluate tempo maps, swing feel, note velocity, sticking, notation readability, or PDF/MusicXML export.
 - Synthetic smoke tests establish pipeline execution, not real-song accuracy.
 
