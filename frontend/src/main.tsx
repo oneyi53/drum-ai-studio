@@ -21,7 +21,10 @@ function App() {
   const [events, setEvents] = React.useState<DrumEvent[]>([]);
   const [nextId, setNextId] = React.useState(1);
   const [importMessage, setImportMessage] = React.useState("");
+  const [saveMessage, setSaveMessage] = React.useState("");
   const audioRef = React.useRef<HTMLAudioElement>(null);
+
+  const annotationStorageKey = audioFile ? "drumai:annotations:" + audioFile.name + ":" + audioFile.size + ":" + audioFile.lastModified : null;
 
   React.useEffect(() => {
     if (!audioFile) {
@@ -32,6 +35,16 @@ function App() {
     setAudioUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [audioFile]);
+
+  React.useEffect(() => {
+    if (!annotationStorageKey) return;
+    try {
+      window.localStorage.setItem(annotationStorageKey, JSON.stringify(events));
+      setSaveMessage("已在此浏览器自动保存 " + events.length + " 条标注");
+    } catch {
+      setSaveMessage("浏览器存储不可用；请及时导出 CSV 备份。");
+    }
+  }, [annotationStorageKey, events]);
 
   async function upload() {
     if (!file) return;
@@ -139,7 +152,26 @@ function App() {
         <p className="section-note">选择原始歌曲，播放到鼓点出现的位置，记录时间与鼓件。此处只记录人工确认的参考事件，不会自动导入模型预测，避免把预测结果误当成标准答案。</p>
         <label className="audio-picker">
           <span>原始歌曲</span>
-          <input type="file" accept="audio/*,.mp3,.wav,.flac,.m4a" onChange={(event) => { setAudioFile(event.target.files?.[0] ?? null); setCurrentTime(0); setManualTime("0"); }} />
+          <input type="file" accept="audio/*,.mp3,.wav,.flac,.m4a" onChange={(event) => {
+            const selected = event.target.files?.[0] ?? null;
+            setAudioFile(selected);
+            setCurrentTime(0);
+            setManualTime("0");
+            setImportMessage("");
+            if (selected) {
+              const key = "drumai:annotations:" + selected.name + ":" + selected.size + ":" + selected.lastModified;
+              try {
+                const stored = window.localStorage.getItem(key);
+                const restored = stored ? JSON.parse(stored) as DrumEvent[] : [];
+                if (Array.isArray(restored) && restored.every((item) => Number.isFinite(item.id) && Number.isFinite(item.onset_seconds) && item.onset_seconds >= 0 && INSTRUMENTS.includes(item.instrument))) {
+                  setEvents(restored);
+                  setNextId(restored.reduce((max, item) => Math.max(max, item.id), 0) + 1);
+                  setSaveMessage(stored ? "已恢复 " + restored.length + " 条本地标注" : "新音频：尚无本地标注");
+                } else { setEvents([]); setNextId(1); setSaveMessage("本地标注数据格式异常，已清空当前列表"); }
+              } catch { setEvents([]); setNextId(1); setSaveMessage("无法读取本地标注；请检查浏览器存储权限"); }
+            } else { setEvents([]); setNextId(1); setSaveMessage(""); }
+            event.currentTarget.value = "";
+          }} />
         </label>
         {audioUrl ? (
           <div className="audio-workspace">
@@ -152,7 +184,7 @@ function App() {
           <label><span>鼓件</span><select value={instrument} onChange={(event) => setInstrument(event.target.value)}>{INSTRUMENTS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
           <button className="add-event" disabled={!audioFile} onClick={addEvent}>＋ 记录鼓点</button>
         </div>
-        <div className="event-toolbar"><strong>人工确认事件 · {events.length}</strong><div className="event-actions"><label className="import-button">导入参考 CSV<input type="file" accept=".csv,text/csv" onChange={(event) => { void importReference(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><button className="export-button" disabled={!events.length} onClick={exportReference}>导出参考 CSV</button></div></div>
+        <div className="event-toolbar"><div><strong>人工确认事件 · {events.length}</strong><small className="save-status">{saveMessage}</small></div><div className="event-actions"><label className="import-button">导入参考 CSV<input type="file" accept=".csv,text/csv" onChange={(event) => { void importReference(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><button className="export-button" disabled={!events.length} onClick={exportReference}>导出参考 CSV</button></div></div>
         {importMessage && <p className="import-message" role="status">{importMessage}</p>}
         {events.length ? (
           <div className="event-table">
