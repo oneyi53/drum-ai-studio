@@ -20,6 +20,7 @@ function App() {
   const [instrument, setInstrument] = React.useState("kick");
   const [events, setEvents] = React.useState<DrumEvent[]>([]);
   const [nextId, setNextId] = React.useState(1);
+  const [importMessage, setImportMessage] = React.useState("");
   const audioRef = React.useRef<HTMLAudioElement>(null);
 
   React.useEffect(() => {
@@ -59,10 +60,43 @@ function App() {
 
   function addEvent() {
     const onset = Number(manualTime);
-    if (!Number.isFinite(onset) || onset < 0) return;
+    const duration = audioRef.current?.duration;
+    if (!Number.isFinite(onset) || onset < 0 || (Number.isFinite(duration) && onset > duration)) {
+      setImportMessage("时间必须是非负数，且不能超过音频时长。");
+      return;
+    }
     setEvents((previous) => [...previous, { id: nextId, onset_seconds: onset, instrument }]
-      .sort((a, b) => a.onset_seconds - b.onset_seconds));
+      .sort((a, b) => a.onset_seconds - b.onset_seconds || a.id - b.id));
     setNextId((value) => value + 1);
+    setImportMessage("");
+  }
+
+  async function importReference(selected: File | undefined) {
+    if (!selected) return;
+    try {
+      const content = (await selected.text()).replace(/^\uFEFF/, "");
+      const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+      if (lines.length < 1 || lines[0].trim() !== "onset_seconds,instrument") {
+        throw new Error("CSV 表头必须为 onset_seconds,instrument。");
+      }
+      const imported: DrumEvent[] = [];
+      for (let index = 1; index < lines.length; index += 1) {
+        const columns = lines[index].split(",");
+        if (columns.length !== 2) throw new Error("第 " + (index + 1) + " 行格式错误。");
+        const onset = Number(columns[0].trim());
+        const kind = columns[1].trim();
+        if (!Number.isFinite(onset) || onset < 0 || !INSTRUMENTS.includes(kind)) {
+          throw new Error("第 " + (index + 1) + " 行时间或鼓件无效。");
+        }
+        imported.push({ id: index, onset_seconds: onset, instrument: kind });
+      }
+      imported.sort((a, b) => a.onset_seconds - b.onset_seconds || a.id - b.id);
+      setEvents(imported);
+      setNextId(imported.length + 1);
+      setImportMessage("已载入 " + imported.length + " 条人工参考事件（替换当前列表）。");
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "CSV 导入失败。");
+    }
   }
 
   function exportReference() {
@@ -109,7 +143,7 @@ function App() {
         </label>
         {audioUrl ? (
           <div className="audio-workspace">
-            <audio ref={audioRef} src={audioUrl} controls onTimeUpdate={syncTime} onSeeked={syncTime} />
+            <audio ref={audioRef} src={audioUrl} controls onLoadedMetadata={syncTime} onTimeUpdate={syncTime} onSeeked={syncTime} />
             <div className="time-readout"><span>播放位置</span><strong>{currentTime.toFixed(3)} s</strong></div>
           </div>
         ) : <div className="audio-empty">选择本地音频后即可播放并标注鼓点。</div>}
@@ -118,7 +152,8 @@ function App() {
           <label><span>鼓件</span><select value={instrument} onChange={(event) => setInstrument(event.target.value)}>{INSTRUMENTS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
           <button className="add-event" disabled={!audioFile} onClick={addEvent}>＋ 记录鼓点</button>
         </div>
-        <div className="event-toolbar"><strong>人工确认事件 · {events.length}</strong><button className="export-button" disabled={!events.length} onClick={exportReference}>导出参考 CSV</button></div>
+        <div className="event-toolbar"><strong>人工确认事件 · {events.length}</strong><div className="event-actions"><label className="import-button">导入参考 CSV<input type="file" accept=".csv,text/csv" onChange={(event) => { void importReference(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label><button className="export-button" disabled={!events.length} onClick={exportReference}>导出参考 CSV</button></div></div>
+        {importMessage && <p className="import-message" role="status">{importMessage}</p>}
         {events.length ? (
           <div className="event-table">
             <div className="event-row event-head"><span>时间（秒）</span><span>鼓件</span><span>操作</span></div>
