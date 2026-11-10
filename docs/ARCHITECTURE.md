@@ -15,9 +15,9 @@ FastAPI
        +-- Canonical Drum Events model (next phase)
 ```
 
-## Canonical event model (planned)
+## Canonical event model
 
-All editing and exports should share one canonical event representation. A future event should include:
+The current project event record stores a stable ID, onset in seconds, one of nine canonical instrument labels, and MIDI velocity. The grid editor, simplified staff preview, reference CSV, and MusicXML export read from this same event list. The API persists these fields per project. A future expanded event representation should include:
 
 - stable event ID
 - time in seconds and/or sample position
@@ -36,11 +36,11 @@ The API must call an engine adapter rather than importing a specific transcripti
 
 ## Notation and editing
 
-OpenSheetMusicDisplay renders MusicXML. It is not, by itself, a complete interactive drum notation editor. The editor will need its own event/grid interaction layer and must update the canonical event model.
+The current React editor provides a fixed-BPM 4/4 sixteenth-note grid and a lightweight SVG percussion-staff preview. The preview is not a full engraving engine. OpenSheetMusicDisplay remains a candidate for richer MusicXML rendering; it is not, by itself, a complete interactive drum notation editor.
 
 ## Export
 
-MusicXML is the interchange/notation representation. MIDI and PDF must be generated from the same canonical events so edits remain consistent across formats.
+The frontend currently exports MusicXML 4.0 partwise from the same event list used by the grid and preview. Events are quantized to the nearest sixteenth note using one fixed BPM and a 4/4 meter. The export includes a percussion part and GM percussion pitch mappings. It does not currently preserve event velocity, swing, tuplets, tempo maps, or microtiming. MIDI and PDF should later be generated from the same canonical events so edits remain consistent across formats.
 
 ## Non-functional requirements
 
