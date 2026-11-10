@@ -1,0 +1,1 @@
+"""DrumAI Studio backend application."""
