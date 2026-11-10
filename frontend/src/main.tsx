@@ -22,6 +22,9 @@ function App() {
   const [nextId, setNextId] = React.useState(1);
   const [importMessage, setImportMessage] = React.useState("");
   const [saveMessage, setSaveMessage] = React.useState("");
+  const [projectId, setProjectId] = React.useState<string | null>(null);
+  const [serverReady, setServerReady] = React.useState(false);
+  const saveQueueRef = React.useRef<Promise<void>>(Promise.resolve());
   const audioRef = React.useRef<HTMLAudioElement>(null);
 
   const annotationStorageKey = audioFile ? "drumai:annotations:" + audioFile.name + ":" + audioFile.size + ":" + audioFile.lastModified : null;
@@ -37,14 +40,61 @@ function App() {
   }, [audioFile]);
 
   React.useEffect(() => {
-    if (!annotationStorageKey) return;
+    if (!annotationStorageKey || projectId) return;
     try {
       window.localStorage.setItem(annotationStorageKey, JSON.stringify(events));
-      setSaveMessage("已在此浏览器自动保存 " + events.length + " 条标注");
     } catch {
       setSaveMessage("浏览器存储不可用；请及时导出 CSV 备份。");
     }
-  }, [annotationStorageKey, events]);
+  }, [annotationStorageKey, events, projectId]);
+
+  React.useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    async function loadReferenceEvents() {
+      try {
+        const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+        const response = await fetch(`${base}/api/projects/${projectId}/reference-events`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail ?? "读取服务器标注失败");
+        if (cancelled) return;
+        const restored = Array.isArray(data.events) ? data.events as DrumEvent[] : [];
+        if (!restored.every((item) => Number.isInteger(item.id) && item.id > 0 &&
+          Number.isFinite(item.onset_seconds) && item.onset_seconds >= 0 &&
+          INSTRUMENTS.includes(item.instrument))) {
+          throw new Error("服务器返回的参考标注格式无效。");
+        }
+        setEvents(restored);
+        setNextId(restored.reduce((max, item) => Math.max(max, item.id), 0) + 1);
+        setServerReady(true);
+        setSaveMessage("已连接项目服务器；已载入 " + restored.length + " 条参考标注");
+      } catch (error) {
+        if (!cancelled) setSaveMessage(error instanceof Error ? error.message : "读取服务器标注失败。");
+      }
+    }
+    void loadReferenceEvents();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  React.useEffect(() => {
+    if (!projectId || !serverReady) return;
+    const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+    const snapshot = events.map(({ id, onset_seconds, instrument: kind }) => ({
+      id, onset_seconds, instrument: kind,
+    }));
+    saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(async () => {
+      const response = await fetch(`${base}/api/projects/${projectId}/reference-events`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ events: snapshot }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "服务器保存失败");
+      setSaveMessage("已保存到项目服务器 · " + data.saved_events + " 条参考标注");
+    }).catch((error: unknown) => {
+      setSaveMessage(error instanceof Error ? error.message + "；请导出 CSV 备份。" : "服务器保存失败；请导出 CSV 备份。");
+    });
+  }, [projectId, serverReady, events]);
 
   async function upload() {
     if (!file) return;
@@ -57,7 +107,14 @@ function App() {
       const response = await fetch(`${base}/api/projects`, { method: "POST", body });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail ?? "上传失败");
-      setMessage(`项目已创建：${data.id}。当前版本尚未接入自动鼓谱识别。`);
+      setProjectId(data.id);
+      setServerReady(false);
+      setEvents([]);
+      setNextId(1);
+      setAudioFile(file);
+      setCurrentTime(0);
+      setManualTime("0");
+      setMessage(`项目已创建：${data.id}。人工标注将保存到此项目。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "上传失败，请检查后端服务。");
     } finally {
@@ -148,8 +205,8 @@ function App() {
       </section>
 
       <section className="panel annotation-panel">
-        <div className="panel-heading"><div><p className="eyebrow">GROUND-TRUTH WORKBENCH</p><h2>人工鼓点标注</h2></div><span className="step">REFERENCE CSV</span></div>
-        <p className="section-note">选择原始歌曲，播放到鼓点出现的位置，记录时间与鼓件。此处只记录人工确认的参考事件，不会自动导入模型预测，避免把预测结果误当成标准答案。</p>
+        <div className="panel-heading"><div><p className="eyebrow">GROUND-TRUTH WORKBENCH</p><h2>人工鼓点标注</h2></div><span className="step">{projectId ? "PROJECT · " + projectId.slice(0, 8) : "REFERENCE CSV"}</span></div>
+        <p className="section-note">播放项目原始歌曲，记录时间与鼓件。人工确认的参考事件会自动保存到当前项目服务器；未创建项目时暂存于此浏览器。模型预测不会自动混入参考数据。</p>
         <label className="audio-picker">
           <span>原始歌曲</span>
           <input type="file" accept="audio/*,.mp3,.wav,.flac,.m4a" onChange={(event) => {
