@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import "./style.css";
 
 type DrumEvent = { id: number; onset_seconds: number; instrument: string };
+type Project = { id: string; filename: string; size_bytes: number; created_at: string; status: string };
 
 const INSTRUMENTS = [
   "kick", "snare", "closed_hat", "open_hat",
@@ -24,6 +25,9 @@ function App() {
   const [saveMessage, setSaveMessage] = React.useState("");
   const [projectId, setProjectId] = React.useState<string | null>(null);
   const [serverReady, setServerReady] = React.useState(false);
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = React.useState("");
+  const [projectBusy, setProjectBusy] = React.useState(false);
   const saveQueueRef = React.useRef<Promise<void>>(Promise.resolve());
   const audioRef = React.useRef<HTMLAudioElement>(null);
 
@@ -48,8 +52,54 @@ function App() {
     }
   }, [annotationStorageKey, events, projectId]);
 
+  async function refreshProjects() {
+    try {
+      const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+      const response = await fetch(`${base}/api/projects`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "读取项目列表失败");
+      setProjects(Array.isArray(data.projects) ? data.projects as Project[] : []);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "读取项目列表失败。");
+    }
+  }
+
+  React.useEffect(() => { void refreshProjects(); }, []);
+
+  async function openProject() {
+    if (!selectedProjectId) return;
+    setProjectBusy(true);
+    setMessage("正在重新打开项目并读取原始音频…");
+    try {
+      const base = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+      const project = projects.find((item) => item.id === selectedProjectId);
+      if (!project) throw new Error("所选项目不存在于当前列表中。");
+      const response = await fetch(`${base}/api/projects/${selectedProjectId}/audio`);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail ?? "读取项目音频失败");
+      }
+      const blob = await response.blob();
+      const restoredFile = new File([blob], project.filename, { type: blob.type || "audio/mpeg" });
+      setProjectId(project.id);
+      setServerReady(false);
+      setEvents([]);
+      setNextId(1);
+      setAudioFile(restoredFile);
+      setFile(restoredFile);
+      setCurrentTime(0);
+      setManualTime("0");
+      setMessage(`已重新打开项目：${project.filename}。正在载入服务器标注。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "重新打开项目失败。");
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
   React.useEffect(() => {
     if (!projectId) return;
+    setServerReady(false);
     let cancelled = false;
     async function loadReferenceEvents() {
       try {
@@ -114,6 +164,8 @@ function App() {
       setAudioFile(file);
       setCurrentTime(0);
       setManualTime("0");
+      setSelectedProjectId(data.id);
+      await refreshProjects();
       setMessage(`项目已创建：${data.id}。人工标注将保存到此项目。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "上传失败，请检查后端服务。");
@@ -202,6 +254,18 @@ function App() {
           <small>支持 WAV、MP3、FLAC、M4A、OGG、AAC · 当前上传上限 100 MB</small>
         </label>
         <div className="actions"><span>{message}</span><button disabled={!file || busy} onClick={upload}>{busy ? "处理中…" : "创建项目"}</button></div>
+      </section>
+
+      <section className="panel project-library">
+        <div className="panel-heading"><div><p className="eyebrow">PROJECT LIBRARY</p><h2>已有项目</h2></div><span className="step">{projects.length} 个项目</span></div>
+        <div className="actions">
+          <select aria-label="选择已有项目" value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
+            <option value="">选择一个已保存的项目</option>
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.filename} · {new Date(project.created_at).toLocaleString()}</option>)}
+          </select>
+          <button disabled={!selectedProjectId || projectBusy} onClick={() => void openProject()}>{projectBusy ? "正在打开…" : "打开项目"}</button>
+        </div>
+        {!projects.length && <p className="section-note">还没有已保存的项目。上传音频并创建项目后，会出现在这里。</p>}
       </section>
 
       <section className="panel annotation-panel">
