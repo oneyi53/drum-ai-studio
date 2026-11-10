@@ -28,9 +28,10 @@ const STAFF_POSITION: Record<string, { step: string; octave: number; y: number }
 };
 
 function escapeXml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({
+  const entities: Record<string, string> = {
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;",
-  })[character] ?? character);
+  };
+  return value.replace(/[&<>"']/g, (character) => entities[character] ?? character);
 }
 
 function buildMusicXml(events: DrumEvent[], bpm: number): string {
