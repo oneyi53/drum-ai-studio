@@ -18,16 +18,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-GM_DRUM_MAP = {
-    35: "kick", 36: "kick",
-    38: "snare", 40: "snare",
-    42: "closed_hat", 44: "closed_hat",
+# Exact pitch mapping emitted by DrumScript's DRUM_NOTATION_MAP.
+# Keep this aligned with the upstream constants.py, not generic GM aliases.
+DRUMSCRIPT_DRUM_MAP = {
+    36: "kick",
+    38: "snare",
+    41: "low_tom",
+    45: "mid_tom",
+    48: "high_tom",
+    42: "closed_hat",
     46: "open_hat",
-    43: "low_tom", 45: "low_tom",
-    47: "mid_tom", 48: "mid_tom",
-    50: "high_tom",
-    49: "crash", 57: "crash",
-    51: "ride", 59: "ride",
+    49: "crash",
+    51: "ride",
 }
 
 
@@ -89,7 +91,7 @@ def load_prediction(path: Path) -> list[Event]:
     events = []
     for instrument in drum_instruments:
         for note in instrument.notes:
-            label = GM_DRUM_MAP.get(note.pitch, f"unknown_{note.pitch}")
+            label = DRUMSCRIPT_DRUM_MAP.get(note.pitch, f"unknown_{note.pitch}")
             events.append(Event(float(note.start), label))
     return sorted(events)
 
