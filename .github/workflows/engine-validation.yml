@@ -3,7 +3,7 @@ name: DrumScript engine validation
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feat/real-audio-evaluation-harness]
     paths:
       - ".github/workflows/engine-validation.yml"
       - "scripts/engine_smoke.py"
@@ -33,7 +33,7 @@ jobs:
           git clone --depth 1 https://github.com/DrumScript/DrumScript.git /tmp/DrumScript
           git -C /tmp/DrumScript rev-parse HEAD
           python -m pip install -e /tmp/DrumScript
-          python -m pip install pytest mir-eval requests
+          python -m pip install pytest mir-eval requests pretty-midi
 
       - name: Verify package and CLI
         run: |
@@ -46,3 +46,6 @@ jobs:
 
       - name: Run full-mix separation and transcription smoke test
         run: python scripts/engine_smoke.py
+
+      - name: Transcribe both repository MP3 files
+        run: python scripts/validate_repository_audio.py
