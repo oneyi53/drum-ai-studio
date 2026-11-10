@@ -44,7 +44,11 @@ Latest previously confirmed baseline before the current MusicXML changes:
 - GitHub Actions run: [42846309942](https://github.com/oneyi53/drum-ai-studio/actions/runs/42846309942)
 - Result: completed successfully; backend, frontend build, evaluation, and Playwright browser E2E jobs passed.
 
-The MusicXML export changes are newer than that baseline. Their validation status must be taken from a CI run whose head SHA includes the current export commits; the older green run does not validate these changes.
+Latest MusicXML/export validation:
+- Commit: `b7876193c6ab5ae8c946dfe6fc01cc53e777b869`
+- GitHub Actions run: [42848609969](https://github.com/oneyi53/drum-ai-studio/actions/runs/42848609969)
+- Result: completed successfully on the exact commit above; backend, frontend build, evaluation, and Playwright browser E2E jobs all passed. The browser E2E includes downloading the generated MusicXML and checking the partwise root, snare GM mapping, tempo, and display-step fields.
+- This CI run does not independently validate the file against the complete MusicXML 4.0 DTD/schema or confirm rendering in a notation application; that remains a follow-up validation gate.
 
 ## Next engineering gates
 
