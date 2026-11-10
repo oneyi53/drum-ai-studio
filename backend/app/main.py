@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("DRUMAI_DATA_DIR", APP_DIR.parent.parent / "data"))
@@ -29,7 +29,7 @@ app.add_middleware(
         "DRUMAI_CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173"
     ).split(","),
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
@@ -53,6 +53,19 @@ def initialize_storage() -> None:
                 size_bytes INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
                 status TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reference_events (
+                project_id TEXT NOT NULL,
+                event_id INTEGER NOT NULL,
+                position INTEGER NOT NULL,
+                onset_seconds REAL NOT NULL CHECK (onset_seconds >= 0),
+                instrument TEXT NOT NULL,
+                PRIMARY KEY (project_id, event_id),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             )
             """
         )
@@ -118,6 +131,78 @@ async def create_project(audio: UploadFile = File(...)) -> dict[str, str | int]:
         raise
     finally:
         await audio.close()
+
+
+class ReferenceEvent(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    id: int = Field(ge=1)
+    onset_seconds: float = Field(ge=0)
+    instrument: str = Field(
+        pattern=r"^(kick|snare|closed_hat|open_hat|low_tom|mid_tom|high_tom|crash|ride)$"
+    )
+
+
+class ReferenceEventsPayload(BaseModel):
+    events: list[ReferenceEvent] = Field(max_length=100000)
+
+
+def require_project(connection: sqlite3.Connection, project_id: str) -> None:
+    row = connection.execute(
+        "SELECT id FROM projects WHERE id = ?", (project_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+
+@app.get("/api/projects/{project_id}/reference-events")
+def get_reference_events(project_id: str) -> dict[str, object]:
+    with sqlite3.connect(DB_PATH) as connection:
+        require_project(connection, project_id)
+        rows = connection.execute(
+            """
+            SELECT event_id, onset_seconds, instrument
+            FROM reference_events
+            WHERE project_id = ?
+            ORDER BY position
+            """,
+            (project_id,),
+        ).fetchall()
+    return {
+        "project_id": project_id,
+        "events": [
+            {"id": row[0], "onset_seconds": row[1], "instrument": row[2]}
+            for row in rows
+        ],
+    }
+
+
+@app.put("/api/projects/{project_id}/reference-events")
+def replace_reference_events(
+    project_id: str, payload: ReferenceEventsPayload
+) -> dict[str, object]:
+    event_ids = [event.id for event in payload.events]
+    if len(event_ids) != len(set(event_ids)):
+        raise HTTPException(status_code=422, detail="Reference event IDs must be unique.")
+
+    with sqlite3.connect(DB_PATH) as connection:
+        require_project(connection, project_id)
+        connection.execute(
+            "DELETE FROM reference_events WHERE project_id = ?", (project_id,)
+        )
+        connection.executemany(
+            """
+            INSERT INTO reference_events
+            (project_id, event_id, position, onset_seconds, instrument)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (project_id, event.id, position, event.onset_seconds, event.instrument)
+                for position, event in enumerate(payload.events)
+            ],
+        )
+
+    return {"project_id": project_id, "saved_events": len(payload.events)}
 
 
 @app.post("/api/projects/{project_id}/analyze")
