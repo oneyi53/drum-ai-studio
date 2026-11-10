@@ -49,7 +49,7 @@ Latest MusicXML conformance-hardening changes:
 - Code commits: `28ab3f246ad8fd0df8af01c1fd329a3ba41a381c` (MusicXML note order) and `d92825506d5cb84e6b0319e918a39a77c0e0e0f9` (browser E2E coverage); documentation was updated afterward.
 - Changes include the MusicXML note child-order correction and browser E2E parsing of downloaded XML with simultaneous kick/snare notes, chord marker, GM pitches, MIDI channel 10, and tempo checks.
 - The prior green run does not cover these newer changes. No Actions run or local Playwright execution has yet been confirmed for this exact head; validation is pending.
-- The browser XML parser check covers well-formedness and selected structural invariants. A new CI step downloads the official W3C MusicXML 4.0 XSD and its imported XML/XLink schemas, then validates the saved browser-generated artifact with lxml. This new validation step has been added but is not yet confirmed green on the latest commit; schema conformance still does not replace opening the file in a notation application.
+- The browser XML parser check covers well-formedness and selected structural invariants. A new CI step downloads the official W3C MusicXML 4.0 XSD and its imported XML/XLink schemas, then validates the saved browser-generated artifact with lxml. The first run exposed a Playwright test bug (the download event Promise was not awaited before calling `saveAs`); the test now awaits the event before saving. The corrected test and schema-validation step are awaiting a fresh CI run; schema conformance still does not replace opening the file in a notation application.
 
 ## Next engineering gates
 
@@ -64,4 +64,4 @@ Latest MusicXML conformance-hardening changes:
 | Date | Change |
 |---|---|
 | 2026-11-10 | Added initial MusicXML export, simplified percussion staff preview, browser E2E coverage, and project documentation. |
-| 2026-11-11 | Corrected MusicXML note element order and expanded browser checks to parse the downloaded XML and cover simultaneous kick/snare events on MIDI channel 10. Added a CI step to validate the exact browser-exported artifact against the W3C MusicXML 4.0 XSD; this new step is awaiting CI execution. |
+| 2026-11-11 | Corrected MusicXML note element order and expanded browser checks to parse the downloaded XML and cover simultaneous kick/snare events on MIDI channel 10. Added a CI step to validate the exact browser-exported artifact against the W3C MusicXML 4.0 XSD. The first run exposed a missing await in the Playwright download flow; fixed it and awaiting CI rerun. |
