@@ -5,6 +5,7 @@
 The editor's **Export MusicXML** action downloads `drumai-transcription.musicxml` as MusicXML 4.0 partwise. The preview and exporter use the same project event list.
 
 - One percussion part named "Drum set" with a percussion clef.
+- MIDI percussion instruments are assigned to MIDI channel 10.
 - A 4/4 time signature and one fixed tempo, taken from the grid BPM control.
 - Nine declared drum instruments with General MIDI percussion pitch assignments:
   - kick 36; snare 38
@@ -30,6 +31,6 @@ The original onset seconds and velocity remain available in project reference ev
 
 ## Validation
 
-The browser E2E flow exports a sample snare event and checks the MusicXML partwise root, the GM snare pitch, the fixed tempo, and the expected staff display position. A successful frontend build and this browser test do not by themselves prove full DTD/schema conformance or correct rendering in every notation application.
+The browser E2E flow exports simultaneous kick and snare events, parses the downloaded document with the browser's XML parser, and checks for parser errors, chord notation, channel 10, GM percussion pitches, fixed tempo, staff display position, and the required duration-before-instrument note element order. A successful frontend build and this browser test do not by themselves prove full DTD/schema conformance or correct rendering in every notation application.
 
 Before treating the export as production-ready, validate files with an independent MusicXML 4.0 schema validator and inspect them in at least one notation application (for example, MuseScore), including simultaneous hits, empty bars, all nine instruments, and events extending beyond four measures.
