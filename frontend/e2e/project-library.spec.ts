@@ -46,10 +46,11 @@ test("creates a project, persists annotations, and restores them after reload", 
   await page.getByRole("button", { name: "kick 第3格 空" }).click();
   await expect(page.getByText("人工确认事件 · 2")).toBeVisible();
   await expect(page.getByText("已保存到项目服务器 · 2 条参考标注")).toBeVisible();
-  const musicXmlDownload = page.waitForEvent("download");
+  const musicXmlDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出 MusicXML" }).click();
+  const musicXmlDownload = await musicXmlDownloadPromise;
   await musicXmlDownload.saveAs("test-results/drumai-transcription.musicxml");
-  const musicXml = await (await musicXmlDownload).createReadStream();
+  const musicXml = await musicXmlDownload.createReadStream();
   const musicXmlChunks: Buffer[] = [];
   for await (const chunk of musicXml) musicXmlChunks.push(Buffer.from(chunk));
   const musicXmlText = Buffer.concat(musicXmlChunks).toString("utf8");
