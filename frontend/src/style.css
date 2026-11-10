@@ -40,3 +40,12 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .drum-grid-panel{margin-top:22px;padding:16px;border:1px solid #ffffff16;border-radius:12px;background:#141a24}.drum-grid{display:grid;grid-template-columns:92px repeat(64,minmax(10px,1fr));gap:2px;overflow-x:auto;padding-bottom:5px}.grid-corner,.grid-step,.grid-instrument,.grid-cell{min-width:0;display:grid;place-items:center}.grid-corner,.grid-step{height:22px;color:#778398;font:8px "DM Mono",monospace}.grid-instrument{justify-content:start;color:#aeb8c9;font:9px "DM Mono",monospace;padding-left:3px}.grid-cell{height:24px;border:1px solid #ffffff12;border-radius:3px;background:#202735;color:#111;font-size:10px;cursor:pointer;padding:0}.grid-cell:hover{border-color:#c9f36b}.grid-cell.active{background:#c9f36b;border-color:#c9f36b}.grid-step.bar-start,.grid-cell.bar-start{border-left:2px solid #8995aa}.grid-note{font-size:9px;color:#7f899e;line-height:1.6;margin:10px 0 0}
 .editable-event-row{grid-template-columns:1fr 1.2fr 70px 55px}.editable-event-row input,.editable-event-row select{width:100%;min-width:0;height:28px;border:1px solid #ffffff20;border-radius:5px;background:#111620;color:#edf0f7;padding:0 5px;font:10px "DM Mono",monospace}.editable-event-row button{white-space:nowrap}
 @media(max-width:640px){.drum-grid-panel{padding:10px}.drum-grid{grid-template-columns:70px repeat(64,14px);overflow-x:auto}.grid-toolbar{align-items:flex-start;flex-direction:column}.editable-event-row{grid-template-columns:1fr 1fr 48px 42px}.event-row{padding:8px 6px;gap:5px}}
+
+/* MusicXML notation preview */
+.notation-panel{margin-top:18px;padding:16px;border:1px solid #ffffff16;border-radius:12px;background:#141a24}
+.notation-scroll{overflow-x:auto;border:1px solid #ffffff12;border-radius:8px;background:#111620;padding:12px}
+.notation-scroll svg{display:block;max-width:none}
+.notation-empty{padding:16px;color:#778398;font-size:11px}
+.notation-panel .grid-toolbar{margin:0 0 12px}
+.notation-panel .grid-toolbar .export-button{white-space:nowrap}
+@media(max-width:640px){.notation-panel{padding:10px}.notation-panel .grid-toolbar{flex-direction:row;align-items:center}}
