@@ -33,7 +33,7 @@ This log records implemented work and evidence. A passing CI run demonstrates th
 - Added a 4-bar, 4/4, 16th-note drum grid with adjustable fixed BPM and per-event velocity editing.
 - Added a simplified five-line percussion-staff preview derived from the same event list.
 - Added downloadable MusicXML 4.0 partwise output with percussion clef, a drum-set part, GM percussion pitch mapping, tempo marking, and events quantized to the nearest sixteenth note.
-- Added browser E2E coverage for MusicXML download, XML parsing, simultaneous kick/snare chord notation, channel 10, instrument pitch mapping, and note element order.
+- Added browser E2E coverage for MusicXML download, XML parsing, simultaneous kick/snare chord notation, channel 10, instrument pitch mapping, and note element order. The test saves the exact browser-generated artifact for a separate CI schema-validation step.
 - Corrected MusicXML note child ordering so duration precedes the instrument reference.
 - MusicXML currently uses one fixed BPM and 4/4 time. It does not encode a tempo map, swing, tuplets, expressive microtiming, or the source event's velocity. Original onset seconds and velocity remain in the project's event records; CSV reference export remains available.
 - The staff preview is intentionally a lightweight visual check, not a substitute for a dedicated notation engine or engraving review.
@@ -49,12 +49,12 @@ Latest MusicXML conformance-hardening changes:
 - Code commits: `28ab3f246ad8fd0df8af01c1fd329a3ba41a381c` (MusicXML note order) and `d92825506d5cb84e6b0319e918a39a77c0e0e0f9` (browser E2E coverage); documentation was updated afterward.
 - Changes include the MusicXML note child-order correction and browser E2E parsing of downloaded XML with simultaneous kick/snare notes, chord marker, GM pitches, MIDI channel 10, and tempo checks.
 - The prior green run does not cover these newer changes. No Actions run or local Playwright execution has yet been confirmed for this exact head; validation is pending.
-- Browser XML parsing checks well-formedness and selected structural invariants only. It is not a complete MusicXML 4.0 DTD/XSD validation and does not replace opening the file in a notation application.
+- The browser XML parser check covers well-formedness and selected structural invariants. A new CI step downloads the official W3C MusicXML 4.0 XSD and its imported XML/XLink schemas, then validates the saved browser-generated artifact with lxml. This new validation step has been added but is not yet confirmed green on the latest commit; schema conformance still does not replace opening the file in a notation application.
 
 ## Next engineering gates
 
-1. Obtain a CI run for the current head and inspect every job, including the stricter MusicXML browser parsing assertion.
-2. Validate the generated MusicXML with an independent MusicXML parser/notation application, then inspect rendered notation for all nine supported drum instruments.
+1. Obtain a CI run for the latest schema-validation change and inspect every job, including the W3C MusicXML 4.0 XSD validation.
+2. Open the validated generated MusicXML in a notation application and inspect rendered notation for all nine supported drum instruments.
 3. Decide and document how tempo maps, swing/tuplets, and velocity should be represented before promising faithful score/MIDI round trips.
 4. Add a rights-cleared, independently human-annotated evaluation set before reporting transcription metrics or enabling the analysis API.
 5. Review upload security, authentication, quotas, cleanup, and deployment configuration before any public multi-user deployment.
@@ -64,4 +64,4 @@ Latest MusicXML conformance-hardening changes:
 | Date | Change |
 |---|---|
 | 2026-11-10 | Added initial MusicXML export, simplified percussion staff preview, browser E2E coverage, and project documentation. |
-| 2026-11-11 | Corrected MusicXML note element order and expanded browser checks to parse the downloaded XML and cover simultaneous kick/snare events on MIDI channel 10. CI validation pending. |
+| 2026-11-11 | Corrected MusicXML note element order and expanded browser checks to parse the downloaded XML and cover simultaneous kick/snare events on MIDI channel 10. Added a CI step to validate the exact browser-exported artifact against the W3C MusicXML 4.0 XSD; this new step is awaiting CI execution. |
