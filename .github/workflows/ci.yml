@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install evaluator test dependency
-        run: python -m pip install pytest
-      - name: Test MIDI evaluation metrics
+      - name: Install evaluator test dependencies
+        run: python -m pip install pytest pretty-midi
+      - name: Test MIDI evaluation and real-audio export
         run: pytest scripts/tests -q
