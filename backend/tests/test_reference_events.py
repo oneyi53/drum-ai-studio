@@ -74,6 +74,18 @@ def test_invalid_instrument_and_negative_onset_are_rejected(
         assert negative_onset.status_code == 422
 
 
+
+def test_velocity_must_be_between_one_and_127(tmp_path, monkeypatch) -> None:
+    with setup_client(tmp_path, monkeypatch) as client:
+        project_id = create_project(client)
+        for velocity in (0, 128):
+            response = client.put(
+                f"/api/projects/{project_id}/reference-events",
+                json={"events": [{"id": 1, "onset_seconds": 0.1, "instrument": "kick", "velocity": velocity}]},
+            )
+            assert response.status_code == 422
+
+
 def test_missing_project_returns_404(tmp_path, monkeypatch) -> None:
     with setup_client(tmp_path, monkeypatch) as client:
         missing = "does-not-exist"
