@@ -65,11 +65,15 @@ def initialize_storage() -> None:
                 position INTEGER NOT NULL,
                 onset_seconds REAL NOT NULL CHECK (onset_seconds >= 0),
                 instrument TEXT NOT NULL,
+                velocity INTEGER NOT NULL DEFAULT 100 CHECK (velocity BETWEEN 1 AND 127),
                 PRIMARY KEY (project_id, event_id),
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             )
             """
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(reference_events)")}
+        if "velocity" not in columns:
+            connection.execute("ALTER TABLE reference_events ADD COLUMN velocity INTEGER NOT NULL DEFAULT 100")
 
 
 @app.on_event("startup")
@@ -181,6 +185,7 @@ class ReferenceEvent(BaseModel):
     instrument: str = Field(
         pattern=r"^(kick|snare|closed_hat|open_hat|low_tom|mid_tom|high_tom|crash|ride)$"
     )
+    velocity: int = Field(default=100, ge=1, le=127)
 
 
 class ReferenceEventsPayload(BaseModel):
@@ -201,7 +206,7 @@ def get_reference_events(project_id: str) -> dict[str, object]:
         require_project(connection, project_id)
         rows = connection.execute(
             """
-            SELECT event_id, onset_seconds, instrument
+            SELECT event_id, onset_seconds, instrument, velocity
             FROM reference_events
             WHERE project_id = ?
             ORDER BY position
@@ -211,7 +216,7 @@ def get_reference_events(project_id: str) -> dict[str, object]:
     return {
         "project_id": project_id,
         "events": [
-            {"id": row[0], "onset_seconds": row[1], "instrument": row[2]}
+            {"id": row[0], "onset_seconds": row[1], "instrument": row[2], "velocity": row[3]}
             for row in rows
         ],
     }
@@ -233,11 +238,11 @@ def replace_reference_events(
         connection.executemany(
             """
             INSERT INTO reference_events
-            (project_id, event_id, position, onset_seconds, instrument)
-            VALUES (?, ?, ?, ?, ?)
+            (project_id, event_id, position, onset_seconds, instrument, velocity)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             [
-                (project_id, event.id, position, event.onset_seconds, event.instrument)
+                (project_id, event.id, position, event.onset_seconds, event.instrument, event.velocity)
                 for position, event in enumerate(payload.events)
             ],
         )
