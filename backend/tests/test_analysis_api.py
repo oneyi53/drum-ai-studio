@@ -67,6 +67,9 @@ def test_analysis_job_persists_canonical_performance(client, monkeypatch):
     assert result.status_code == 200
     assert result.json()["performance"]["events"][0]["instrument"] == "kick"
     assert result.json()["midi_filename"] == "performance.mid"
+    download = client.get(f"/api/projects/{uploaded['id']}/midi")
+    assert download.status_code == 200
+    assert download.content == b"fake-midi"
 
 
 def test_duplicate_active_job_is_rejected(client, monkeypatch):
@@ -103,3 +106,11 @@ def test_engine_failure_is_saved_as_failed_job(client, monkeypatch):
     job = client.get(f"/api/analysis-jobs/{created.json()['job_id']}")
     assert job.json()["status"] == "failed"
     assert "test engine failure" in job.json()["error_message"]
+
+
+def test_midi_download_requires_completed_artifact(client):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    assert client.get(f"/api/projects/{uploaded['id']}/midi").status_code == 404
