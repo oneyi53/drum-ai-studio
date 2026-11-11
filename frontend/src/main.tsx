@@ -116,6 +116,21 @@ function App() {
   );
   const activeLoopEnd = loopEnd || audioDuration || summary?.durationSeconds || 0;
   const loopRangeValid = activeLoopEnd > loopStart;
+
+  React.useEffect(() => {
+    if (!audioPlaying || !loopEnabled || !loopRangeValid) return;
+    let frame = 0;
+    const enforceLoop = () => {
+      const audio = audioRef.current;
+      if (audio && !audio.paused && audio.currentTime >= activeLoopEnd) {
+        audio.currentTime = loopStart;
+        lastMetronomeBeatRef.current = -1;
+      }
+      frame = window.requestAnimationFrame(enforceLoop);
+    };
+    frame = window.requestAnimationFrame(enforceLoop);
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeLoopEnd, audioPlaying, loopEnabled, loopRangeValid, loopStart]);
   React.useEffect(() => {
     if (!metronomeEnabled || !audioPlaying) return;
     let frame = 0;
@@ -412,13 +427,6 @@ function App() {
               onDurationChange={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
               onTimeUpdate={(event) => {
                 const time = event.currentTarget.currentTime;
-                const effectiveLoopEnd = loopEnd || audioDuration || summary.durationSeconds;
-                if (loopEnabled && effectiveLoopEnd > loopStart && time >= effectiveLoopEnd) {
-                  event.currentTarget.currentTime = loopStart;
-                  lastMetronomeBeatRef.current = -1;
-                  setAudioTime(loopStart);
-                  return;
-                }
                 setAudioTime(time);
                 let nearest: DrumEvent | null = null;
                 let distance = Number.POSITIVE_INFINITY;
