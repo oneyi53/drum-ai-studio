@@ -439,7 +439,7 @@ function App() {
       <section className="panel">
         <div className="panel-heading"><div><p className="eyebrow">NEW PROJECT</p><h2>导入并分析音频</h2></div><span className="step">01 / 04</span></div>
         <div className="saved-projects">
-          <label>恢复已保存项目<select value={summary?.projectId ?? ""} onChange={(event) => void restoreProject(event.target.value)}>
+          <label>恢复已保存项目<select value={summary?.projectId ?? ""} disabled={busy || saving} onChange={(event) => void restoreProject(event.target.value)}>
             <option value="">{projects.length ? "选择已保存项目" : "暂无已保存项目"}</option>
             {projects.map((project) => <option key={project.id} value={project.id} disabled={!project.latest_job_id || project.latest_job_status === "failed"}>
               {project.original_filename} · {project.latest_job_status ?? project.status}
