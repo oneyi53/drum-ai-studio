@@ -360,3 +360,11 @@ code or validation state changes; do not infer completion from plans.
 - Added per-instrument visibility checkboxes plus show-all/hide-all controls above the arrangement timeline.
 - Filtering is presentation-only: it does not mutate canonical events, history, playback audio, or MIDI/MusicXML exports; the event table remains complete.
 - This is a frontend-only increment. Latest repository CI and engine-validation status are tracked separately from this commit.
+
+
+## 2026-11-11 — atomic bulk event editing
+
+- Added batch event time shifting and batch deletion endpoints with unique-ID and full-selection validation under SQLite `BEGIN IMMEDIATE`.
+- All changes are validated before persistence; invalid negative event times reject the entire batch. Each operation creates exactly one revision and regenerates MIDI from the canonical performance.
+- Added frontend multi-select, select-all, time-offset input, batch move/delete actions, and Chinese user-guide coverage.
+- Added API tests for one-revision semantics, MIDI synchronization, and atomic rejection.
