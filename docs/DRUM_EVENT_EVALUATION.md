@@ -65,17 +65,22 @@ Start from `backend/benchmarks/manifest.example.json`. Each case must provide:
 - Unique case ID and stable source-recording ID.
 - Split: `development` or `evaluation`.
 - Relative paths to the source audio, canonical reference JSON, and predicted
-  canonical JSON (resolved relative to the manifest).
+  canonical JSON (resolved relative to the manifest), plus declared audio
+  duration and sample rate.
 - Permission basis: `public_domain`, `licensed`, or `written_permission`.
 - `annotation_status: "reviewed"`, reviewer, and annotation revision.
 
-The runner refuses unreviewed or unpermissioned cases, missing files, duplicate
-case IDs, and source recordings that leak across development/evaluation splits.
+The runner requires a declared permission basis and reviewed-annotation
+metadata, and refuses missing files, duplicate case IDs, and source recordings
+that leak across development/evaluation splits. These metadata declarations are
+not a legal or independent verification of the underlying rights or annotation quality.
 The aggregate report pools matched events across all cases; it is micro-
 aggregated, not an unweighted mean of track scores. Preserve the manifest and
 report with the engine revision/configuration used to generate predictions.
 
-The example manifest is intentionally empty. Do not add private or copyrighted
+The example manifest is intentionally empty. Permission/reviewer fields are
+attestations supplied by the dataset owner, not automated rights verification.
+Do not add private or copyrighted
 audio, annotations, or predictions to Git without explicit redistribution
 permission. A valid manifest is not itself evidence that the annotations are
 accurate; human review remains required.
