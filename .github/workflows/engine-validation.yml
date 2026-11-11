@@ -100,5 +100,22 @@ jobs:
           if-no-files-found: ignore
       - name: Run synthetic and repository MP3 smoke tests
         run: python scripts/engine_smoke.py
+      - name: Install PDF raster inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes poppler-utils
       - name: Run API-to-engine end-to-end smoke
-        run: python scripts/api_engine_smoke.py
+        env:
+          DRUMAI_E2E_OUTPUT_DIR: /tmp/drumai-e2e-artifacts
+        run: |
+          python scripts/api_engine_smoke.py
+          pdfinfo /tmp/drumai-e2e-artifacts/drumai-api-e2e-score.pdf
+          pdftoppm -f 1 -l 1 -png -r 120 /tmp/drumai-e2e-artifacts/drumai-api-e2e-score.pdf /tmp/drumai-e2e-artifacts/drumai-score-page
+          test -s /tmp/drumai-e2e-artifacts/drumai-score-page-1.png
+      - name: Upload API PDF and rendered page
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drumai-api-pdf-visual-smoke
+          path: /tmp/drumai-e2e-artifacts/
+          if-no-files-found: ignore
