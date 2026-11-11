@@ -25,7 +25,9 @@ def test_exports_percussion_staff_with_tempo_time_signature_and_velocity():
     root = ET.fromstring(xml)
     assert root.tag == "score-partwise"
     assert root.attrib["version"] == "4.0"
-    assert len(root.findall("./part/measure")) == 2
+    measures = root.findall("./part/measure")
+    assert len(measures) == 2
+    assert [measure.get("implicit") for measure in measures] == ["yes", "yes"]
     assert root.findall(".//clef/sign")[0].text == "percussion"
     assert root.findall(".//midi-channel")[0].text == "10"
     assert [item.text for item in root.findall(".//time/beats")] == ["4", "3"]
@@ -39,6 +41,7 @@ def test_exports_empty_performance_as_valid_one_measure_score():
     performance = DrumPerformance(duration_seconds=0.5, events=[])
     root = ET.fromstring(performance_to_musicxml(performance))
     assert len(root.findall("./part/measure")) == 1
+    assert root.find("./part/measure").get("implicit") == "yes"
     assert root.findall(".//note") == []
 
 
