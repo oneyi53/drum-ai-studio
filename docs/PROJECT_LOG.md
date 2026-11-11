@@ -9,8 +9,10 @@
   beside MIDI export. The endpoint exports the latest canonical state, so
   manual edits, quantization, undo, and redo are reflected.
 - Added XML structure, tempo/time-signature, velocity, empty-score, and API
-  download tests. Import into notation software is supported; final engraving
-  remains the notation application's responsibility.
+  download tests. Extended the real DrumScript API-to-engine smoke to fetch and
+  parse a populated MusicXML score from an actual inferred performance.
+  Import into notation software is supported; final engraving remains the
+  notation application's responsibility.
 - Backend tests run #113 passed all 54 tests and Ruff. Repository CI run #202
   passed frontend build and backend tests. DrumScript engine validation run
   #104 remains in progress; this is integration validation, not an accuracy
