@@ -145,7 +145,7 @@ def health() -> HealthResponse:
 
 
 @app.post("/api/projects", status_code=status.HTTP_201_CREATED)
-async def create_project(audio: UploadFile = File(...))  # noqa: B008 -> dict[str, str | int]:
+async def create_project(audio: UploadFile = File(...)) -> dict[str, str | int]:  # noqa: B008
     suffix = Path(audio.filename or "").suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(
