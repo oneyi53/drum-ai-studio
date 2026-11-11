@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+
+from app.midi_adapter import midi_to_performance
 
 
 def make_synthetic_full_mix(path: Path, sample_rate: int = 44100, seconds: float = 8.0) -> None:
@@ -46,7 +50,7 @@ def make_synthetic_full_mix(path: Path, sample_rate: int = 44100, seconds: float
 
 
 def transcribe_and_check(ds: object, source: Path, label: str) -> None:
-    """Run full-song transcription and require a non-empty MIDI artifact."""
+    """Run full-song transcription and validate its MIDI-to-event normalization."""
     result = ds.transcribe(
         str(source),
         full_song=True,
@@ -64,6 +68,18 @@ def transcribe_and_check(ds: object, source: Path, label: str) -> None:
     if not midi_path.is_file() or midi_path.stat().st_size == 0:
         raise RuntimeError(f"{label}: MIDI output missing or empty: {midi_path}")
 
+    performance = midi_to_performance(midi_path)
+    if not performance.events:
+        raise RuntimeError(
+            f"{label}: MIDI exists but produced no canonical events on GM percussion channel 10"
+        )
+
+    instruments = Counter(event.instrument.value for event in performance.events)
+    print(
+        f"ENGINE_CANONICAL_OK label={label} events={len(performance.events)} "
+        f"instruments={dict(sorted(instruments.items()))} "
+        f"duration_seconds={performance.duration_seconds:.3f}"
+    )
     print(f"ENGINE_SMOKE_OK label={label} midi_bytes={midi_path.stat().st_size}")
 
 
@@ -86,7 +102,40 @@ def main() -> None:
             sample_dir.mkdir()
             isolated_source = sample_dir / sample.name
             shutil.copy2(sample, isolated_source)
-            transcribe_and_check(ds, isolated_source, f"repository-mp3-{index}")
+
+            # Decode MP3 explicitly before Demucs. This avoids relying on the
+            # optional ffmpeg-python executable lookup inside Demucs' loader,
+            # while still exercising the repository's real MP3 input files.
+            try:
+                import imageio_ffmpeg
+
+                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            except ImportError:
+                ffmpeg_exe = shutil.which("ffmpeg")
+            if not ffmpeg_exe:
+                raise RuntimeError("MP3 smoke test requires FFmpeg or imageio-ffmpeg")
+
+            decoded_wav = sample_dir / f"{sample.stem}.decoded.wav"
+            subprocess.run(
+                [
+                    ffmpeg_exe,
+                    "-y",
+                    "-i",
+                    str(isolated_source),
+                    "-vn",
+                    "-ac",
+                    "2",
+                    "-ar",
+                    "44100",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(decoded_wav),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            transcribe_and_check(ds, decoded_wav, f"repository-mp3-{index}")
 
 
 if __name__ == "__main__":

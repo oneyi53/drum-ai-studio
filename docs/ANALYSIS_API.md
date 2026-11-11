@@ -6,6 +6,7 @@
 2. Start analysis with `POST /api/projects/{project_id}/analyze`. The response contains a job ID and HTTP 202.
 3. Poll `GET /api/analysis-jobs/{job_id}` until status is `completed` or `failed`.
 4. Fetch the canonical result with `GET /api/projects/{project_id}/performance`.
+5. Stream the original uploaded audio with `GET /api/projects/{project_id}/audio`; the endpoint supports browser media playback and byte-range seeking through FastAPI's file response.
 
 Job statuses: `queued`, `running`, `completed`, `failed`. A project moves through
 `uploaded`, `queued`, `processing`, `analyzed`, or `failed`.
@@ -63,7 +64,13 @@ GET /api/projects/{project_id}/performance
 
 The result contains the canonical `DrumPerformance` JSON and generated MIDI
 filename. Download the MIDI artifact with `GET /api/projects/{project_id}/midi`.
-The API does not yet provide event-edit endpoints.
+Event create/update/delete operations are persisted as revisions. The editor exposes
+persistent undo/redo through `POST /api/projects/{project_id}/undo` and
+`POST /api/projects/{project_id}/redo`; query
+`GET /api/projects/{project_id}/history` for the current revision and
+`can_undo`/`can_redo` flags. Undo/redo restore canonical JSON and regenerate
+the MIDI artifact in the same database transaction. A new edit after undo
+discards the redo branch.
 
 ## Failure modes
 
@@ -74,16 +81,75 @@ The API does not yet provide event-edit endpoints.
 - Unknown project/job: HTTP 404.
 
 
-## Tempo-aware quantization
+### Original audio playback
 
-`POST /api/projects/{project_id}/quantize` accepts:
+`GET /api/projects/{project_id}/audio` streams the project's original upload
+using its server-generated storage filename and the original media type. The
+route resolves the stored path under the upload directory and returns 404 for
+unknown projects or missing artifacts. The frontend uses the browser audio
+element for playback, seeking, and timeline playhead synchronization; selecting
+a drum event seeks the player to that event's absolute timestamp.
 
-- `subdivision`: `1/4`, `1/8`, `1/16`, or `1/32` (default `1/16`).
-- `strength`: 0–100 percent (default 100). Zero is a no-op; intermediate
-  values interpolate each event toward its nearest grid point.
-- `apply`: boolean (default true). Set false to preview without persistence.
 
-Each tempo-map segment anchors its own grid at the tempo-change timestamp.
-Applied changes update canonical performance JSON and regenerate the MIDI
-artifact in the same transaction path used by manual event edits. The editor
-currently exposes the apply action; preview is available to API clients.
+### Tempo-map visualization
+
+The arrangement view derives beat and bar markers from each tempo-map segment.
+A tempo change starts a new segment at its declared absolute timestamp; the
+segment's BPM determines quarter-note spacing and its time signature determines
+bar length. Tempo boundaries and BPM labels are shown on the timeline. When no
+tempo metadata exists, the view uses a 120 BPM, 4/4 display fallback. Event
+timestamps and audio playback remain in absolute seconds.
+
+
+## MusicXML score export
+
+- `GET /api/projects/{project_id}/musicxml` downloads the latest completed
+  canonical performance as a MusicXML 4.0 partwise score.
+- The export contains a percussion staff, instrument-specific voices and
+  noteheads, GM percussion instrument metadata, tempo directions, and
+  time-signature-aware measures. Rhythmic note values are inferred from the
+  spacing between successive hits in each instrument voice; partial final bars
+  and mid-bar meter changes are marked as implicit measures. It is intended for
+  import into notation software such as MuseScore; final engraving and layout
+  are controlled by that application.
+- The export reflects the current canonical performance, including manual
+  edits, quantization, undo, and redo. MIDI export remains available separately.
+
+
+## Saved project recovery
+
+- `GET /api/projects?limit=20` returns recent local projects and the latest
+  analysis-job status for each. The limit is clamped to 1–100.
+- The frontend loads this list on startup and can restore a project with a
+  completed analysis, including its canonical events and edit-history state.
+- Projects with no completed analysis remain visible in the API response but
+  are not selectable as completed editor sessions.
+
+
+### Measure-based phrase copy
+
+`POST /api/projects/{project_id}/events/copy-bar`
+
+Copies every event in the half-open source interval
+`[source_start_seconds, source_end_seconds)` into the target measure.
+The request also supplies `target_start_seconds` and `target_end_seconds`;
+event offsets are mapped proportionally from source-measure length to
+target-measure length. This preserves the phrase's relative rhythmic shape
+when measure durations differ.
+
+A successful operation creates one history revision, marks cloned events as
+manual corrections, and regenerates MIDI. Empty source intervals and source or
+target ranges outside the performance duration are rejected atomically.
+
+
+## PDF score export
+
+- `GET /api/projects/{project_id}/pdf` downloads a printable landscape PDF
+  rendered directly from the latest completed canonical drum performance.
+- The PDF is engraved from the same MusicXML score using Verovio (LGPL-3.0),
+  then converted from vector SVG pages to PDF. This provides real notation
+  engraving, automatic spacing, measure layout, and multi-page output. MusicXML
+  remains the editable notation interchange format for detailed score editing.
+- The endpoint always reads the latest canonical state, including edits,
+  quantization, undo, and redo. A project without a completed performance
+  returns HTTP 404.

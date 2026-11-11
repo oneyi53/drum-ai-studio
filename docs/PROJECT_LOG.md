@@ -1,4 +1,74 @@
 
+## 2026-11-11 — non-destructive quantization preview
+
+- Added a two-step quantization flow: generate a preview without persisting,
+  inspect how many events will move, then explicitly confirm application.
+- Changing the grid or strength invalidates the previous preview. Only the
+  confirmed apply action creates a revision and synchronizes MIDI.
+- This exposes the existing backend preview mode in the workspace and avoids
+  accidental destructive quantization. Backend tests run #149 passed all 56
+  tests plus Ruff; repository CI run #238 passed frontend build and backend
+  tests. The subsequent CSS layout update also passed backend run #150 and
+  repository CI run #239.
+
+
+## 2026-11-11 — A–B loop range guard
+
+- Prevented enabling A–B practice looping when the selected range is zero or
+  reversed. Setting A after an existing B now restores B to the track end;
+  setting B before A is disabled in the UI.
+- This avoids a silently enabled loop that never wraps playback.
+
+
+## 2026-11-11 — saved-project retry and recovery
+
+- Improved workspace recovery so uploaded projects with no analysis job can be
+  started directly, and projects whose latest analysis failed can be retried
+  without uploading the audio again.
+- Existing completed projects still restore the latest canonical performance;
+  queued/running jobs remain resumable after a browser refresh.
+- Added API coverage for the saved-project listing endpoint and documented the
+  retry flow in the user guide. Frontend/backend CI for this increment pending.
+
+
+## 2026-11-11 — saved project recovery (implementation, CI pending)
+
+- Added `GET /api/projects?limit=...` to list recent local projects with their
+  latest analysis-job state. The API clamps the requested list size to 1–100.
+- Added a workspace project picker that loads saved projects on startup,
+  restores completed canonical performances and edit history after reload,
+  can resume polling queued/running jobs, and supports manual list refresh.
+- Project switching resets playback/selection state; event-row inputs remount
+  when canonical event values change so undo/redo visibly restores the editor.
+- Added API integration coverage for project metadata and latest completed job
+  state. Backend tests run #140 passed all 56 tests and Ruff; repository CI
+  run #227 passed frontend build and backend tests. DrumScript engine validation
+  run #131 remains in progress.
+
+
+## 2026-11-11 — editable MusicXML drum score export (implementation, CI pending)
+
+- Added a MusicXML 4.0 partwise exporter for canonical drum events, with a
+  percussion staff, instrument-specific voices/noteheads, GM percussion
+  metadata, velocity playback hints, tempo directions, time-signature-aware
+  measure boundaries, note values inferred from successive hit spacing, and
+  explicitly marked implicit measures for partial bars or mid-bar time-signature
+  changes.
+- Added `GET /api/projects/{project_id}/musicxml` and a frontend download link
+  beside MIDI export. The endpoint exports the latest canonical state, so
+  manual edits, quantization, undo, and redo are reflected.
+- Added XML structure, tempo/time-signature, velocity, empty-score, and API
+  download tests. Extended the real DrumScript API-to-engine smoke to fetch and
+  parse a populated MusicXML score from an actual inferred performance.
+  Import into notation software is supported; final engraving remains the
+  notation application's responsibility.
+- Backend tests run #140 passed all 56 tests and Ruff; repository CI run #227
+  passed both frontend build and backend tests on the current branch head.
+  DrumScript engine validation run #131 is running the synthetic/repository MP3
+  smoke stage before the expanded real-inference MusicXML export check. This
+  is integration validation, not an accuracy claim.
+
+
 ## 2026-11-11 — tempo-synchronized practice metronome (implementation, CI pending)
 
 - Added a browser metronome that follows the rendered tempo-map beat positions,
@@ -6,7 +76,9 @@
 - Metronome clicks are generated locally with Web Audio and do not upload or
   persist audio. Seeking backward and A–B loop restarts reset beat tracking.
 - The metronome is opt-in and can be toggled independently of A–B looping.
-  Latest frontend build and engine validation are pending for this increment.
+  Its animation-frame scheduler follows the audio element clock and stops while
+  playback is paused. Repository CI run #202 passed frontend build and backend
+  tests; DrumScript engine validation run #104 remains in progress.
 
 
 ## 2026-11-11 — A–B loop practice playback (implementation, CI pending)
@@ -16,8 +88,9 @@
   and reset the range to the full track.
 - Looping is evaluated against the audio element's playback clock; drum-event
   positions and the timeline remain anchored to absolute seconds.
-- Invalid or zero-length ranges do not trigger a loop. Latest branch CI is
-  required before this increment is considered validated.
+- Invalid or zero-length ranges do not trigger a loop. A–B range shading is
+  shown across the drum lanes while looping is active. Repository CI run #202
+  passed frontend build and backend tests; engine validation remains pending.
 
 ## 2026-11-11 — interactive drum arrangement timeline (implementation, CI pending)
 
@@ -280,3 +353,197 @@ code or validation state changes; do not infer completion from plans.
 - The later tempo-map-aware timeline commits were added after run #173. They
   still require a fresh frontend build; do not extend the earlier pass claim
   to those commits.
+
+
+## 2026-11-11 — timeline lane visibility filters
+
+- Added per-instrument visibility checkboxes plus show-all/hide-all controls above the arrangement timeline.
+- Filtering is presentation-only: it does not mutate canonical events, history, playback audio, or MIDI/MusicXML exports; the event table remains complete.
+- This is a frontend-only increment. Latest repository CI and engine-validation status are tracked separately from this commit.
+
+
+## 2026-11-11 — atomic bulk event editing
+
+- Added batch event time shifting and batch deletion endpoints with unique-ID and full-selection validation under SQLite `BEGIN IMMEDIATE`.
+- All changes are validated before persistence; invalid negative event times reject the entire batch. Each operation creates exactly one revision and regenerates MIDI from the canonical performance.
+- Added frontend multi-select, select-all, time-offset input, batch move/delete actions, and Chinese user-guide coverage.
+- Added API tests for one-revision semantics, MIDI synchronization, and atomic rejection.
+
+
+## 2026-11-11 — selected drum-event repetition
+
+- Added an atomic duplication endpoint that clones selected canonical drum events
+  at one or more fixed interval offsets. New events receive unique IDs, retain
+  instrument/velocity metadata, and are marked as manually corrected.
+- Repeat count is bounded to 1–16; invalid selections and any clone beyond the
+  track duration reject the entire request before persistence.
+- Added editor controls for interval and repeat count. A successful action
+  creates one undo/redo revision and regenerates MIDI from canonical events.
+- Added API tests for metadata preservation, unique IDs, repeat timing, single
+  history revision, MIDI synchronization, and out-of-duration atomic rejection.
+- CI validation for this increment is pending until the latest branch head runs.
+
+
+## 2026-11-11 — measure-based drum phrase copy and paste
+
+- Added an atomic API that copies all canonical events in a source time range
+  to a target measure, mapping normalized within-bar offsets when source and
+  target measure lengths differ. Instrument, velocity, and confidence are
+  preserved; clones receive new IDs and manual provenance.
+- Added frontend source/target measure controls driven by the tempo-aware
+  timeline beat/bar grid. Original events remain untouched.
+- Empty source ranges, invalid ranges, and pasted events beyond track duration
+  reject the operation before saving. Successful pastes create one history
+  revision and regenerate MIDI from canonical events.
+- Added API tests for relative timing, metadata preservation, one-revision
+  semantics, MIDI synchronization, empty-source rejection, and overflow
+  atomicity. CI validation is pending for this increment.
+
+
+### Measure-copy validation update
+
+- Backend tests run #171 passed: 62 tests; Ruff passed.
+- DrumScript engine validation run #162 is queued/pending. This editor-only API change does not modify the inference engine; engine workflow completion is still tracked.
+- A fresh repository frontend build result has not yet been confirmed for this head.
+
+
+## 2026-11-11 — built-in printable PDF drum score export (implementation, CI pending)
+
+- Added a ReportLab-based PDF renderer that lays canonical drum events onto a
+  landscape percussion staff with measure boundaries/numbers, tempo and meter
+  metadata, velocity-scaled noteheads, instrument-specific notehead styles,
+  and a compact instrument legend. Long arrangements paginate by systems.
+- Added `GET /api/projects/{project_id}/pdf`, which always renders the latest
+  completed canonical performance, so manual corrections, quantization,
+  undo, and redo are reflected in the printout.
+- Added a PDF download link next to MIDI and editable MusicXML, declared the
+  ReportLab runtime dependency, and updated the user guide/API/README.
+- Added API tests for PDF signature/content type/download disposition and the
+  missing-performance 404 path. CI is pending; no build or test pass is claimed
+  until the workflow results are observed. MusicXML remains the editable score
+  interchange format; PDF is the printable reading/printing format.
+
+
+## 2026-11-11 — adopt Verovio for professional PDF engraving
+
+- Replaced the hand-drawn PDF as the primary path with Verovio, a mature
+  open-source notation engraving engine that imports MusicXML and renders
+  vector SVG pages. CairoSVG converts each vector page to PDF and pypdf
+  assembles multi-page output. ReportLab remains a minimal-install fallback.
+- Added pinned-compatible runtime ranges for Verovio 6.4, CairoSVG, and pypdf.
+  Verovio is LGPL-3.0; no Verovio source is vendored or modified.
+- Strengthened the PDF API test to parse the returned PDF and require at least
+  one real page. CI will validate MusicXML import, engraving, SVG-to-PDF
+  conversion, and PDF assembly on the next run.
+- OSS references: https://github.com/rism-digital/verovio and
+  https://book.verovio.org/installing-or-building-from-sources/python.html .
+
+
+## 2026-11-11 — timeline marquee selection and drag move
+
+- Added pointer-based marquee selection across visible instrument lanes and a
+  live selection rectangle. Dragging on empty timeline space selects events
+  within both the time and lane range.
+- Dragging a selected hit previews and applies a shared time offset to the
+  whole selected group through the existing atomic batch-edit endpoint. The
+  API still enforces song bounds, creates one history revision, and regenerates
+  MIDI; click-to-seek behavior is preserved for non-drag clicks.
+- Added visual marquee styling and updated the user guide. Frontend production
+  build is pending for this increment.
+
+
+### 2026-11-11 validation checkpoint — Verovio + timeline drag
+
+- Verovio PDF path is exercised by the API test: backend test suite reports
+  64 passed, including parsing the returned PDF with pypdf (workflow run
+  #180 / CI backend test job).
+- Frontend production build passed on the commit containing marquee selection
+  and drag-move (CI run #269).
+- Ruff caught import-order-only issues in the PDF test imports on two workflow
+  attempts. Both were corrected; latest fix commit
+  `0953ebbf036ce47ea623ff363fa29db20b74a6ee` is awaiting its own lint result.
+- DrumScript upstream test and repository MP3 end-to-end workflow is still
+  running; do not treat the engine smoke test as passed until its final status
+  is recorded.
+
+
+## 2026-11-11 — PDF fallback layout correction and regression coverage
+
+- Moved system labels and the initial time signature into a dedicated left
+  gutter, separated bar numbers from the staff, and annotate later meter
+  changes only where they occur instead of repeating the initial meter.
+- Added fallback-renderer regression tests for single- and multi-system
+  scores, PDF page readability, system labels, and time-signature repetition.
+- CI is pending for this increment. Visual review of a freshly rendered PDF
+  remains required before calling the layout fully accepted.
+
+
+## 2026-11-11 — portable full-project backup export
+
+- Added a ZIP endpoint and workspace download link bundling the original uploaded
+  audio, latest canonical performance JSON, MIDI, editable MusicXML, printable
+  PDF, and a short README manifest.
+- The bundle reads the latest completed canonical performance so edits and
+  history restores are reflected in the exported files. Added API coverage for
+  archive contents and the not-yet-analyzed response. CI pending.
+
+
+## 2026-11-11 — graceful PDF engraving fallback
+
+- CI exposed that the Verovio Python package can be installed while its SMuFL
+  font resources are unavailable, causing score loading to raise a ValueError.
+- PDF export now falls back to the ReportLab renderer for that specific
+  unusable-engraving condition, rather than failing the entire export and
+  project backup. Added a regression test for this path.
+- Full-project backup export is now covered by archive-content API tests;
+  CI rerun pending.
+
+
+## 2026-11-11 — PDF page geometry and external benchmark acquisition
+
+- Corrected the Verovio SVG-to-PDF conversion to set an explicit landscape A4 output surface. CairoSVG otherwise interprets SVG pixel dimensions at 96 DPI, which can make the physical PDF page size differ from the intended paper size.
+- Added PDF regression coverage for A4 media-box dimensions on both the Verovio primary renderer and the ReportLab fallback, in addition to existing text/layout checks. CI must confirm the new primary-renderer assertion before this fix is considered verified.
+- Added `docs/TEST_DATASETS.md` with a staged, licence-aware acquisition plan for IDMT-SMT-Drums, GMD, E-GMD, ENST-Drums, and QUASI. Audio remains outside Git; each benchmark case must preserve provenance, licence, checksum, and reviewed annotation metadata.
+- No external dataset has yet been downloaded into the repository or scored. The first practical target is a small IDMT subset plus a fixed GMD held-out subset; real mixed-song evaluation requires separate track-level rights review.
+
+
+## 2026-11-11 — annotated IDMT regression benchmark added to engine CI
+
+- Reused the upstream DrumScript IDMT-SMT-Drums V2 benchmark adapter rather than creating a second annotation parser. The upstream adapter already pairs `#MIX.wav` recordings with XML/SVL labels and scores kick, snare, and hi-hat onset events at a 50 ms tolerance.
+- Added an engine-validation CI step that downloads the 287 MB IDMT archive from Zenodo, runs the first 10 annotated RealDrum mixes, and uploads metrics as a workflow artifact. Raw dataset audio stays outside Git; the run is an evaluation-only use under the dataset's non-commercial/no-derivatives terms.
+- This is the first labelled regression benchmark in our pipeline. It does not measure full-band mixed-song separation; QUASI remains a later candidate pending per-track licence review.
+- Latest PDF resource-path and A4 regression changes are awaiting the current CI run. Previous attempts exposed and corrected a missing `Path` import and an incorrect multi-page test expectation; those failed runs are not counted as passes.
+
+## 2026-11-11 — CI acceleration: FFmpeg provisioning
+
+- The IDMT engine-validation workflow's FFmpeg setup was spending excessive time in the Ubuntu package-manager path (apt-get update / apt-get install).
+- Replaced that fallback with the pip-distributed imageio-ffmpeg binary when the runner does not already provide FFmpeg; the binary directory is added to GITHUB_PATH and verified with ffmpeg -version.
+- This keeps the runner-provided FFmpeg fast path and removes the slow apt repository refresh from the fallback path.
+- The previous benchmark run had not yet reached dataset download or scoring, so no IDMT accuracy result is claimed. The workflow will rerun on this commit.
+
+- Follow-up CI correction: imageio-ffmpeg exposes a versioned executable name rather than a literal ffmpeg command. The workflow now creates a runner-temp ffmpeg symlink and adds that directory to PATH before verifying the binary. The first pip-based attempt failed at the verification command before any benchmark work ran; no accuracy result is available yet.
+
+## 2026-11-11 — First labelled IDMT benchmark completed
+
+- The CI workflow successfully downloaded the IDMT-SMT-DRUMS-V2 evaluation archive, ran the upstream adapter on 10/10 RealDrum mixes, and uploaded the metrics artifact (workflow run #213, artifact `idmt-drum-transcription-benchmark`).
+- Macro-average at the upstream adapter's 50 ms onset tolerance: kick P=0.700 / R=0.070 / F1=0.123; snare P=0.706 / R=0.914 / F1=0.775; hi-hat P=0.907 / R=0.996 / F1=0.949.
+- Interpretation: kick recall is the major quality blocker; the score is an initial 10-item baseline, not a production-accuracy claim. Expand the held-out sample before making broad claims.
+- The same workflow passed synthetic full-mix separation/transcription and canonical MIDI normalization. Repository MP3 processing then failed during Demucs MP3 decoding because its loader could not locate/use FFmpeg in that subprocess, despite the workflow's FFmpeg verification step.
+- Updated `scripts/engine_smoke.py` to explicitly decode repository MP3 samples to PCM WAV with the imageio-ffmpeg executable (or system FFmpeg fallback) before passing the audio into Demucs. This preserves real repository MP3 coverage while avoiding Demucs' optional MP3 decoder lookup path. CI must validate this correction.
+
+
+## 2026-11-11 — kick recall research and cross-domain benchmark expansion
+
+- Investigated public ADT research and open implementations: IDMT-SMT-Drums, MDB Drums, ADTOF, a Librosa-onset + CNN baseline, adaptive onset detection with spectral/tail templates, and the 2026 Separate-and-Detect five-stem approach.
+- Added `docs/KICK_RECALL_RESEARCH.md` with cited sources, testable failure hypotheses, dataset/license notes, and a staged diagnostic plan. The causes are explicitly hypotheses, not asserted facts.
+- Expanded IDMT CI evaluation from the first 10 RealDrum mixes to 15 examples each from RealDrum, WaveDrum, and TechnoDrum, with distinct run names and archived per-track metrics. This checks whether the low kick recall is domain-specific instead of extrapolating from one subset.
+- Disabled cancellation of an in-progress engine-validation run when a new commit arrives; this long-running CPU benchmark should finish rather than repeatedly being cancelled by rapid pushes.
+- The expanded benchmark and MP3-to-WAV smoke correction are awaiting CI execution. No accuracy improvement is claimed yet.
+
+
+## 2026-11-11 — stage-wise kick miss diagnostics
+
+- Added `scripts/kick_stage_diagnostics.py`. It evaluates each IDMT kick reference twice: first against all onset candidates before classification, then against events classified as kick. It reports candidate recall, final kick recall, kick precision, and candidate-to-kick match retention per subset and per track.
+- The engine-validation workflow now runs this diagnostic on 15 tracks from each of RealDrum, WaveDrum, and TechnoDrum and uploads JSON/CSV alongside the upstream per-track benchmark archives.
+- Interpretation rule: low candidate recall indicates the shared onset stage is missing kick opportunities; healthy candidate recall but low final kick recall points to classification/feature rules. This is a diagnostic decomposition, not a claim that either failure mode has already been observed.
+- CI is running/pending for the new diagnostic script and workflow. The first output will determine which algorithm branch to change next.
