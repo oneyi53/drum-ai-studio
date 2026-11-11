@@ -484,6 +484,7 @@ function App() {
           source_start_seconds: sourceStart,
           source_end_seconds: sourceEnd,
           target_start_seconds: targetStart,
+          target_end_seconds: boundaries[targetIndex + 1],
         }),
       });
       const result = await response.json() as Record<string, unknown>;
