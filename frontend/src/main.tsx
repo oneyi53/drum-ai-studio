@@ -217,7 +217,12 @@ function App() {
     audioRef.current?.pause();
     setLoopEnabled(false);
     setMetronomeEnabled(false);
+    setLoopStart(0);
+    setLoopEnd(0);
     setAudioTime(0);
+    setAudioDuration(0);
+    setSelectedEventId(null);
+    setActiveEventId(null);
     try {
       let completed = project.latest_job_status === "completed";
       for (let attempt = 0; attempt < 180 && !completed; attempt += 1) {
