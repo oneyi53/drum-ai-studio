@@ -32,12 +32,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install FFmpeg and ffprobe
+      - name: Install FFmpeg, ffprobe, and PDF raster tools
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes ffmpeg
+          sudo apt-get install --yes ffmpeg poppler-utils
           command -v ffmpeg
           command -v ffprobe
+          command -v pdftoppm
           ffmpeg -version
           ffprobe -version
       - name: Install CPU PyTorch and DrumScript
@@ -100,10 +100,6 @@ jobs:
           if-no-files-found: ignore
       - name: Run synthetic and repository MP3 smoke tests
         run: python scripts/engine_smoke.py
-      - name: Install PDF raster inspection tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes poppler-utils
       - name: Run API-to-engine end-to-end smoke
         env:
           DRUMAI_E2E_OUTPUT_DIR: /tmp/drumai-e2e-artifacts
