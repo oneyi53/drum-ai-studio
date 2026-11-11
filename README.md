@@ -69,7 +69,7 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - Audio upload creates a project record and stores the original file locally.
 - The analysis endpoint creates an asynchronous job; the worker fails clearly if DrumScript or FFmpeg/ffprobe is not installed.
 - The event evaluator is ready for reviewed reference annotations, but no golden dataset or accuracy result is claimed.
-- PDF, MusicXML, and MIDI downloads reflect the latest canonical performance. PDF is generated in-app for printing; MusicXML can be imported into notation software for detailed editing and engraving.
+- PDF, MusicXML, and MIDI downloads reflect the latest canonical performance. PDF is engraved in-app through the Verovio notation engine; MusicXML can be imported into notation software for detailed editing and engraving.
 - Analysis jobs use FastAPI in-process background tasks and are intended for single-worker development only; use a durable queue before multi-worker or multi-replica deployment.
 - Local uploads are not yet authenticated or suitable for public multi-user deployment.
 - Do not upload copyrighted recordings unless you have the right to do so.
