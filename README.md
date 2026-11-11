@@ -74,6 +74,7 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - Local uploads are not yet authenticated or suitable for public multi-user deployment.
 - Do not upload copyrighted recordings unless you have the right to do so.
 
+- [Test dataset acquisition and licences](docs/TEST_DATASETS.md)
 ## Project documents
 
 - [P0 audit](docs/P0_AUDIT.md)
