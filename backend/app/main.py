@@ -121,6 +121,26 @@ def initialize_storage() -> None:
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_analysis_jobs_project ON analysis_jobs(project_id, created_at)"
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS performance_revisions (
+                project_id TEXT NOT NULL REFERENCES projects(id),
+                revision INTEGER NOT NULL,
+                performance_json TEXT NOT NULL,
+                action TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (project_id, revision)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS performance_history_state (
+                project_id TEXT PRIMARY KEY REFERENCES projects(id),
+                current_revision INTEGER NOT NULL
+            )
+            """
+        )
         now = utc_now()
         connection.execute(
             """
@@ -247,6 +267,21 @@ def run_analysis_job(job_id: str) -> None:
                 (utc_now(), midi_path.name, performance.model_dump_json(), job_id),
             )
             connection.execute(
+                """
+                INSERT OR IGNORE INTO performance_revisions
+                (project_id, revision, performance_json, action, created_at)
+                VALUES (?, 0, ?, 'analysis', ?)
+                """,
+                (job["project_id"], performance.model_dump_json(), utc_now()),
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO performance_history_state (project_id, current_revision)
+                VALUES (?, 0)
+                """,
+                (job["project_id"],),
+            )
+            connection.execute(
                 "UPDATE projects SET status='analyzed' WHERE id=?",
                 (job["project_id"],),
             )
@@ -371,6 +406,49 @@ def _save_edited_performance(
         temporary_path.replace(midi_path)
     finally:
         temporary_path.unlink(missing_ok=True)
+    project = connection.execute(
+        "SELECT project_id, performance_json FROM analysis_jobs WHERE id=?", (job_id,)
+    ).fetchone()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    project_id = project["project_id"]
+    current = connection.execute(
+        "SELECT current_revision FROM performance_history_state WHERE project_id=?",
+        (project_id,),
+    ).fetchone()
+    if current is None:
+        connection.execute(
+            """
+            INSERT INTO performance_revisions
+            (project_id, revision, performance_json, action, created_at)
+            VALUES (?, 0, ?, 'analysis', ?)
+            """,
+            (project_id, project["performance_json"] or performance.model_dump_json(), utc_now()),
+        )
+        connection.execute(
+            "INSERT INTO performance_history_state (project_id, current_revision) VALUES (?, 0)",
+            (project_id,),
+        )
+        current_revision = 0
+    else:
+        current_revision = current["current_revision"]
+    next_revision = current_revision + 1
+    connection.execute(
+        "DELETE FROM performance_revisions WHERE project_id=? AND revision>?",
+        (project_id, current_revision),
+    )
+    connection.execute(
+        """
+        INSERT INTO performance_revisions
+        (project_id, revision, performance_json, action, created_at)
+        VALUES (?, ?, ?, 'edit', ?)
+        """,
+        (project_id, next_revision, performance.model_dump_json(), utc_now()),
+    )
+    connection.execute(
+        "UPDATE performance_history_state SET current_revision=? WHERE project_id=?",
+        (next_revision, project_id),
+    )
     connection.execute(
         "UPDATE analysis_jobs SET performance_json=?, updated_at=? WHERE id=?",
         (performance.model_dump_json(), utc_now(), job_id),
@@ -451,6 +529,95 @@ def delete_manual_event(project_id: str, event_id: str) -> dict[str, Any]:
         )
         _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
     return {"deleted_event_id": event_id, "performance": updated.model_dump()}
+
+
+
+
+def _history_status(connection: sqlite3.Connection, project_id: str) -> dict[str, Any]:
+    state = connection.execute(
+        "SELECT current_revision FROM performance_history_state WHERE project_id=?",
+        (project_id,),
+    ).fetchone()
+    if state is None:
+        return {"current_revision": 0, "can_undo": False, "can_redo": False}
+    current = state["current_revision"]
+    bounds = connection.execute(
+        "SELECT MIN(revision) AS first_revision, MAX(revision) AS last_revision "
+        "FROM performance_revisions WHERE project_id=?",
+        (project_id,),
+    ).fetchone()
+    return {
+        "current_revision": current,
+        "can_undo": bounds["first_revision"] is not None and current > bounds["first_revision"],
+        "can_redo": bounds["last_revision"] is not None and current < bounds["last_revision"],
+    }
+
+
+@app.get("/api/projects/{project_id}/history")
+def get_project_history(project_id: str) -> dict[str, Any]:
+    with connect_db() as connection:
+        exists = connection.execute("SELECT id FROM projects WHERE id=?", (project_id,)).fetchone()
+        if exists is None:
+            raise HTTPException(status_code=404, detail="Project not found.")
+        return _history_status(connection, project_id)
+
+
+def _save_edited_performance_without_history(
+    connection: sqlite3.Connection,
+    job_id: str,
+    midi_filename: str,
+    performance: DrumPerformance,
+) -> None:
+    midi_path = ANALYSIS_DIR / job_id / midi_filename
+    temporary_path = midi_path.with_suffix(".tmp.mid")
+    try:
+        performance_to_midi(performance, temporary_path)
+        temporary_path.replace(midi_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    connection.execute(
+        "UPDATE analysis_jobs SET performance_json=?, updated_at=? WHERE id=?",
+        (performance.model_dump_json(), utc_now(), job_id),
+    )
+
+
+def _move_history(project_id: str, direction: int) -> dict[str, Any]:
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, _ = _load_editable_performance(connection, project_id)
+        state = connection.execute(
+            "SELECT current_revision FROM performance_history_state WHERE project_id=?",
+            (project_id,),
+        ).fetchone()
+        if state is None:
+            raise HTTPException(status_code=409, detail="No edit history is available.")
+        target = state["current_revision"] + direction
+        revision = connection.execute(
+            "SELECT performance_json FROM performance_revisions WHERE project_id=? AND revision=?",
+            (project_id, target),
+        ).fetchone()
+        if revision is None:
+            raise HTTPException(status_code=409, detail="No further undo/redo action is available.")
+        restored = DrumPerformance.model_validate_json(revision["performance_json"])
+        _save_edited_performance_without_history(
+            connection, row["id"], row["midi_filename"], restored
+        )
+        connection.execute(
+            "UPDATE performance_history_state SET current_revision=? WHERE project_id=?",
+            (target, project_id),
+        )
+        history = _history_status(connection, project_id)
+    return {"performance": restored.model_dump(), **history}
+
+
+@app.post("/api/projects/{project_id}/undo")
+def undo_project_edit(project_id: str) -> dict[str, Any]:
+    return _move_history(project_id, -1)
+
+
+@app.post("/api/projects/{project_id}/redo")
+def redo_project_edit(project_id: str) -> dict[str, Any]:
+    return _move_history(project_id, 1)
 
 
 @app.get("/api/projects/{project_id}/midi")
