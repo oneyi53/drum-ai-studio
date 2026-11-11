@@ -21,6 +21,9 @@ dev = [
   "ruff>=0.6,<1.0",
 ]
 
+[project.scripts]
+drumai-evaluate = "app.evaluate_cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
