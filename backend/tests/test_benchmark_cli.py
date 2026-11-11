@@ -68,3 +68,26 @@ def test_evaluate_manifest_requires_all_case_files(tmp_path):
     )
     with pytest.raises(FileNotFoundError, match="audio"):
         evaluate_manifest(manifest_path)
+
+def test_aggregate_never_matches_events_across_recordings(tmp_path):
+    (tmp_path / "audio.wav").write_bytes(b"permitted test fixture")
+    kick = _performance(0.5)
+    empty = DrumPerformance(duration_seconds=2).model_dump_json()
+    (tmp_path / "reference-a.json").write_text(kick, encoding="utf-8")
+    (tmp_path / "predicted-a.json").write_text(empty, encoding="utf-8")
+    (tmp_path / "reference-b.json").write_text(empty, encoding="utf-8")
+    (tmp_path / "predicted-b.json").write_text(kick, encoding="utf-8")
+    first = _case("case-a", "recording-a")
+    second = _case("case-b", "recording-b")
+    first.update(reference_path="reference-a.json", predicted_path="predicted-a.json")
+    second.update(reference_path="reference-b.json", predicted_path="predicted-b.json")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps({"cases": [first, second]}), encoding="utf-8"
+    )
+
+    result = evaluate_manifest(manifest_path)
+    overall = result["aggregate"]["overall"]
+    assert overall["true_positives"] == 0
+    assert overall["false_positives"] == 1
+    assert overall["false_negatives"] == 1
