@@ -55,7 +55,7 @@ def _seconds_to_quarters(seconds: float, changes: list[TempoChange]) -> float:
 
 
 def _add_text(
-    parent: ET.Element, tag: str, value: str | int | float, **attributes: str
+    parent: ET.Element, tag: str, value: str | float, **attributes: str
 ) -> ET.Element:
     child = ET.SubElement(parent, tag, attributes)
     child.text = str(value)
@@ -128,8 +128,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             (item[0] for item in signature_changes if item[0] > bar_start + 1e-9),
             default=bar_end,
         )
-        if next_change < bar_end:
-            bar_end = next_change
+        bar_end = min(bar_end, next_change)
         if bar_end <= bar_start + 1e-9:
             bar_end = bar_start + numerator * 4.0 / denominator
         measures.append((bar_start, bar_end, numerator, denominator))
@@ -195,6 +194,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             by_instrument[event.instrument].append((event, beat))
 
         voice_number = 0
+        cursor = 0
         for instrument in DrumInstrument:
             notes = by_instrument.get(instrument, [])
             if not notes:
