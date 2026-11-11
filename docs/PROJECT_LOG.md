@@ -20,7 +20,8 @@ code or validation state changes; do not infer completion from plans.
   - Configurable timing tolerance (default 50 ms).
   - Overall and per-instrument precision, recall, F1, counts, and matched-event
     mean absolute timing error.
-- Added unit tests and `docs/DRUM_EVENT_EVALUATION.md`.
+- Added unit tests, a `drumai-evaluate` JSON-report CLI, and `docs/DRUM_EVENT_EVALUATION.md`.
+- Overall metrics aggregate per-instrument matches so an instrument substitution cannot be counted as a correct hit.
 - Updated README and architecture documentation.
 
 ### Validation state
