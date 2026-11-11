@@ -19,6 +19,8 @@ def test_maps_common_gm_percussion_keys_and_preserves_unknowns():
     assert gm_note_to_instrument(38) == DrumInstrument.SNARE
     assert gm_note_to_instrument(42) == DrumInstrument.CLOSED_HIHAT
     assert gm_note_to_instrument(46) == DrumInstrument.OPEN_HIHAT
+    assert gm_note_to_instrument(37) == DrumInstrument.OTHER  # Side stick
+    assert gm_note_to_instrument(39) == DrumInstrument.OTHER  # Hand clap
     assert gm_note_to_instrument(99) == DrumInstrument.OTHER
 
 
