@@ -86,6 +86,29 @@ audio, annotations, or predictions to Git without explicit redistribution
 permission. A valid manifest is not itself evidence that the annotations are
 accurate; human review remains required.
 
+
+## Manual event editing and MIDI synchronization
+
+The analysis API exposes manual event editing on the latest completed project
+performance:
+
+- `POST /api/projects/{project_id}/events`: add a manual event with
+  `time_seconds`, `instrument`, and optional `velocity`.
+- `PATCH /api/projects/{project_id}/events/{event_id}`: update one or more
+  of those fields. Omitted fields are unchanged; null values are rejected.
+- `DELETE /api/projects/{project_id}/events/{event_id}`: remove an event.
+
+All changes are validated against the performance duration. New and edited
+events are marked `source: "manual"` and `manually_corrected: true`.
+Updates are serialized with SQLite write transactions. Each successful edit
+regenerates the downloadable MIDI from the canonical performance, so the
+JSON result and MIDI artifact stay in sync.
+
+The MIDI writer emits GM percussion channel 10, tempo changes, time signatures,
+and velocities. The `other` canonical category is exported as GM side-stick
+key 37 as a fallback; that category therefore cannot preserve an arbitrary
+unmapped source pitch through a round trip.
+
 ## Ground-truth dataset policy
 
 Do not use copyrighted recordings unless the project has permission to process
