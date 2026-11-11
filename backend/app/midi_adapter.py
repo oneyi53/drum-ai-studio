@@ -220,6 +220,7 @@ def performance_to_midi(
         message.time = tick - previous_tick
         track.append(message)
         previous_tick = tick
-    track.append(mido.MetaMessage("end_of_track", time=0))
+    end_tick = seconds_to_ticks(performance.duration_seconds)
+    track.append(mido.MetaMessage("end_of_track", time=max(0, end_tick - previous_tick)))
     midi.save(destination)
     return destination
