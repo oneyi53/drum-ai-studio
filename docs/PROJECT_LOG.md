@@ -422,3 +422,18 @@ code or validation state changes; do not infer completion from plans.
   missing-performance 404 path. CI is pending; no build or test pass is claimed
   until the workflow results are observed. MusicXML remains the editable score
   interchange format; PDF is the printable reading/printing format.
+
+
+## 2026-11-11 — adopt Verovio for professional PDF engraving
+
+- Replaced the hand-drawn PDF as the primary path with Verovio, a mature
+  open-source notation engraving engine that imports MusicXML and renders
+  vector SVG pages. CairoSVG converts each vector page to PDF and pypdf
+  assembles multi-page output. ReportLab remains a minimal-install fallback.
+- Added pinned-compatible runtime ranges for Verovio 6.4, CairoSVG, and pypdf.
+  Verovio is LGPL-3.0; no Verovio source is vendored or modified.
+- Strengthened the PDF API test to parse the returned PDF and require at least
+  one real page. CI will validate MusicXML import, engraving, SVG-to-PDF
+  conversion, and PDF assembly on the next run.
+- OSS references: https://github.com/rism-digital/verovio and
+  https://book.verovio.org/installing-or-building-from-sources/python.html .
