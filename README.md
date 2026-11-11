@@ -37,7 +37,7 @@ No upstream source code or model weights are bundled in this scaffold.
 
 - Python **3.12** for the planned DrumScript compatibility range (DrumScript declares Python >=3.9,<3.13).
 - Node.js 20+ and npm for the frontend.
-- FFmpeg is recommended for local audio inspection/conversion.
+- FFmpeg **including both `ffmpeg` and `ffprobe` executables** is required by the analysis worker for audio decoding and duration inspection. Install the system FFmpeg package in every API/worker runtime image; a Python-only `imageio-ffmpeg` binary may not include `ffprobe`.
 
 ## Development
 
