@@ -47,24 +47,14 @@ def test_analysis_job_persists_canonical_performance(client, monkeypatch):
         ],
     )
 
-    def fake_run(job_id: str) -> None:
-        with main.connect_db() as connection:
-            job = connection.execute(
-                "SELECT project_id FROM analysis_jobs WHERE id=?", (job_id,)
-            ).fetchone()
-            connection.execute(
-                """
-                UPDATE analysis_jobs
-                SET status='completed', performance_json=?, midi_filename='performance.mid'
-                WHERE id=?
-                """,
-                (performance.model_dump_json(), job_id),
-            )
-            connection.execute(
-                "UPDATE projects SET status='analyzed' WHERE id=?", (job["project_id"],)
-            )
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
 
-    monkeypatch.setattr(main, "run_analysis_job", fake_run)
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
     created = client.post(f"/api/projects/{uploaded['id']}/analyze")
     assert created.status_code == 202
     job_id = created.json()["job_id"]
@@ -76,6 +66,7 @@ def test_analysis_job_persists_canonical_performance(client, monkeypatch):
     result = client.get(f"/api/projects/{uploaded['id']}/performance")
     assert result.status_code == 200
     assert result.json()["performance"]["events"][0]["instrument"] == "kick"
+    assert result.json()["midi_filename"] == "performance.mid"
 
 
 def test_duplicate_active_job_is_rejected(client, monkeypatch):
