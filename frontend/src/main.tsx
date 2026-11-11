@@ -114,6 +114,7 @@ function App() {
   const [newVelocity, setNewVelocity] = React.useState("96");
   const [quantizeSubdivision, setQuantizeSubdivision] = React.useState("1/16");
   const [quantizeStrength, setQuantizeStrength] = React.useState(100);
+  const [quantizePreview, setQuantizePreview] = React.useState<Performance | null>(null);
   const [history, setHistory] = React.useState({ current_revision: 0, can_undo: false, can_redo: false });
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
   const [audioTime, setAudioTime] = React.useState(0);
@@ -337,6 +338,7 @@ function App() {
       throw new Error("无法读取标准鼓事件结果。");
     }
     setSummary(summarizePerformance(jobId, projectId, result.performance));
+    setQuantizePreview(null);
     const historyResponse = await fetch(`${API_BASE}/api/projects/${projectId}/history`);
     if (historyResponse.ok) setHistory(await historyResponse.json());
   }
@@ -426,8 +428,32 @@ function App() {
     }
   }
 
-  async function applyQuantization() {
+  async function previewQuantization() {
     if (!summary) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/quantize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subdivision: quantizeSubdivision, strength: quantizeStrength, apply: false }),
+      });
+      const result = await response.json() as { performance?: Performance } & Record<string, unknown>;
+      if (!response.ok || !result.performance) throw new Error(responseError(result, "无法生成量化预览"));
+      setQuantizePreview(result.performance);
+      const changed = result.performance.events.filter((event) => {
+        const original = summary.events.find((item) => item.id === event.id);
+        return original !== undefined && Math.abs(original.time_seconds - event.time_seconds) > 0.001;
+      }).length;
+      setMessage(`量化预览已生成：${changed} 个鼓点将发生移动；原始鼓谱尚未修改。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "量化预览失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function applyQuantization() {
+    if (!summary || !quantizePreview) return;
     setSaving(true);
     try {
       const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/quantize`, {
@@ -496,16 +522,23 @@ function App() {
           </div>
           <div className="quantize-panel">
             <div><p className="eyebrow">RHYTHM TOOLS</p><h3>节奏网格量化</h3><small>按速度变化分段对齐鼓点；预览不会修改原始事件。</small></div>
-            <label>网格<select value={quantizeSubdivision} onChange={(event) => setQuantizeSubdivision(event.target.value)}>
+            <label>网格<select value={quantizeSubdivision} onChange={(event) => { setQuantizeSubdivision(event.target.value); setQuantizePreview(null); }}>
               <option value="1/4">1/4 · 四分音符</option>
               <option value="1/8">1/8 · 八分音符</option>
               <option value="1/16">1/16 · 十六分音符</option>
               <option value="1/32">1/32 · 三十二分音符</option>
             </select></label>
             <label className="strength-control">量化强度 <strong>{quantizeStrength}%</strong>
-              <input type="range" min="0" max="100" step="5" value={quantizeStrength} onChange={(event) => setQuantizeStrength(Number(event.target.value))} />
+              <input type="range" min="0" max="100" step="5" value={quantizeStrength} onChange={(event) => { setQuantizeStrength(Number(event.target.value)); setQuantizePreview(null); }} />
             </label>
-            <button disabled={saving || quantizeStrength === 0} onClick={applyQuantization}>应用量化并同步 MIDI</button>
+            <button disabled={saving || quantizeStrength === 0} onClick={previewQuantization}>预览量化</button>
+            <button disabled={saving || !quantizePreview} onClick={applyQuantization}>确认应用并同步 MIDI</button>
+            {quantizePreview && <small className="quantize-preview-status">
+              预览：{quantizePreview.events.filter((event) => {
+                const original = summary.events.find((item) => item.id === event.id);
+                return original !== undefined && Math.abs(original.time_seconds - event.time_seconds) > 0.001;
+              }).length} / {summary.totalEvents} 个鼓点将移动；确认后才写入历史记录。
+            </small>}
           </div>
           <div className="editor-heading">
             <div><p className="eyebrow">EVENT EDITOR</p><h3>添加鼓点</h3></div>
