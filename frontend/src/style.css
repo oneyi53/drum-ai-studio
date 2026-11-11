@@ -88,3 +88,10 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .timeline-playhead{position:absolute;z-index:1;top:0;bottom:0;width:2px;background:#f5f7ff;box-shadow:0 0 5px #c9f36b;pointer-events:none;transform:translateX(-1px)}
 .timeline-hit.active{background:#fff;outline:2px solid #c9f36b;outline-offset:2px;z-index:3}
 @media(max-width:640px){.audio-player{padding:12px}.audio-player-heading{align-items:flex-start;flex-direction:column}}
+
+
+.tempo-map-labels{height:16px;position:relative;margin-left:112px;margin-bottom:2px;font:9px "DM Mono",monospace;color:#c9f36b}
+.tempo-map-labels span{position:absolute;top:0;transform:translateX(3px);white-space:nowrap;border-left:1px solid #c9f36b65;padding-left:4px}
+.timeline-beat{position:absolute;top:0;bottom:0;width:1px;background:#ffffff12;pointer-events:none}
+.timeline-beat.bar{width:2px;background:#c9f36b55}
+@media(max-width:640px){.tempo-map-labels{margin-left:92px}}
