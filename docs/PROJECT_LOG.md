@@ -1,4 +1,19 @@
 
+## 2026-11-11 — editable MusicXML drum score export (implementation, CI pending)
+
+- Added a MusicXML 4.0 partwise exporter for canonical drum events, with a
+  percussion staff, instrument-specific voices/noteheads, GM percussion
+  metadata, velocity playback hints, tempo directions, and time-signature-aware
+  measure boundaries.
+- Added `GET /api/projects/{project_id}/musicxml` and a frontend download link
+  beside MIDI export. The endpoint exports the latest canonical state, so
+  manual edits, quantization, undo, and redo are reflected.
+- Added XML structure, tempo/time-signature, velocity, empty-score, and API
+  download tests. Import into notation software is supported; final engraving
+  remains the notation application's responsibility.
+- Latest backend and frontend CI are pending; no validation pass is claimed yet.
+
+
 ## 2026-11-11 — tempo-synchronized practice metronome (implementation, CI pending)
 
 - Added a browser metronome that follows the rendered tempo-map beat positions,
