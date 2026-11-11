@@ -571,7 +571,7 @@ function App() {
               <thead><tr><th>时间（秒）</th><th>鼓件</th><th>力度</th><th>来源</th><th>操作</th></tr></thead>
               <tbody>
                 {summary.events.map((event) => (
-                  <tr id={`event-${event.id}`} key={event.id} className={selectedEventId === event.id ? "selected-event-row" : ""}>
+                  <tr id={`event-${event.id}`} key={`${event.id}-${event.time_seconds}-${event.instrument}-${event.velocity}`} className={selectedEventId === event.id ? "selected-event-row" : ""}>
                     <td><input aria-label="事件时间" type="number" min="0" max={summary.durationSeconds} step="0.001" defaultValue={event.time_seconds} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.time_seconds) void editEvent(event.id, { time_seconds: value }); }} /></td>
                     <td><select aria-label="鼓件" defaultValue={event.instrument} onChange={(input) => void editEvent(event.id, { instrument: input.target.value })}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></td>
                     <td><input aria-label="力度" type="number" min="1" max="127" defaultValue={event.velocity} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.velocity) void editEvent(event.id, { velocity: value }); }} /></td>
