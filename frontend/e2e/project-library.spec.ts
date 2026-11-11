@@ -82,6 +82,10 @@ test("creates a project, persists annotations, and restores them after reload", 
       restCount: notes.filter((note) => note.getElementsByTagName("rest").length > 0).length,
       measureCount: document.getElementsByTagName("measure").length,
       instrumentPitches: Array.from(document.getElementsByTagName("midi-unpitched")).map((item) => item.textContent),
+      instrumentNoteheads: unpitchedNotes.map((note) => ({
+        instrument: note.getElementsByTagName("instrument")[0]?.getAttribute("id"),
+        notehead: note.getElementsByTagName("notehead")[0]?.textContent,
+      })),
       chordCount: document.getElementsByTagName("chord").length,
       drumChannels: Array.from(document.getElementsByTagName("midi-instrument")).map((item) =>
         item.getElementsByTagName("midi-channel")[0]?.textContent),
@@ -98,6 +102,10 @@ test("creates a project, persists annotations, and restores them after reload", 
   expect(parsedMusicXml.restCount).toBeGreaterThan(0);
   expect(parsedMusicXml.measureCount).toBe(5);
   expect(parsedMusicXml.instrumentPitches).toEqual(expect.arrayContaining(["36", "38", "41", "42", "45", "46", "48", "49", "51"]));
+  expect(parsedMusicXml.instrumentNoteheads).toEqual(expect.arrayContaining([
+    { instrument: "Iclosed_hat", notehead: "x" },
+    { instrument: "Iopen_hat", notehead: "circle-x" },
+  ]));
   expect(parsedMusicXml.drumChannels.every((channel) => channel === "10")).toBe(true);
   expect(parsedMusicXml.instrumentAfterDuration).toBe(true);
 
