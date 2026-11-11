@@ -31,3 +31,6 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .instrument-list strong{font-size:11px}.instrument-list small{font-family:"DM Mono",monospace}
 .job-id{display:block;margin-top:16px;color:#69758b;font:10px "DM Mono",monospace;overflow-wrap:anywhere}
 @media(max-width:640px){.result-panel{padding:18px}.metrics strong{font-size:20px}}
+
+.download-link{display:inline-flex;margin-top:18px;padding:10px 14px;border-radius:8px;background:#c9f36b;color:#141a0e;text-decoration:none;font-size:12px;font-weight:700}
+.download-link:hover{background:#d9ff83}
