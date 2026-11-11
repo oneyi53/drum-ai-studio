@@ -52,10 +52,10 @@ def test_drumscript_pitch_map_matches_upstream_notation_constants() -> None:
     }
 
 def test_matching_maximizes_true_positives_when_nearest_greedy_would_fail() -> None:
-    # The first reference is closer to 0.01, but reserving that prediction for
+    # The first reference is closer to 0.05, but reserving that prediction for
     # the second reference allows both events to match within 50 ms.
-    reference = [Event(0.0, "kick"), Event(0.04, "kick")]
-    prediction = [Event(-0.04, "kick"), Event(0.01, "kick")]
+    reference = [Event(0.04, "kick"), Event(0.08, "kick")]
+    prediction = [Event(0.0, "kick"), Event(0.05, "kick")]
     metrics = evaluate(reference, prediction, tolerance=0.05)["overall"]
     assert metrics["true_positives"] == 2
     assert metrics["false_positives"] == 0
