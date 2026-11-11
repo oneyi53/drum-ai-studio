@@ -13,7 +13,7 @@
   parse a populated MusicXML score from an actual inferred performance.
   Import into notation software is supported; final engraving remains the
   notation application's responsibility.
-- Backend tests run #119 passed and Ruff; repository CI run #208 passed both
+- Backend tests run #119 passed all 55 tests and Ruff; repository CI run #208 passed both
   frontend build and backend tests on the current export and practice-tool
   implementation. DrumScript engine validation run #110 is in progress,
   including the expanded real-inference MusicXML export check. This is
