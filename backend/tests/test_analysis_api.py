@@ -117,7 +117,7 @@ def test_midi_download_requires_completed_artifact(client):
     assert client.get(f"/api/projects/{uploaded['id']}/midi").status_code == 404
 
 
-def test_manual_event_create_update_and_delete(client, monkeypatch):
+def test_manual_event_create_update_and_delete(client, monkeypatch, tmp_path):
     uploaded = client.post(
         "/api/projects",
         files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
