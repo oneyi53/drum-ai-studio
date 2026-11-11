@@ -550,12 +550,16 @@ function App() {
               }}
             />
             <div className="loop-controls">
-              <label className="loop-toggle"><input type="checkbox" checked={loopEnabled} onChange={(event) => setLoopEnabled(event.target.checked)} /> A–B 循环</label>
+              <label className="loop-toggle"><input type="checkbox" checked={loopEnabled} disabled={!loopRangeValid} onChange={(event) => setLoopEnabled(event.target.checked)} /> A–B 循环</label>
               <button type="button" className={metronomeEnabled ? "metronome-on" : ""} onClick={toggleMetronome}>{metronomeEnabled ? "关闭节拍器" : "开启节拍器"}</button>
               <span>A：{loopStart.toFixed(2)}s</span>
-              <button type="button" onClick={() => setLoopStart(audioRef.current?.currentTime ?? audioTime)}>设为 A 点</button>
-              <span>B：{(loopEnd || audioDuration || summary.durationSeconds).toFixed(2)}s</span>
-              <button type="button" onClick={() => setLoopEnd(audioRef.current?.currentTime ?? audioTime)}>设为 B 点</button>
+              <button type="button" onClick={() => {
+                const point = audioRef.current?.currentTime ?? audioTime;
+                setLoopStart(point);
+                if (loopEnd > 0 && loopEnd <= point) setLoopEnd(audioDuration || summary.durationSeconds);
+              }}>设为 A 点</button>
+              <span>B：{activeLoopEnd.toFixed(2)}s</span>
+              <button type="button" disabled={(audioRef.current?.currentTime ?? audioTime) <= loopStart} onClick={() => setLoopEnd(audioRef.current?.currentTime ?? audioTime)}>设为 B 点</button>
               <button type="button" onClick={() => { setLoopStart(0); setLoopEnd(audioDuration || summary.durationSeconds); setLoopEnabled(false); }}>重置</button>
             </div>
             <small>播放时播放头会跟随时间轴移动；点击任一鼓点可跳转音频位置。设置 A/B 点可循环练习指定段落。</small>
