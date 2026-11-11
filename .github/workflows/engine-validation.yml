@@ -35,10 +35,13 @@ jobs:
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
             python -m pip install --no-cache-dir imageio-ffmpeg
-            FFMPEG_BIN="$(python -c "import pathlib, imageio_ffmpeg; print(pathlib.Path(imageio_ffmpeg.get_ffmpeg_exe()).parent)")"
-            echo "$FFMPEG_BIN" >> "$GITHUB_PATH"
-            export PATH="$FFMPEG_BIN:$PATH"
+            FFMPEG_EXE="$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")"
+            mkdir -p "$RUNNER_TEMP/ffmpeg-bin"
+            ln -sf "$FFMPEG_EXE" "$RUNNER_TEMP/ffmpeg-bin/ffmpeg"
+            echo "$RUNNER_TEMP/ffmpeg-bin" >> "$GITHUB_PATH"
+            export PATH="$RUNNER_TEMP/ffmpeg-bin:$PATH"
           fi
+          command -v ffmpeg
           ffmpeg -version
       - name: Install CPU PyTorch and DrumScript
         run: |
