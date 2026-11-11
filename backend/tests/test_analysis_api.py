@@ -4,8 +4,8 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from pypdf import PdfReader
 from fastapi.testclient import TestClient
+from pypdf import PdfReader
 
 from app import main
 from app.drum_events import DrumEvent, DrumInstrument, DrumPerformance
