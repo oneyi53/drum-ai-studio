@@ -513,3 +513,10 @@ code or validation state changes; do not infer completion from plans.
 - Added an engine-validation CI step that downloads the 287 MB IDMT archive from Zenodo, runs the first 10 annotated RealDrum mixes, and uploads metrics as a workflow artifact. Raw dataset audio stays outside Git; the run is an evaluation-only use under the dataset's non-commercial/no-derivatives terms.
 - This is the first labelled regression benchmark in our pipeline. It does not measure full-band mixed-song separation; QUASI remains a later candidate pending per-track licence review.
 - Latest PDF resource-path and A4 regression changes are awaiting the current CI run. Previous attempts exposed and corrected a missing `Path` import and an incorrect multi-page test expectation; those failed runs are not counted as passes.
+
+## 2026-11-11 — CI acceleration: FFmpeg provisioning
+
+- The IDMT engine-validation workflow's FFmpeg setup was spending excessive time in the Ubuntu package-manager path (apt-get update / apt-get install).
+- Replaced that fallback with the pip-distributed imageio-ffmpeg binary when the runner does not already provide FFmpeg; the binary directory is added to GITHUB_PATH and verified with ffmpeg -version.
+- This keeps the runner-provided FFmpeg fast path and removes the slow apt repository refresh from the fallback path.
+- The previous benchmark run had not yet reached dataset download or scoring, so no IDMT accuracy result is claimed. The workflow will rerun on this commit.
