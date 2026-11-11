@@ -13,6 +13,7 @@ type DrumEvent = {
 type Performance = {
   duration_seconds: number;
   events: DrumEvent[];
+  tempo_map?: { time_seconds: number; bpm: number; numerator: number; denominator: number }[];
 };
 
 type AnalysisSummary = {
@@ -22,6 +23,7 @@ type AnalysisSummary = {
   totalEvents: number;
   instruments: Record<string, number>;
   events: DrumEvent[];
+  bpm: number;
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -52,6 +54,7 @@ function summarizePerformance(
     totalEvents: performance.events.length,
     instruments,
     events: [...performance.events].sort((a, b) => a.time_seconds - b.time_seconds),
+    bpm: performance.tempo_map?.[0]?.bpm ?? 120,
   };
 }
 
@@ -67,6 +70,7 @@ function App() {
   const [quantizeSubdivision, setQuantizeSubdivision] = React.useState("1/16");
   const [quantizeStrength, setQuantizeStrength] = React.useState(100);
   const [history, setHistory] = React.useState({ current_revision: 0, can_undo: false, can_redo: false });
+  const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
 
   async function uploadAndAnalyze() {
     if (!file) return;
@@ -304,12 +308,28 @@ function App() {
             <label>力度<input type="number" min="1" max="127" value={newVelocity} onChange={(event) => setNewVelocity(event.target.value)} /></label>
             <button disabled={saving} onClick={addEvent}>添加事件</button>
           </div>
+          <div className="timeline-panel">
+            <div className="timeline-heading">
+              <div><p className="eyebrow">ARRANGEMENT VIEW</p><h3>鼓点时间轴</h3></div>
+              <span>{summary.bpm.toFixed(1)} BPM · {summary.durationSeconds.toFixed(1)} 秒</span>
+            </div>
+            <div className="timeline-ruler"><span>0:00</span><span>{(summary.durationSeconds * 0.25).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.5).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.75).toFixed(1)}s</span><span>{summary.durationSeconds.toFixed(1)}s</span></div>
+            <div className="timeline-scroll"><div className="timeline-grid">
+              {["kick", "snare", "closed_hihat", "open_hihat", "ride", "crash", "high_tom", "mid_tom", "low_tom", "pedal_hihat", "other"].map((lane) => {
+                const laneEvents = summary.events.filter((event) => event.instrument === lane);
+                return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replaceAll("_", " ")}</span><div className="timeline-track">
+                  {laneEvents.map((event) => <button key={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id ? "selected" : ""}`} style={{ left: `${(event.time_seconds / summary.durationSeconds) * 100}%`, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { setSelectedEventId(event.id); document.getElementById(`event-${event.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }} />)}
+                </div></div>;
+              })}
+            </div></div>
+            <small className="timeline-help">点击鼓点可定位到下方事件表；标记亮度反映力度。</small>
+          </div>
           <div className="event-table-wrap">
             <table className="event-table">
               <thead><tr><th>时间（秒）</th><th>鼓件</th><th>力度</th><th>来源</th><th>操作</th></tr></thead>
               <tbody>
                 {summary.events.map((event) => (
-                  <tr key={event.id}>
+                  <tr id={`event-${event.id}`} key={event.id} className={selectedEventId === event.id ? "selected-event-row" : ""}>
                     <td><input aria-label="事件时间" type="number" min="0" max={summary.durationSeconds} step="0.001" defaultValue={event.time_seconds} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.time_seconds) void editEvent(event.id, { time_seconds: value }); }} /></td>
                     <td><select aria-label="鼓件" defaultValue={event.instrument} onChange={(input) => void editEvent(event.id, { instrument: input.target.value })}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></td>
                     <td><input aria-label="力度" type="number" min="1" max="127" defaultValue={event.velocity} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.velocity) void editEvent(event.id, { velocity: value }); }} /></td>
