@@ -64,6 +64,8 @@ function App() {
   const [newTime, setNewTime] = React.useState("0");
   const [newInstrument, setNewInstrument] = React.useState("kick");
   const [newVelocity, setNewVelocity] = React.useState("96");
+  const [quantizeSubdivision, setQuantizeSubdivision] = React.useState("1/16");
+  const [quantizeStrength, setQuantizeStrength] = React.useState(100);
 
   async function uploadAndAnalyze() {
     if (!file) return;
@@ -236,6 +238,19 @@ function App() {
             {Object.entries(summary.instruments).sort((a, b) => b[1] - a[1]).map(([name, count]) => (
               <span key={name}><strong>{name}</strong><small>{count}</small></span>
             ))}
+          </div>
+          <div className="quantize-panel">
+            <div><p className="eyebrow">RHYTHM TOOLS</p><h3>节奏网格量化</h3><small>按速度变化分段对齐鼓点；预览不会修改原始事件。</small></div>
+            <label>网格<select value={quantizeSubdivision} onChange={(event) => setQuantizeSubdivision(event.target.value)}>
+              <option value="1/4">1/4 · 四分音符</option>
+              <option value="1/8">1/8 · 八分音符</option>
+              <option value="1/16">1/16 · 十六分音符</option>
+              <option value="1/32">1/32 · 三十二分音符</option>
+            </select></label>
+            <label className="strength-control">量化强度 <strong>{quantizeStrength}%</strong>
+              <input type="range" min="0" max="100" step="5" value={quantizeStrength} onChange={(event) => setQuantizeStrength(Number(event.target.value))} />
+            </label>
+            <button disabled={saving || quantizeStrength === 0} onClick={applyQuantization}>应用量化并同步 MIDI</button>
           </div>
           <div className="editor-heading">
             <div><p className="eyebrow">EVENT EDITOR</p><h3>添加鼓点</h3></div>
