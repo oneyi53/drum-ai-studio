@@ -2,7 +2,7 @@
 
 A web-based workspace for turning a full mixed song into an editable drum transcription.
 
-> **Status: P0 foundation + canonical event contract.** Project upload and the API/UI foundation exist. A versioned drum-event model, deterministic accuracy evaluator, and General MIDI percussion-to-event adapter are implemented. Automatic audio analysis, notation editing, and PDF/MusicXML exports are not yet integrated or validated.
+> **Status: P1 analysis API integration in progress.** Project upload, persisted asynchronous analysis jobs, a lazy DrumScript adapter, canonical performance retrieval, and the event-evaluation toolchain are implemented on the feature branch. The worker still requires the optional DrumScript/PyTorch/FFmpeg runtime; production queueing, authenticated multi-user storage, notation editing, and PDF/MusicXML exports are not yet implemented.
 
 ## Product direction
 
@@ -16,8 +16,8 @@ A web-based workspace for turning a full mixed song into an editable drum transc
 
 - **Frontend:** React + TypeScript + Vite
 - **Backend:** FastAPI
-- **Initial persistence:** local filesystem + SQLite (project metadata)
-- **Audio/transcription engine:** DrumScript + Demucs integration under validation
+- **Initial persistence:** local filesystem + SQLite (projects, analysis jobs, canonical performance JSON)
+- **Audio/transcription engine:** optional lazy-loaded DrumScript adapter; worker runtime and deployment validation still required
 - **Canonical data:** versioned Pydantic drum-event model with tempo map
 - **MIDI normalization:** Standard MIDI File to canonical events, General MIDI percussion map, tempo/time-signature preservation
 - **Accuracy evaluation:** event precision/recall/F1 with configurable timing tolerance
@@ -67,8 +67,9 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 ## Current scope and limitations
 
 - Audio upload creates a project record and stores the original file locally.
-- The analysis endpoint deliberately returns HTTP 501 until the engine adapter is integrated and validated.
+- The analysis endpoint creates an asynchronous job; the worker fails clearly if DrumScript or FFmpeg/ffprobe is not installed.
 - The event evaluator is ready for reviewed reference annotations, but no golden dataset or accuracy result is claimed.
+- Analysis jobs use FastAPI in-process background tasks and are intended for single-worker development only; use a durable queue before multi-worker or multi-replica deployment.
 - Local uploads are not yet authenticated or suitable for public multi-user deployment.
 - Do not upload copyrighted recordings unless you have the right to do so.
 
@@ -79,3 +80,4 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - [Engine validation runbook](docs/ENGINE_VALIDATION.md)
 - [Canonical event schema and evaluation](docs/DRUM_EVENT_EVALUATION.md)
 - [MIDI adapter and GM mapping assumptions](docs/MIDI_ADAPTER.md)
+- [Asynchronous analysis API and engine runtime](docs/ANALYSIS_API.md)
