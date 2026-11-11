@@ -11,7 +11,8 @@ FastAPI
        |
        +-- Project metadata (SQLite)
        +-- Original audio (local storage)
-       +-- Analysis adapter (not implemented yet)
+       +-- Audio engine adapter (not integrated yet)
+       +-- MIDI-to-canonical adapter (implemented)
        +-- Canonical DrumPerformance (implemented)
        +-- Event evaluation (implemented)
 ```
@@ -29,7 +30,7 @@ ride, crash, high/mid/low tom, and other. Event time is always seconds from
 the start of the audio; bar/beat/subdivision are derived from tempo and meter
 rather than stored as a competing source of truth.
 
-See [DRUM_EVENT_EVALUATION.md](DRUM_EVENT_EVALUATION.md) for the full contract.
+See [DRUM_EVENT_EVALUATION.md](DRUM_EVENT_EVALUATION.md) for the full contract. Standard MIDI percussion files can be normalized with `backend/app/midi_adapter.py`; its General MIDI assumptions and limitations are documented in [MIDI_ADAPTER.md](MIDI_ADAPTER.md).
 
 ## Accuracy evaluation
 
@@ -40,8 +41,7 @@ and mean absolute timing error overall and per instrument.
 
 The evaluator is independent of any particular transcription engine. This
 lets the project compare engines without changing the scoring contract.
-There is not yet a DrumScript-to-canonical adapter or a permission-cleared,
-human-annotated golden dataset; no accuracy claim is made.
+The generic General MIDI MIDI-to-canonical adapter is implemented, but the DrumScript output channel/pitch mapping has not yet been inspected and verified. There is also no permission-cleared, human-annotated golden dataset; no accuracy claim is made.
 
 ## Engine boundary
 
