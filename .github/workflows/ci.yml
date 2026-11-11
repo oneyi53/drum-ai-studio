@@ -132,6 +132,13 @@ jobs:
               raise SystemExit("MuseScore did not produce a non-empty paginated score PDF")
           print(f"MuseScore import/render passed: pages={match.group(1)} bytes={pdf.stat().st_size}")
           PY
+      - name: Upload MuseScore-rendered score for visual review
+        uses: actions/upload-artifact@v4
+        with:
+          name: musescore-rendered-score
+          path: /tmp/drumai-musescore-render.pdf
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload browser test report on failure
         if: failure()
         uses: actions/upload-artifact@v4
