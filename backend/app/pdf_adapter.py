@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 
