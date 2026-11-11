@@ -66,6 +66,8 @@ function buildTimelineBeats(duration: number, tempoMap: AnalysisSummary["tempoMa
   const changes = [...tempoMap].sort((a, b) => a.time_seconds - b.time_seconds);
   const boundaries = [0, ...changes.filter((change) => change.time_seconds > 0).map((change) => change.time_seconds)];
   const beats: TimelineBeat[] = [];
+  let beatsIntoBar = 0;
+  let previousSignature = "";
   for (let segment = 0; segment < boundaries.length; segment += 1) {
     const start = boundaries[segment];
     const end = boundaries[segment + 1] ?? duration;
@@ -73,13 +75,18 @@ function buildTimelineBeats(duration: number, tempoMap: AnalysisSummary["tempoMa
     const bpm = active?.bpm ?? 120;
     const numerator = active?.numerator ?? 4;
     const denominator = active?.denominator ?? 4;
+    const signature = numerator + "/" + denominator;
     const beatSeconds = 60 / bpm;
     const beatsPerBar = numerator * 4 / denominator;
+    if (signature !== previousSignature) beatsIntoBar = 0;
+    previousSignature = signature;
     const segmentBeatCount = Math.max(0, Math.ceil((end - start) / beatSeconds));
     for (let beat = 0; beat < segmentBeatCount; beat += 1) {
       const time = start + beat * beatSeconds;
       if (time >= end - 0.000001 || time > duration) break;
-      beats.push({ time, isBar: beat % beatsPerBar === 0 });
+      beats.push({ time, isBar: beatsIntoBar < 0.000001 });
+      beatsIntoBar += 1;
+      if (beatsIntoBar >= beatsPerBar - 0.000001) beatsIntoBar = 0;
     }
   }
   if (beats.length === 0 || beats[0].time > 0.000001) beats.unshift({ time: 0, isBar: true });
