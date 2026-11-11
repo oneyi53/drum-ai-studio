@@ -113,3 +113,13 @@ timestamps and audio playback remain in absolute seconds.
   layout are controlled by that application.
 - The export reflects the current canonical performance, including manual
   edits, quantization, undo, and redo. MIDI export remains available separately.
+
+
+## Saved project recovery
+
+- `GET /api/projects?limit=20` returns recent local projects and the latest
+  analysis-job status for each. The limit is clamped to 1–100.
+- The frontend loads this list on startup and can restore a project with a
+  completed analysis, including its canonical events and edit-history state.
+- Projects with no completed analysis remain visible in the API response but
+  are not selectable as completed editor sessions.
