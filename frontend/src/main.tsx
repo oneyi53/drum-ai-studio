@@ -132,6 +132,8 @@ function App() {
   const [hiddenLanes, setHiddenLanes] = React.useState<string[]>([]);
   const [selectedEventIds, setSelectedEventIds] = React.useState<string[]>([]);
   const [batchTimeOffset, setBatchTimeOffset] = React.useState("0.010");
+  const [duplicateInterval, setDuplicateInterval] = React.useState("1.000");
+  const [duplicateRepeatCount, setDuplicateRepeatCount] = React.useState("1");
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const lastMetronomeBeatRef = React.useRef(-1);
@@ -456,6 +458,29 @@ function App() {
     finally { setSaving(false); }
   }
 
+  async function duplicateSelectedEvents() {
+    if (!summary || !selectedEventIds.length) return;
+    const interval = Number(duplicateInterval);
+    const repeatCount = Number(duplicateRepeatCount);
+    if (!Number.isFinite(interval) || interval <= 0 || !Number.isInteger(repeatCount) || repeatCount < 1 || repeatCount > 16) {
+      setMessage("重复间隔必须大于 0 秒，重复次数须为 1–16。"); return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/events/duplicate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_ids: selectedEventIds, interval_seconds: interval, repeat_count: repeatCount }),
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "重复鼓点失败"));
+      const count = Number(result.duplicated_count ?? 0);
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setSelectedEventIds([]);
+      setMessage(`已复制所选 ${selectedEventIds.length} 个鼓点并生成 ${count} 个新鼓点；仅创建一条历史记录，MIDI 已同步。`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "重复鼓点失败"); }
+    finally { setSaving(false); }
+  }
+
   async function batchDeleteEvents() {
     if (!summary || !selectedEventIds.length) return;
     setSaving(true);
@@ -684,6 +709,9 @@ function App() {
             <label>时间偏移（秒）<input type="number" step="0.001" value={batchTimeOffset} onChange={(event) => setBatchTimeOffset(event.target.value)} /></label>
             <button type="button" disabled={saving || selectedEventIds.length === 0 || !Number.isFinite(Number(batchTimeOffset)) || Number(batchTimeOffset) === 0} onClick={() => void batchEditEvents()}>批量移动</button>
             <button type="button" className="delete-event" disabled={saving || selectedEventIds.length === 0} onClick={() => void batchDeleteEvents()}>批量删除</button>
+            <label>重复间隔（秒）<input type="number" min="0.001" step="0.001" value={duplicateInterval} onChange={(event) => setDuplicateInterval(event.target.value)} /></label>
+            <label>重复次数<input type="number" min="1" max="16" step="1" value={duplicateRepeatCount} onChange={(event) => setDuplicateRepeatCount(event.target.value)} /></label>
+            <button type="button" disabled={saving || selectedEventIds.length === 0 || Number(duplicateInterval) <= 0 || !Number.isInteger(Number(duplicateRepeatCount)) || Number(duplicateRepeatCount) < 1 || Number(duplicateRepeatCount) > 16} onClick={() => void duplicateSelectedEvents()}>复制/重复所选</button>
           </div>
           <div className="event-table-wrap">
             <table className="event-table">
