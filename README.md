@@ -2,7 +2,7 @@
 
 A web-based workspace for turning a full mixed song into an editable drum transcription.
 
-> **Status: P0 foundation + canonical event contract.** Project upload and the API/UI foundation exist. A versioned drum-event model and deterministic accuracy evaluator are now implemented. Automatic analysis, notation editing, and exports are not yet integrated or validated.
+> **Status: P0 foundation + canonical event contract.** Project upload and the API/UI foundation exist. A versioned drum-event model, deterministic accuracy evaluator, and General MIDI percussion-to-event adapter are implemented. Automatic audio analysis, notation editing, and PDF/MusicXML exports are not yet integrated or validated.
 
 ## Product direction
 
@@ -19,6 +19,7 @@ A web-based workspace for turning a full mixed song into an editable drum transc
 - **Initial persistence:** local filesystem + SQLite (project metadata)
 - **Audio/transcription engine:** DrumScript + Demucs integration under validation
 - **Canonical data:** versioned Pydantic drum-event model with tempo map
+- **MIDI normalization:** Standard MIDI File to canonical events, General MIDI percussion map, tempo/time-signature preservation
 - **Accuracy evaluation:** event precision/recall/F1 with configurable timing tolerance
 - **Notation display:** OpenSheetMusicDisplay (MusicXML rendering); a dedicated editor will be built separately
 
@@ -77,3 +78,4 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - [Architecture](docs/ARCHITECTURE.md)
 - [Engine validation runbook](docs/ENGINE_VALIDATION.md)
 - [Canonical event schema and evaluation](docs/DRUM_EVENT_EVALUATION.md)
+- [MIDI adapter and GM mapping assumptions](docs/MIDI_ADAPTER.md)
