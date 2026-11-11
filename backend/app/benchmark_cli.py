@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -58,6 +59,7 @@ def evaluate_manifest(manifest_path: Path, tolerance_ms: float = 50.0) -> dict:
     case_reports = []
     all_reference = []
     all_predicted = []
+    timeline_offset = 0.0
     for case in manifest.cases:
         paths = {
             "audio": root / case.audio_path,
@@ -86,8 +88,17 @@ def evaluate_manifest(manifest_path: Path, tolerance_ms: float = 50.0) -> dict:
             "annotation_revision": case.annotation_revision,
             "metrics": report.model_dump(),
         })
-        all_reference.extend(reference.events)
-        all_predicted.extend(predicted.events)
+        # Keep cases on disjoint timelines so equal timestamps in different
+        # recordings can never be matched to each other in the pooled report.
+        all_reference.extend(
+            event.model_copy(update={"time_seconds": event.time_seconds + timeline_offset})
+            for event in reference.events
+        )
+        all_predicted.extend(
+            event.model_copy(update={"time_seconds": event.time_seconds + timeline_offset})
+            for event in predicted.events
+        )
+        timeline_offset += max(reference.duration_seconds, predicted.duration_seconds) + 1.0
 
     aggregate = evaluate_performance(
         all_reference, all_predicted, tolerance_ms=tolerance_ms
@@ -109,7 +120,7 @@ def main() -> int:
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--tolerance-ms", type=float, default=50.0)
     args = parser.parse_args()
-    print(__import__("json").dumps(
+    print(json.dumps(
         evaluate_manifest(args.manifest, args.tolerance_ms),
         indent=2,
         ensure_ascii=False,
