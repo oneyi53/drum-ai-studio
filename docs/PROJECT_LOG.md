@@ -353,3 +353,10 @@ code or validation state changes; do not infer completion from plans.
 - The later tempo-map-aware timeline commits were added after run #173. They
   still require a fresh frontend build; do not extend the earlier pass claim
   to those commits.
+
+
+## 2026-11-11 — timeline lane visibility filters
+
+- Added per-instrument visibility checkboxes plus show-all/hide-all controls above the arrangement timeline.
+- Filtering is presentation-only: it does not mutate canonical events, history, playback audio, or MIDI/MusicXML exports; the event table remains complete.
+- This is a frontend-only increment. Latest repository CI and engine-validation status are tracked separately from this commit.
