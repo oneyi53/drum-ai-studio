@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from fastapi.testclient import TestClient
+from pypdf import PdfReader
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -61,9 +62,27 @@ with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
         if score.tag != "score-partwise" or not score.findall(".//note"):
             raise RuntimeError("MusicXML export did not contain a populated partwise drum score")
 
+        pdf = client.get(f"/api/projects/{project_id}/pdf")
+        if pdf.status_code != 200 or not pdf.content.startswith(b"%PDF"):
+            raise RuntimeError(f"API PDF export failed: {pdf.status_code} {pdf.text}")
+        pdf_reader = PdfReader(__import__("io").BytesIO(pdf.content))
+        if not pdf_reader.pages:
+            raise RuntimeError("PDF export contains no pages")
+        for page in pdf_reader.pages:
+            if (
+                abs(float(page.mediabox.width) - 841.89) >= 1.0
+                or abs(float(page.mediabox.height) - 595.28) >= 1.0
+            ):
+                raise RuntimeError("PDF export page is not landscape A4")
+        output_dir = Path(os.getenv("DRUMAI_E2E_OUTPUT_DIR", data_dir))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        pdf_path = output_dir / "drumai-api-e2e-score.pdf"
+        pdf_path.write_bytes(pdf.content)
+
         print(
             "API_ENGINE_E2E_OK "
             f"job_id={job_id} events={len(events)} "
             f"duration_seconds={performance['duration_seconds']:.3f} "
-            f"midi_bytes={len(midi.content)} musicxml_bytes={len(musicxml.content)}"
+            f"midi_bytes={len(midi.content)} musicxml_bytes={len(musicxml.content)} "
+            f"pdf_bytes={len(pdf.content)} pdf_pages={len(pdf_reader.pages)} pdf_path={pdf_path}"
         )
