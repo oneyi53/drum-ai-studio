@@ -114,3 +114,91 @@ def test_midi_download_requires_completed_artifact(client):
         files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
     ).json()
     assert client.get(f"/api/projects/{uploaded['id']}/midi").status_code == 404
+
+
+def test_manual_event_create_update_and_delete(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=3,
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, source="model")
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    job = client.post(f"/api/projects/{uploaded['id']}/analyze").json()
+
+    created = client.post(
+        f"/api/projects/{uploaded['id']}/events",
+        json={"time_seconds": 1.25, "instrument": "snare", "velocity": 110},
+    )
+    assert created.status_code == 201
+    event = created.json()["event"]
+    assert event["source"] == "manual"
+    assert event["manually_corrected"] is True
+
+    updated = client.patch(
+        f"/api/projects/{uploaded['id']}/events/{event['id']}",
+        json={"time_seconds": 1.5, "instrument": "closed_hihat", "velocity": 75},
+    )
+    assert updated.status_code == 200
+    changed = updated.json()["event"]
+    assert changed["time_seconds"] == 1.5
+    assert changed["instrument"] == "closed_hihat"
+    assert changed["velocity"] == 75
+    assert changed["manually_corrected"] is True
+
+    result = client.get(f"/api/projects/{uploaded['id']}/performance").json()
+    assert len(result["performance"]["events"]) == 2
+
+    deleted = client.delete(
+        f"/api/projects/{uploaded['id']}/events/{event['id']}"
+    )
+    assert deleted.status_code == 200
+    remaining = client.get(f"/api/projects/{uploaded['id']}/performance").json()
+    assert len(remaining["performance"]["events"]) == 1
+
+
+def test_event_edit_rejects_out_of_range_time_and_unknown_event(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=1,
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, source="model")
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
+    current = client.get(f"/api/projects/{uploaded['id']}/performance").json()
+    event_id = current["performance"]["events"][0]["id"]
+
+    invalid = client.patch(
+        f"/api/projects/{uploaded['id']}/events/{event_id}",
+        json={"time_seconds": 1.5},
+    )
+    assert invalid.status_code == 422
+    missing = client.delete(
+        f"/api/projects/{uploaded['id']}/events/not-an-event"
+    )
+    assert missing.status_code == 404
