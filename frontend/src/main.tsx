@@ -252,7 +252,17 @@ function App() {
   async function uploadAndAnalyze() {
     if (!file) return;
     setBusy(true);
+    audioRef.current?.pause();
     setSummary(null);
+    setAudioPlaying(false);
+    setLoopEnabled(false);
+    setLoopStart(0);
+    setLoopEnd(0);
+    setMetronomeEnabled(false);
+    setAudioTime(0);
+    setAudioDuration(0);
+    setSelectedEventId(null);
+    setActiveEventId(null);
     setMessage("正在上传音频…");
     try {
       const body = new FormData();
