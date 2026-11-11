@@ -387,8 +387,9 @@ code or validation state changes; do not infer completion from plans.
 ## 2026-11-11 — measure-based drum phrase copy and paste
 
 - Added an atomic API that copies all canonical events in a source time range
-  to a target start time, preserving their within-bar offsets, instruments,
-  velocity, and confidence while assigning new IDs and manual provenance.
+  to a target measure, mapping normalized within-bar offsets when source and
+  target measure lengths differ. Instrument, velocity, and confidence are
+  preserved; clones receive new IDs and manual provenance.
 - Added frontend source/target measure controls driven by the tempo-aware
   timeline beat/bar grid. Original events remain untouched.
 - Empty source ranges, invalid ranges, and pasted events beyond track duration
