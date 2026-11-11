@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.drum_events import DrumEvent, DrumInstrument, DrumPerformance
+from app.midi_adapter import midi_to_performance
 
 
 @pytest.fixture()
@@ -167,6 +168,11 @@ def test_manual_event_create_update_and_delete(client, monkeypatch):
     assert deleted.status_code == 200
     remaining = client.get(f"/api/projects/{uploaded['id']}/performance").json()
     assert len(remaining["performance"]["events"]) == 1
+    midi_path = tmp_path / "edited.mid"
+    midi_path.write_bytes(client.get(f"/api/projects/{uploaded['id']}/midi").content)
+    exported = midi_to_performance(midi_path)
+    assert len(exported.events) == 1
+    assert exported.events[0].instrument == DrumInstrument.KICK
 
 
 def test_event_edit_rejects_out_of_range_time_and_unknown_event(client, monkeypatch):
