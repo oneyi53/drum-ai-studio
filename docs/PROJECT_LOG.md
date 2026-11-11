@@ -9,9 +9,9 @@
 - Project switching resets playback/selection state; event-row inputs remount
   when canonical event values change so undo/redo visibly restores the editor.
 - Added API integration coverage for project metadata and latest completed job
-  state. Backend tests run #137 passed all 56 tests and Ruff; repository CI
-  run #226 passed frontend build and backend tests. DrumScript engine validation
-  run #128 remains in progress.
+  state. Backend tests run #140 passed all 56 tests and Ruff; repository CI
+  run #227 passed frontend build and backend tests. DrumScript engine validation
+  run #131 remains in progress.
 
 
 ## 2026-11-11 — editable MusicXML drum score export (implementation, CI pending)
@@ -19,7 +19,9 @@
 - Added a MusicXML 4.0 partwise exporter for canonical drum events, with a
   percussion staff, instrument-specific voices/noteheads, GM percussion
   metadata, velocity playback hints, tempo directions, time-signature-aware
-  measure boundaries, and note values inferred from successive hit spacing.
+  measure boundaries, note values inferred from successive hit spacing, and
+  explicitly marked implicit measures for partial bars or mid-bar time-signature
+  changes.
 - Added `GET /api/projects/{project_id}/musicxml` and a frontend download link
   beside MIDI export. The endpoint exports the latest canonical state, so
   manual edits, quantization, undo, and redo are reflected.
@@ -28,11 +30,11 @@
   parse a populated MusicXML score from an actual inferred performance.
   Import into notation software is supported; final engraving remains the
   notation application's responsibility.
-- Backend tests run #137 passed all 56 tests and Ruff; repository CI run #226
+- Backend tests run #140 passed all 56 tests and Ruff; repository CI run #227
   passed both frontend build and backend tests on the current branch head.
-  DrumScript engine validation run #128 is in progress, including the
-  expanded real-inference MusicXML export check. This is integration validation,
-  not an accuracy claim.
+  DrumScript engine validation run #131 is running the synthetic/repository MP3
+  smoke stage before the expanded real-inference MusicXML export check. This
+  is integration validation, not an accuracy claim.
 
 
 ## 2026-11-11 — tempo-synchronized practice metronome (implementation, CI pending)
