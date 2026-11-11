@@ -208,8 +208,8 @@ function App() {
   async function restoreProject(projectId: string) {
     if (!projectId) return;
     const project = projects.find((item) => item.id === projectId);
-    if (!project || !project.latest_job_id || project.latest_job_status === "failed") {
-      setMessage("该项目没有可恢复的分析任务；请重新启动分析。");
+    if (!project) {
+      setMessage("找不到该项目，请刷新项目列表。");
       return;
     }
     setSaving(true);
@@ -224,10 +224,21 @@ function App() {
     setSelectedEventId(null);
     setActiveEventId(null);
     try {
+      let jobId = project.latest_job_id;
       let completed = project.latest_job_status === "completed";
+      if (!jobId || project.latest_job_status === "failed") {
+        setMessage(project.latest_job_status === "failed" ? "上次分析失败，正在重新启动…" : "正在为该项目启动分析…");
+        const startedResponse = await fetch(`${API_BASE}/api/projects/${projectId}/analyze`, { method: "POST" });
+        const started = await startedResponse.json() as { job_id?: string; detail?: unknown };
+        if (!startedResponse.ok || !started.job_id) {
+          throw new Error(responseError(started as Record<string, unknown>, "无法重新启动分析任务。"));
+        }
+        jobId = started.job_id;
+        completed = false;
+      }
       for (let attempt = 0; attempt < 180 && !completed; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        const response = await fetch(`${API_BASE}/api/analysis-jobs/${project.latest_job_id}`);
+        const response = await fetch(`${API_BASE}/api/analysis-jobs/${jobId}`);
         const job = await response.json() as { status?: string; error_message?: string | null };
         if (!response.ok) throw new Error("无法恢复分析任务状态。");
         if (job.status === "failed") throw new Error(job.error_message ?? "该项目的分析任务失败。");
@@ -235,7 +246,7 @@ function App() {
         setMessage(completed ? "分析完成，正在恢复鼓谱…" : "已恢复后台分析任务，等待引擎完成…");
       }
       if (!completed) throw new Error("分析仍在后台运行；请稍后刷新项目列表并重试。");
-      await refreshPerformance(projectId, project.latest_job_id);
+      await refreshPerformance(projectId, jobId);
       await loadProjects();
       setMessage(`已恢复项目：${project.original_filename}`);
     } catch (error) {
@@ -451,8 +462,8 @@ function App() {
         <div className="saved-projects">
           <label>恢复已保存项目<select value={summary?.projectId ?? ""} disabled={busy || saving} onChange={(event) => void restoreProject(event.target.value)}>
             <option value="">{projects.length ? "选择已保存项目" : "暂无已保存项目"}</option>
-            {projects.map((project) => <option key={project.id} value={project.id} disabled={!project.latest_job_id || project.latest_job_status === "failed"}>
-              {project.original_filename} · {project.latest_job_status ?? project.status}
+            {projects.map((project) => <option key={project.id} value={project.id} >
+              {project.original_filename} · {project.latest_job_status ?? project.status}{project.latest_job_status === "failed" ? "（点击重试）" : ""}
             </option>)}
           </select></label>
           <button type="button" onClick={() => void loadProjects()} disabled={busy || saving}>刷新列表</button>
