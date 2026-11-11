@@ -475,3 +475,8 @@ def download_project_midi(project_id: str) -> FileResponse:
         media_type="audio/midi",
         filename=f"{project_id}-drums.mid",
     )
+
+
+from .quantization_api import router as quantization_router
+
+app.include_router(quantization_router)
