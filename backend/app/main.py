@@ -103,13 +103,6 @@ def initialize_storage() -> None:
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_analysis_jobs_project ON analysis_jobs(project_id, created_at)"
         )
-        connection.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_analysis_jobs_single_active
-            ON analysis_jobs(project_id)
-            WHERE status IN ('queued', 'running')
-            """
-        )
         now = utc_now()
         connection.execute(
             """
@@ -122,6 +115,13 @@ def initialize_storage() -> None:
         )
         connection.execute(
             "UPDATE projects SET status='failed' WHERE status='processing'"
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_analysis_jobs_single_active
+            ON analysis_jobs(project_id)
+            WHERE status IN ('queued', 'running')
+            """
         )
 
 
