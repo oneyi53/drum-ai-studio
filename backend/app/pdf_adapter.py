@@ -244,7 +244,8 @@ def performance_to_pdf(
         missing = exc.name or "engraving dependency"
         if missing not in {"verovio", "cairosvg", "pypdf"}:
             raise
-        return _render_fallback_pdf(performance, title)    except (ValueError, RuntimeError):
+        return _render_fallback_pdf(performance, title)
+    except (ValueError, RuntimeError):
         # Verovio can be installed while its SMuFL font resources are absent
         # from a minimal container. Keep exports usable through the fallback.
         return _render_fallback_pdf(performance, title)
