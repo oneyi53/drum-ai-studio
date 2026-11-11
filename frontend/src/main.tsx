@@ -2,15 +2,33 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./style.css";
 
+type DrumEvent = {
+  id: string;
+  time_seconds: number;
+  instrument: string;
+  velocity: number;
+  manually_corrected: boolean;
+};
+
+type Performance = {
+  duration_seconds: number;
+  events: DrumEvent[];
+};
+
 type AnalysisSummary = {
   jobId: string;
   projectId: string;
   durationSeconds: number;
   totalEvents: number;
   instruments: Record<string, number>;
+  events: DrumEvent[];
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const INSTRUMENTS = [
+  "kick", "snare", "closed_hihat", "open_hihat", "pedal_hihat",
+  "ride", "crash", "high_tom", "mid_tom", "low_tom", "other",
+];
 
 function responseError(data: Record<string, unknown>, fallback: string): string {
   if (typeof data.detail === "string") return data.detail;
@@ -18,11 +36,34 @@ function responseError(data: Record<string, unknown>, fallback: string): string 
   return fallback;
 }
 
+function summarizePerformance(
+  jobId: string,
+  projectId: string,
+  performance: Performance,
+): AnalysisSummary {
+  const instruments: Record<string, number> = {};
+  for (const event of performance.events) {
+    instruments[event.instrument] = (instruments[event.instrument] ?? 0) + 1;
+  }
+  return {
+    jobId,
+    projectId,
+    durationSeconds: performance.duration_seconds,
+    totalEvents: performance.events.length,
+    instruments,
+    events: [...performance.events].sort((a, b) => a.time_seconds - b.time_seconds),
+  };
+}
+
 function App() {
   const [file, setFile] = React.useState<File | null>(null);
   const [message, setMessage] = React.useState("选择一首完整歌曲，上传后启动鼓谱分析。");
   const [busy, setBusy] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
   const [summary, setSummary] = React.useState<AnalysisSummary | null>(null);
+  const [newTime, setNewTime] = React.useState("0");
+  const [newInstrument, setNewInstrument] = React.useState("kick");
+  const [newVelocity, setNewVelocity] = React.useState("96");
 
   async function uploadAndAnalyze() {
     if (!file) return;
@@ -74,29 +115,7 @@ function App() {
       }
       if (!completed) throw new Error("分析耗时较长，任务仍在后台运行；请稍后刷新项目结果。");
 
-      const resultResponse = await fetch(
-        `${API_BASE}/api/projects/${projectId}/performance`,
-      );
-      const result = await resultResponse.json() as {
-        performance?: {
-          duration_seconds: number;
-          events: Array<{ instrument: string }>;
-        };
-      };
-      if (!resultResponse.ok || !result.performance) {
-        throw new Error("分析已结束，但无法读取标准鼓事件结果。");
-      }
-      const instruments: Record<string, number> = {};
-      for (const event of result.performance.events) {
-        instruments[event.instrument] = (instruments[event.instrument] ?? 0) + 1;
-      }
-      setSummary({
-        jobId,
-        projectId,
-        durationSeconds: result.performance.duration_seconds,
-        totalEvents: result.performance.events.length,
-        instruments,
-      });
+      await refreshPerformance(projectId, jobId);
       setMessage(`分析完成：项目 ${projectId}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "处理失败，请检查后端服务。");
@@ -105,17 +124,95 @@ function App() {
     }
   }
 
+  async function refreshPerformance(projectId: string, jobId: string) {
+    const response = await fetch(`${API_BASE}/api/projects/${projectId}/performance`);
+    const result = await response.json() as { performance?: Performance };
+    if (!response.ok || !result.performance) {
+      throw new Error("无法读取标准鼓事件结果。");
+    }
+    setSummary(summarizePerformance(jobId, projectId, result.performance));
+  }
+
+  async function editEvent(eventId: string, changes: Partial<Pick<DrumEvent, "time_seconds" | "instrument" | "velocity">>) {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/projects/${summary.projectId}/events/${eventId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(changes),
+        },
+      );
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "无法保存鼓事件"));
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setMessage("鼓事件已更新，MIDI 下载也已同步。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "保存鼓事件失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function addEvent() {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/projects/${summary.projectId}/events`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            time_seconds: Number(newTime),
+            instrument: newInstrument,
+            velocity: Number(newVelocity),
+          }),
+        },
+      );
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "无法添加鼓事件"));
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setMessage("已添加手动鼓事件。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "添加鼓事件失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeEvent(eventId: string) {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/projects/${summary.projectId}/events/${eventId}`,
+        { method: "DELETE" },
+      );
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "无法删除鼓事件"));
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setMessage("鼓事件已删除，MIDI 下载也已同步。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "删除鼓事件失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
         <div className="brand-mark">D</div>
         <div><strong>DrumAI Studio</strong><span>从整曲到可编辑鼓谱</span></div>
-        <span className="status">P1 · 分析链路</span>
+        <span className="status">P2 · 鼓事件编辑</span>
       </header>
       <section className="hero">
         <p className="eyebrow">AI DRUM TRANSCRIPTION WORKSPACE</p>
         <h1>把一首歌，拆解成<br /><em>看得懂、改得动的鼓谱。</em></h1>
-        <p className="intro">导入完整混音，启动异步鼓谱分析，并将引擎输出转换为统一的标准鼓事件。</p>
+        <p className="intro">导入完整混音，启动异步鼓谱分析，并在统一的标准鼓事件上进行人工修订。</p>
       </section>
       <section className="panel">
         <div className="panel-heading"><div><p className="eyebrow">NEW PROJECT</p><h2>导入并分析音频</h2></div><span className="step">01 / 04</span></div>
@@ -129,7 +226,7 @@ function App() {
       </section>
       {summary && (
         <section className="result-panel">
-          <div className="panel-heading"><div><p className="eyebrow">CANONICAL PERFORMANCE</p><h2>标准鼓事件已生成</h2></div><span className="complete">完成</span></div>
+          <div className="panel-heading"><div><p className="eyebrow">CANONICAL PERFORMANCE</p><h2>标准鼓事件编辑器</h2></div><span className="complete">可编辑</span></div>
           <div className="metrics">
             <div><strong>{summary.totalEvents.toLocaleString()}</strong><small>鼓事件</small></div>
             <div><strong>{summary.durationSeconds.toFixed(1)}s</strong><small>音频时长</small></div>
@@ -140,16 +237,41 @@ function App() {
               <span key={name}><strong>{name}</strong><small>{count}</small></span>
             ))}
           </div>
-          <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/midi`} download>下载鼓谱 MIDI</a>
-          <small className="job-id">任务 ID：{summary.jobId}</small>
+          <div className="editor-heading">
+            <div><p className="eyebrow">EVENT EDITOR</p><h3>添加鼓点</h3></div>
+          </div>
+          <div className="event-add">
+            <label>时间（秒）<input type="number" min="0" max={summary.durationSeconds} step="0.001" value={newTime} onChange={(event) => setNewTime(event.target.value)} /></label>
+            <label>鼓件<select value={newInstrument} onChange={(event) => setNewInstrument(event.target.value)}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+            <label>力度<input type="number" min="1" max="127" value={newVelocity} onChange={(event) => setNewVelocity(event.target.value)} /></label>
+            <button disabled={saving} onClick={addEvent}>添加事件</button>
+          </div>
+          <div className="event-table-wrap">
+            <table className="event-table">
+              <thead><tr><th>时间（秒）</th><th>鼓件</th><th>力度</th><th>来源</th><th>操作</th></tr></thead>
+              <tbody>
+                {summary.events.map((event) => (
+                  <tr key={event.id}>
+                    <td><input aria-label="事件时间" type="number" min="0" max={summary.durationSeconds} step="0.001" defaultValue={event.time_seconds} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.time_seconds) void editEvent(event.id, { time_seconds: value }); }} /></td>
+                    <td><select aria-label="鼓件" defaultValue={event.instrument} onChange={(input) => void editEvent(event.id, { instrument: input.target.value })}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></td>
+                    <td><input aria-label="力度" type="number" min="1" max="127" defaultValue={event.velocity} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.velocity) void editEvent(event.id, { velocity: value }); }} /></td>
+                    <td>{event.manually_corrected ? "人工修订" : "模型"}</td>
+                    <td><button className="delete-event" disabled={saving} onClick={() => void removeEvent(event.id)}>删除</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/midi`} download>下载最新鼓谱 MIDI</a>
+          <small className="job-id">任务 ID：{summary.jobId} · {saving ? "正在保存…" : "编辑自动保存到标准事件和 MIDI"}</small>
         </section>
       )}
       <section className="pipeline">
         {["音频导入", "鼓轨分离 / 转录", "标准鼓事件", "编辑与导出"].map((item, index) => (
-          <div className="pipeline-item" key={item}><span>0{index + 1}</span><strong>{item}</strong><small>{index === 0 || index === 2 ? "已接入" : index === 1 ? "引擎运行时依赖" : "开发中"}</small></div>
+          <div className="pipeline-item" key={item}><span>0{index + 1}</span><strong>{item}</strong><small>{index === 0 || index === 2 ? "已接入" : index === 1 ? "引擎运行时依赖" : "编辑器开发中"}</small></div>
         ))}
       </section>
-      <footer>提示：分析服务需要在后端安装 DrumScript、CPU PyTorch 与 FFmpeg。当前输出是引擎转录结果，尚未经过人工校对，不代表已验证的准确率。</footer>
+      <footer>提示：分析服务需要在后端安装 DrumScript、CPU PyTorch 与 FFmpeg。模型输出未经人工校对；手动编辑会同步更新标准事件和 MIDI 文件。</footer>
     </main>
   );
 }
