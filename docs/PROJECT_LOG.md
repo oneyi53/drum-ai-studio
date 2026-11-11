@@ -1,3 +1,16 @@
+## 2026-11-11 — persistent undo/redo for drum editing (implementation, CI pending)
+
+- Added SQLite-backed performance revision snapshots and a current-revision
+  cursor. Initial analysis output is revision zero; every manual event edit,
+  deletion, and applied quantization creates a new revision.
+- Added project history inspection plus undo/redo endpoints. Undo and redo
+  restore canonical performance JSON and regenerate the downloadable MIDI;
+  creating a new edit after undo truncates the abandoned redo branch.
+- Added editor undo/redo controls with disabled states driven by server history.
+- Added API integration coverage for baseline state, undo/redo, synchronized
+  MIDI export, and redo-branch invalidation.
+- CI is pending for this commit; no validation result is claimed yet.
+
 # DrumAI Studio project log
 
 ## 2026-11-11 — tempo-aware drum quantization (implementation, CI pending)
