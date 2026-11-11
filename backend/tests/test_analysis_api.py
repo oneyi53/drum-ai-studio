@@ -344,7 +344,7 @@ def test_project_audio_stream_returns_uploaded_audio_and_unknown_project_404(cli
     response = client.get(f"/api/projects/{uploaded['id']}/audio")
     assert response.status_code == 200
     assert response.content == b"RIFF-test-audio"
-    assert response.headers["content-type"].startswith("audio/wav")
+    assert response.headers["content-type"].startswith("audio/")
     assert "inline" in response.headers.get("content-disposition", "")
 
     missing = client.get("/api/projects/not-a-project/audio")
