@@ -556,3 +556,17 @@ code or validation state changes; do not infer completion from plans.
 - Added feature-level diagnostics for IDMT reference kicks that already match an onset candidate. The archived JSON now includes per-candidate LFER, peak frequency, centroid, HFER, high-frequency energy, decay, and pass/fail against the current kick-rule thresholds. This measures which boundaries reject candidate kick events before any classifier changes are attempted.
 - Extended the API end-to-end smoke to call the PDF endpoint, validate PDF signature/page count/landscape-A4 geometry, preserve the generated PDF, rasterize its first page with Poppler, and upload both PDF and PNG as a CI artifact. This creates a reviewable visual regression artifact rather than relying only on PDF metadata tests.
 - The PDF raster/artifact step and expanded kick-feature diagnostics are pending on the current PR #4 engine-validation run. No PDF visual acceptance or kick-recall improvement is claimed until those artifacts and metrics are reviewed.
+
+
+
+## 2026-11-12 — avoid unnecessary media-tool installation on CI runners
+
+- The latest engine-validation run remained in the media-tool provisioning step
+  even after removing the explicit apt repository refresh. The workflow now
+  checks for ffmpeg, ffprobe, and pdftoppm first and installs FFmpeg/Poppler
+  packages only when one or more tools are missing.
+- This uses the preinstalled GitHub-hosted runner binaries when available and
+  avoids a package-manager round trip on already-provisioned runners. The next
+  run must still prove that all three tools are present and the full engine,
+  benchmark, MP3, and PDF-render stages complete; no pass is inferred from this
+  workflow change alone.
