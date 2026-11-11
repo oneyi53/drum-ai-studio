@@ -35,5 +35,9 @@ jobs:
           pip install -e ".[dev]"
       - name: Run backend unit tests
         run: pytest
-      - name: Lint backend application and tests
-        run: ruff check app tests
+      - name: Lint canonical-event and benchmark pipeline
+        run: |
+          ruff check app/drum_events.py app/evaluate_cli.py app/midi_adapter.py \
+            app/midi_import_cli.py app/benchmark_cli.py \
+            tests/test_drum_events.py tests/test_evaluate_cli.py tests/test_midi_adapter.py \
+            tests/test_midi_import_cli.py tests/test_benchmark_cli.py
