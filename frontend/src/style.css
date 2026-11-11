@@ -134,3 +134,5 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .event-batch-controls button{border:1px solid #c9f36b55;border-radius:5px;background:#202a26;color:#c9f36b;padding:7px 9px;font-size:10px;cursor:pointer}
 .event-batch-controls button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:640px){.event-batch-controls{align-items:stretch;flex-direction:column}.event-batch-controls label{justify-content:space-between}.event-batch-controls button{width:100%}}
+
+.bar-copy-controls{border-color:#c9f36b44}.bar-copy-controls strong{color:#c9f36b;font-size:11px}.bar-copy-controls small{flex-basis:100%;color:#9ca8b9}
