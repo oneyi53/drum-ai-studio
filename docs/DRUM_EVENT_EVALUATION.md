@@ -105,7 +105,7 @@ regenerates the downloadable MIDI from the canonical performance, so the
 JSON result and MIDI artifact stay in sync.
 
 The MIDI writer emits GM percussion channel 10, tempo changes, time signatures,
-and velocities. The `other` canonical category is exported as GM side-stick
+velocities, and the full performance duration (via the end-of-track event). The `other` canonical category is exported as GM side-stick
 key 37 as a fallback; that category therefore cannot preserve an arbitrary
 unmapped source pitch through a round trip.
 
