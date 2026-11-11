@@ -16,13 +16,17 @@ The workflow performs these checks in order:
 4. Checks the Python import and CLI help.
 5. Runs DrumScript's upstream non-slow pytest suite.
 6. Generates a deterministic, copyright-free synthetic full mix and calls `drumscript.transcribe(..., full_song=True, midi_only=True)`.
-7. Verifies that a non-empty MIDI file was produced.
+7. Runs the same full-song path for each MP3 located at the repository root.
+8. Verifies that each run returns a non-empty MIDI file. Generated outputs are isolated in a temporary directory.
+
+The workflow is triggered by changes to this workflow, the smoke-test script, or root-level MP3 samples. It can also be started manually.
 
 ## Interpret results carefully
 
 - **Install/import/CLI passed:** dependency and package startup are compatible in that runner environment.
 - **Upstream tests passed:** the selected upstream test suite passed; this does not prove transcription accuracy.
 - **Synthetic full-mix smoke passed:** Demucs separation plus DrumScript's full-song path completed for the generated test signal and produced a MIDI file.
-- **Real-song accuracy:** still unverified. It requires permission-cleared real recordings and human review of instrument labels, timing, tempo, and exports.
+- **Repository MP3 smoke passed:** the engine accepted the supplied MP3 input and produced a non-empty MIDI file. This is an integration check only, not a measure of transcription quality.
+- **Real-song accuracy:** still requires human review of instrument labels, timing, tempo, and exports against the audio. Use recordings you have permission to process.
 
 The workflow logs print the exact DrumScript Git commit SHA used in the run. Record that SHA with any reported result. A later upstream `main` revision may behave differently.

@@ -2,30 +2,34 @@ name: DrumScript engine validation
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/engine-validation.yml"
+      - "scripts/engine_smoke.py"
+      - "*.mp3"
   push:
     branches: [main]
     paths:
       - ".github/workflows/engine-validation.yml"
       - "scripts/engine_smoke.py"
+      - "*.mp3"
 
 jobs:
   drumscript:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - name: Check out DrumAI Studio
         uses: actions/checkout@v4
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-
       - name: Install CPU PyTorch and DrumScript
         run: |
           python -m pip install --upgrade pip
@@ -34,15 +38,12 @@ jobs:
           git -C /tmp/DrumScript rev-parse HEAD
           python -m pip install -e /tmp/DrumScript
           python -m pip install pytest mir-eval requests
-
       - name: Verify package and CLI
         run: |
           python -c "import drumscript; print('drumscript import OK')"
           drumscript --help
-
       - name: Run upstream non-slow tests
         working-directory: /tmp/DrumScript
         run: pytest -m "not slow"
-
-      - name: Run full-mix separation and transcription smoke test
+      - name: Run synthetic and repository MP3 smoke tests
         run: python scripts/engine_smoke.py
