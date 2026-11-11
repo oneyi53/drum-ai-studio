@@ -7,7 +7,9 @@
   restores completed canonical performances and edit history after reload,
   and supports manual list refresh.
 - Added API integration coverage for project metadata and latest completed job
-  state. Frontend build and backend tests are pending for this increment.
+  state. Backend tests run #128 passed all 56 tests and Ruff; repository CI
+  run #217 passed frontend build and backend tests. DrumScript engine validation
+  run #119 remains in progress.
 
 
 ## 2026-11-11 — editable MusicXML drum score export (implementation, CI pending)
