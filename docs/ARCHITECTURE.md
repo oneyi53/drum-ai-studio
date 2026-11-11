@@ -9,12 +9,13 @@ React + TypeScript
        v
 FastAPI
        |
-       +-- Project metadata (SQLite)
-       +-- Original audio (local storage)
-       +-- Audio engine adapter (not integrated yet)
-       +-- MIDI-to-canonical adapter (implemented)
+       +-- Project metadata + analysis jobs (SQLite)
+       +-- Original audio + analysis artifacts (local storage)
+       +-- Async job API (FastAPI BackgroundTasks; single worker)
+       +-- Optional lazy DrumScript engine adapter
+       +-- MIDI-to-canonical adapter (implemented and smoke-tested)
        +-- Canonical DrumPerformance (implemented)
-       +-- Event evaluation (implemented)
+       +-- Event evaluation + benchmark runner (implemented)
 ```
 
 ## Canonical event model
@@ -41,14 +42,13 @@ and mean absolute timing error overall and per instrument.
 
 The evaluator is independent of any particular transcription engine. This
 lets the project compare engines without changing the scoring contract.
-The generic General MIDI MIDI-to-canonical adapter is implemented, but the DrumScript output channel/pitch mapping has not yet been inspected and verified. There is also no permission-cleared, human-annotated golden dataset; no accuracy claim is made.
+The generic General MIDI MIDI-to-canonical adapter is implemented. DrumScript output was smoke-tested on a synthetic mix and two repository MP3s; generated MIDI converted to non-empty canonical events. This verifies integration compatibility only, not transcription accuracy. There is no permission-cleared, human-annotated golden dataset; no accuracy claim is made.
 
 ## Engine boundary
 
-The API must call an engine adapter rather than importing a specific
-transcription implementation throughout the web layer. This allows controlled
-comparison of candidate engines and makes it possible to replace a weak model
-without rewriting project management or the editor.
+The API invokes the lazy `DrumScriptEngine` adapter from an asynchronous analysis job. The adapter loads the optional engine at execution time, runs full-song transcription in an isolated temporary directory, validates the MIDI artifact, normalizes channel-10 percussion into canonical events, and persists the MIDI plus canonical JSON. The ordinary backend install does not install the heavy PyTorch/DrumScript runtime; the worker image must provide it along with FFmpeg/ffprobe.
+
+The current queue uses FastAPI in-process background tasks and SQLite. It is intentionally limited to a single-worker development deployment. A durable queue and shared object storage/database are required before horizontal scaling.
 
 ## Notation and editing
 
