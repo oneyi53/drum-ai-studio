@@ -99,3 +99,16 @@ segment's BPM determines quarter-note spacing and its time signature determines
 bar length. Tempo boundaries and BPM labels are shown on the timeline. When no
 tempo metadata exists, the view uses a 120 BPM, 4/4 display fallback. Event
 timestamps and audio playback remain in absolute seconds.
+
+
+## MusicXML score export
+
+- `GET /api/projects/{project_id}/musicxml` downloads the latest completed
+  canonical performance as a MusicXML 4.0 partwise score.
+- The export contains a percussion staff, instrument-specific voices and
+  noteheads, GM percussion instrument metadata, tempo directions, and
+  time-signature-aware measures. It is intended for import into notation
+  software such as MuseScore; final engraving and layout are controlled by
+  that application.
+- The export reflects the current canonical performance, including manual
+  edits, quantization, undo, and redo. MIDI export remains available separately.
