@@ -7,9 +7,9 @@
   restores completed canonical performances and edit history after reload,
   can resume polling queued/running jobs, and supports manual list refresh.
 - Added API integration coverage for project metadata and latest completed job
-  state. Backend tests run #128 passed all 56 tests and Ruff; repository CI
-  run #217 passed frontend build and backend tests. DrumScript engine validation
-  run #119 remains in progress.
+  state. Backend tests run #134 passed all 56 tests and Ruff; repository CI
+  run #223 passed frontend build and backend tests. DrumScript engine validation
+  run #125 remains in progress.
 
 
 ## 2026-11-11 — editable MusicXML drum score export (implementation, CI pending)
@@ -26,11 +26,11 @@
   parse a populated MusicXML score from an actual inferred performance.
   Import into notation software is supported; final engraving remains the
   notation application's responsibility.
-- Backend tests run #119 passed all 55 tests and Ruff; repository CI run #208 passed both
-  frontend build and backend tests on the current export and practice-tool
-  implementation. DrumScript engine validation run #110 is in progress,
-  including the expanded real-inference MusicXML export check. This is
-  integration validation, not an accuracy claim.
+- Backend tests run #134 passed all 56 tests and Ruff; repository CI run #223
+  passed both frontend build and backend tests on the current branch head.
+  DrumScript engine validation run #125 is in progress, including the
+  expanded real-inference MusicXML export check. This is integration validation,
+  not an accuracy claim.
 
 
 ## 2026-11-11 — tempo-synchronized practice metronome (implementation, CI pending)
