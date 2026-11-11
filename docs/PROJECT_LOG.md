@@ -16,8 +16,12 @@
   MP3 smoke tests and the API-to-engine end-to-end upload/inference/result/MIDI
   download path. This run predates the event-editor changes and does not
   validate those new endpoints.
-- Fresh backend and frontend CI for the editor changes is pending. No accuracy
-  claim is made; model predictions still require human review.
+- Backend tests run #57 passed: 35 tests and Ruff. Repository CI run #143 passed
+  both the frontend build and backend test jobs for the event editor.
+- A fresh DrumScript engine validation run #48 is still running; it validates
+  the engine path on the latest code but is not required for the isolated
+  editor unit tests. No accuracy claim is made; model predictions still require
+  human review.
 
 ## 2026-11-11 — CI regression fixes
 
@@ -67,12 +71,12 @@ code or validation state changes; do not infer completion from plans.
 
 ### Validation boundary
 
-- The new API/adapter/frontend code and tests are committed, but fresh backend
-  and frontend CI results for these changes are still pending. Do not report the new tests as passing yet.
-- Existing Engine validation run #27 proves the underlying DrumScript-to-MIDI
-  and MIDI-to-canonical conversion path on synthetic and repository audio. It
-  does not by itself prove this new API worker has run successfully in a
-  deployed application.
+- Backend tests run #42 passed the API/adapter unit tests and Ruff; repository
+  CI run #128 passed both frontend and backend jobs.
+- DrumScript engine validation run #34 passed synthetic and repository MP3
+  conversion smoke tests plus the API-to-engine upload/inference/result/MIDI
+  download path. This verifies the CI integration path, not deployed service
+  readiness or transcription accuracy.
 - The regular backend install deliberately does not install PyTorch/DrumScript.
   The analysis job will report a clear failure until the optional worker
   runtime and FFmpeg/ffprobe are installed.
