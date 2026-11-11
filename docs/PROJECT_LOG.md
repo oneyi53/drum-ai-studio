@@ -21,6 +21,9 @@ code or validation state changes; do not infer completion from plans.
   - Overall and per-instrument precision, recall, F1, counts, and matched-event
     mean absolute timing error.
 - Added unit tests, a `drumai-evaluate` JSON-report CLI, and `docs/DRUM_EVENT_EVALUATION.md`.
+- Added `backend/app/midi_adapter.py` to normalize General MIDI percussion note-ons into canonical events, preserving velocity, tempo, time signatures, and absolute seconds.
+- Added `drumai-midi-import` CLI, MIDI fixtures/tests, and `docs/MIDI_ADAPTER.md` documenting the channel-10 and GM pitch assumptions.
+- This is a generic GM adapter only: DrumScript-specific channel/pitch semantics remain unverified until its generated MIDI can be inspected.
 - Overall metrics aggregate per-instrument matches so an instrument substitution cannot be counted as a correct hit.
 - Updated README and architecture documentation.
 
@@ -28,7 +31,7 @@ code or validation state changes; do not infer completion from plans.
 
 - Unit tests are committed but PR CI result is not yet available at log time.
 - No human-annotated golden dataset has been committed.
-- No DrumScript-to-canonical event adapter exists yet.
+- The generic GM MIDI-to-canonical adapter exists, but DrumScript-specific channel and pitch mapping has not been verified.
 - The analysis endpoint remains HTTP 501; it must not be enabled until the
   engine adapter and end-to-end outputs are validated.
 - Event metrics are an evaluation tool, not evidence of current transcription
@@ -38,7 +41,8 @@ code or validation state changes; do not infer completion from plans.
 
 1. Verify PR #3 CI and correct any schema/test issues.
 2. Inspect the DrumScript MIDI output format from the engine validation run and
-   implement a narrow, tested MIDI-to-canonical adapter.
+   verify whether its channel and note numbers follow the General MIDI map; add
+   a versioned engine mapping profile if they do not.
 3. Add permission-cleared, manually reviewed reference annotations and a
    reproducible benchmark manifest.
 4. Run event-level scoring against those references; report per-instrument
