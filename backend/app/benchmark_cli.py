@@ -70,6 +70,8 @@ def evaluate_manifest(manifest_path: Path, tolerance_ms: float = 50.0) -> dict:
     all_reference = []
     all_predicted = []
     timeline_offset = 0.0
+    split_reference = {"development": [], "evaluation": []}
+    split_predicted = {"development": [], "evaluation": []}
     for case in manifest.cases:
         paths = {
             "audio": root / case.audio_path,
@@ -100,19 +102,32 @@ def evaluate_manifest(manifest_path: Path, tolerance_ms: float = 50.0) -> dict:
         })
         # Keep cases on disjoint timelines so equal timestamps in different
         # recordings can never be matched to each other in the pooled report.
-        all_reference.extend(
+        shifted_reference = [
             event.model_copy(update={"time_seconds": event.time_seconds + timeline_offset})
             for event in reference.events
-        )
-        all_predicted.extend(
+        ]
+        shifted_predicted = [
             event.model_copy(update={"time_seconds": event.time_seconds + timeline_offset})
             for event in predicted.events
-        )
+        ]
+        all_reference.extend(shifted_reference)
+        all_predicted.extend(shifted_predicted)
+        split_reference[case.split].extend(shifted_reference)
+        split_predicted[case.split].extend(shifted_predicted)
         timeline_offset += max(reference.duration_seconds, predicted.duration_seconds) + max(1.0, tolerance_ms / 1000 + 0.001)
 
     aggregate = evaluate_performance(
         all_reference, all_predicted, tolerance_ms=tolerance_ms
     )
+    aggregate_by_split = {
+        split: evaluate_performance(
+            split_reference[split],
+            split_predicted[split],
+            tolerance_ms=tolerance_ms,
+        ).model_dump()
+        for split in ("development", "evaluation")
+        if any(case.split == split for case in manifest.cases)
+    }
     return {
         "schema_version": "1.0",
         "manifest": manifest_path.name,
@@ -120,6 +135,7 @@ def evaluate_manifest(manifest_path: Path, tolerance_ms: float = 50.0) -> dict:
         "case_count": len(case_reports),
         "cases": case_reports,
         "aggregate": aggregate.model_dump(),
+        "aggregate_by_split": aggregate_by_split,
     }
 
 
