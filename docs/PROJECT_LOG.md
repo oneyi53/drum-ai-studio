@@ -1,4 +1,12 @@
 
+## 2026-11-11 — A–B loop range guard
+
+- Prevented enabling A–B practice looping when the selected range is zero or
+  reversed. Setting A after an existing B now restores B to the track end;
+  setting B before A is disabled in the UI.
+- This avoids a silently enabled loop that never wraps playback.
+
+
 ## 2026-11-11 — saved-project retry and recovery
 
 - Improved workspace recovery so uploaded projects with no analysis job can be
