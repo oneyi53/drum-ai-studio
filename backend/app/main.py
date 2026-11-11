@@ -99,6 +99,12 @@ class EventDuplicateRequest(BaseModel):
     interval_seconds: float = Field(gt=0)
 
 
+class EventBarCopyRequest(BaseModel):
+    source_start_seconds: float = Field(ge=0)
+    source_end_seconds: float = Field(gt=0)
+    target_start_seconds: float = Field(ge=0)
+
+
 
 def initialize_storage() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -545,6 +551,50 @@ def add_manual_event(project_id: str, payload: EventCreateRequest) -> dict[str, 
         _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
     return {"event": event.model_dump(), "performance": updated.model_dump()}
 
+
+
+@app.post("/api/projects/{project_id}/events/copy-bar")
+def copy_event_bar(project_id: str, payload: EventBarCopyRequest) -> dict[str, Any]:
+    if payload.source_end_seconds <= payload.source_start_seconds:
+        raise HTTPException(status_code=422, detail="Source bar end must be after its start.")
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, performance = _load_editable_performance(connection, project_id)
+        if payload.source_end_seconds > performance.duration_seconds:
+            raise HTTPException(status_code=422, detail="Source bar must be within the song duration.")
+        originals = [
+            event for event in performance.events
+            if payload.source_start_seconds <= event.time_seconds < payload.source_end_seconds
+        ]
+        if not originals:
+            raise HTTPException(status_code=422, detail="The source bar contains no drum events.")
+        clones: list[DrumEvent] = []
+        for event in originals:
+            clone_data = event.model_dump()
+            clone_data.update({
+                "id": str(uuid.uuid4()),
+                "time_seconds": payload.target_start_seconds
+                + event.time_seconds - payload.source_start_seconds,
+                "source": "manual",
+                "manually_corrected": True,
+            })
+            clones.append(DrumEvent.model_validate(clone_data))
+        if any(event.time_seconds > performance.duration_seconds for event in clones):
+            raise HTTPException(status_code=422, detail="Pasted bar would exceed the song duration.")
+        try:
+            updated = DrumPerformance.model_validate({
+                **performance.model_dump(),
+                "events": [*performance.events, *clones],
+            })
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
+    return {
+        "copied_count": len(originals),
+        "pasted_count": len(clones),
+        "events": [event.model_dump() for event in clones],
+        "performance": updated.model_dump(),
+    }
 
 
 @app.post("/api/projects/{project_id}/events/duplicate")
