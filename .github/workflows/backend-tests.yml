@@ -2,7 +2,7 @@ name: Backend tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, test/real-mp3-engine-smoke]
     paths:
       - "backend/**"
       - ".github/workflows/backend-tests.yml"
@@ -35,7 +35,5 @@ jobs:
           pip install -e ".[dev]"
       - name: Run backend unit tests
         run: pytest
-      - name: Lint changed backend modules
-        run: |
-          ruff check app/drum_events.py app/evaluate_cli.py app/midi_adapter.py app/midi_import_cli.py \
-            tests/test_drum_events.py tests/test_evaluate_cli.py tests/test_midi_adapter.py tests/test_midi_import_cli.py
+      - name: Lint backend application and tests
+        run: ruff check app tests
