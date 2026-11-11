@@ -140,3 +140,16 @@ when measure durations differ.
 A successful operation creates one history revision, marks cloned events as
 manual corrections, and regenerates MIDI. Empty source intervals and source or
 target ranges outside the performance duration are rejected atomically.
+
+
+## PDF score export
+
+- `GET /api/projects/{project_id}/pdf` downloads a printable landscape PDF
+  rendered directly from the latest completed canonical drum performance.
+- The PDF contains a percussion staff, measure boundaries/numbers, drum-hit
+  noteheads, tempo/meter metadata, and a legend for the instruments present.
+  It is suitable for printing and quick reading; MusicXML remains the editable
+  notation interchange format for detailed engraving in notation software.
+- The endpoint always reads the latest canonical state, including edits,
+  quantization, undo, and redo. A project without a completed performance
+  returns HTTP 404.
