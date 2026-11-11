@@ -49,14 +49,14 @@ Latest MusicXML conformance-hardening changes:
 - Code commits: `28ab3f246ad8fd0df8af01c1fd329a3ba41a381c` (MusicXML note order) and `d92825506d5cb84e6b0319e918a39a77c0e0e0f9` (browser E2E coverage); documentation was updated afterward.
 - Changes include the MusicXML note child-order correction and browser E2E parsing of downloaded XML with simultaneous kick/snare notes, chord marker, GM pitches, MIDI channel 10, and tempo checks.
 - The prior green run does not cover these newer changes. No Actions run or local Playwright execution has yet been confirmed for this exact head; validation is pending.
-- The browser XML parser check covers well-formedness and selected structural invariants. A new CI step downloads the official W3C MusicXML 4.0 XSD and its imported XML/XLink schemas, then validates the saved browser-generated artifact with lxml. The first run exposed a Playwright test bug (the download event Promise was not awaited before calling `saveAs`); the test now awaits the event before saving. The corrected test and schema-validation step are awaiting a fresh CI run; schema conformance still does not replace opening the file in a notation application.
+- The browser XML parser check covers well-formedness and selected structural invariants. CI also validates the saved browser-generated artifact with lxml against the official W3C MusicXML 4.0 XSD and imported XML/XLink schemas. The first run exposed a Playwright download-event await bug, which was fixed. The next run passed browser E2E but the schema step still failed: W3C listing-page URLs returned HTML despite trailing slashes, so lxml attempted to parse HTML as XSD. The workflow now downloads the exact v4.0 schema files from the official `w3c-cg/musicxml` GitHub repository, pinned to tag `v4.0`; a fresh CI run is required to verify the correction. Schema conformance still does not replace opening the file in a notation application.
 
 
 - Latest CI run for head `e59dad0f3abd8494e428e57b3d220184555a4173`: [42857592824](https://github.com/oneyi53/drum-ai-studio/actions/runs/42857592824) failed in browser E2E after project reopen. The assertion expected the transient “已连接项目服务器；已载入 2 条参考标注” message, but the app immediately replaces it with the subsequent “已保存到项目服务器” status. Backend tests, frontend build, and evaluation tests passed; the MusicXML XSD step was skipped because E2E failed. The test is being corrected to assert the durable restored event count and values instead of a transient status string. XSD conformance remains unverified.
 
 ## Next engineering gates
 
-1. Obtain a CI run for the latest schema-validation change and inspect every job, including the W3C MusicXML 4.0 XSD validation.
+1. Obtain a CI run for commit `6027d6fb797adc09a5c46a2522f676641bc03d0f` and inspect every job, including the W3C MusicXML 4.0 XSD validation.
 2. Open the validated generated MusicXML in a notation application and inspect rendered notation for all nine supported drum instruments.
 3. Decide and document how tempo maps, swing/tuplets, and velocity should be represented before promising faithful score/MIDI round trips.
 4. Add a rights-cleared, independently human-annotated evaluation set before reporting transcription metrics or enabling the analysis API.
@@ -67,6 +67,8 @@ Latest MusicXML conformance-hardening changes:
 | Date | Change |
 |---|---|
 | 2026-11-10 | Added initial MusicXML export, simplified percussion staff preview, browser E2E coverage, and project documentation. |
-| 2026-11-11 | Corrected MusicXML note element order and expanded browser checks to parse the downloaded XML and cover simultaneous kick/snare events on MIDI channel 10. Added a CI step to validate the exact browser-exported artifact against the W3C MusicXML 4.0 XSD. The first run exposed a missing await in the Playwright download flow; fixed it and awaiting CI rerun. |
+| 2026-11-11 | Corrected MusicXML note element order and expanded browser checks to parse the downloaded XML and cover simultaneous kick/snare events on MIDI channel 10. Added official W3C MusicXML 4.0 XSD validation. Browser E2E passed, but validation exposed that W3C listing URLs returned HTML; CI now downloads schemas from the official GitHub `v4.0` release tag. Awaiting rerun. |
 
 - CI run [42859921687](https://github.com/oneyi53/drum-ai-studio/actions/runs/42859921687): browser E2E passed (1 test), as did backend, frontend build, and evaluation. The XSD step failed before validating the generated XML because the W3C listing URLs without trailing slashes returned HTML rather than raw schema XML; lxml reported a mismatched HTML `link` tag. The schema download URLs were corrected to the W3C listing file endpoints with trailing slashes. This run does **not** establish MusicXML schema conformance.
+
+- CI run [42863319135](https://github.com/oneyi53/drum-ai-studio/actions/runs/42863319135) on the previous head: backend, frontend build, evaluator tests, and browser E2E all passed. The XSD step failed while parsing the downloaded `musicxml.xsd` because the W3C listing endpoint returned an HTML document (`Opening and ending tag mismatch: link ... head`); the MusicXML artifact itself was not evaluated. Corrected the download source to the official GitHub `w3c-cg/musicxml` tag `v4.0` in commit `6027d6fb797adc09a5c46a2522f676641bc03d0f`. Conformance remains unverified pending CI.
