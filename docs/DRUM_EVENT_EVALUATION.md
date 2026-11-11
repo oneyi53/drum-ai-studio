@@ -74,8 +74,9 @@ The runner requires a declared permission basis and reviewed-annotation
 metadata, and refuses missing files, duplicate case IDs, and source recordings
 that leak across development/evaluation splits. These metadata declarations are
 not a legal or independent verification of the underlying rights or annotation quality.
-The aggregate report pools matched events across all cases; it is micro-
-aggregated, not an unweighted mean of track scores. Preserve the manifest and
+The report includes per-case metrics, pooled micro-aggregates across all cases,
+and separate development/evaluation aggregates. Pooled metrics count matched
+events, not an unweighted mean of track scores. Preserve the manifest and
 report with the engine revision/configuration used to generate predictions.
 
 The example manifest is intentionally empty. Permission/reviewer fields are
