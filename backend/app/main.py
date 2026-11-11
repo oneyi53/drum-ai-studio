@@ -446,7 +446,7 @@ def delete_manual_event(project_id: str, event_id: str) -> dict[str, Any]:
         updated = DrumPerformance.model_validate(
             {**performance.model_dump(), "events": events}
         )
-        _save_edited_performance(connection, row["id"], updated)
+        _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
     return {"deleted_event_id": event_id, "performance": updated.model_dump()}
 
 
