@@ -97,3 +97,9 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 @media(max-width:640px){.tempo-map-labels{margin-left:92px}}
 
 .timeline-tempo-change{position:absolute;z-index:1;top:0;bottom:0;width:2px;background:#f0a85b;opacity:.85;pointer-events:none}
+
+.loop-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0 8px;padding:10px;background:#191e29;border:1px solid #ffffff14;border-radius:8px}
+.loop-controls span{font:10px "DM Mono",monospace;color:#aeb6c5}
+.loop-controls button{border:1px solid #c9f36b55;border-radius:6px;background:#202a26;color:#c9f36b;padding:7px 9px;font-size:10px;cursor:pointer}
+.loop-toggle{display:flex;align-items:center;gap:6px;color:#c9f36b;font-size:11px;font-weight:600}
+.loop-toggle input{accent-color:#c9f36b}
