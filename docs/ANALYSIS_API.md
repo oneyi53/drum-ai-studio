@@ -124,3 +124,19 @@ timestamps and audio playback remain in absolute seconds.
   completed analysis, including its canonical events and edit-history state.
 - Projects with no completed analysis remain visible in the API response but
   are not selectable as completed editor sessions.
+
+
+### Measure-based phrase copy
+
+`POST /api/projects/{project_id}/events/copy-bar`
+
+Copies every event in the half-open source interval
+`[source_start_seconds, source_end_seconds)` into the target measure.
+The request also supplies `target_start_seconds` and `target_end_seconds`;
+event offsets are mapped proportionally from source-measure length to
+target-measure length. This preserves the phrase's relative rhythmic shape
+when measure durations differ.
+
+A successful operation creates one history revision, marks cloned events as
+manual corrections, and regenerates MIDI. Empty source intervals and source or
+target ranges outside the performance duration are rejected atomically.
