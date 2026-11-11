@@ -15,8 +15,9 @@ from typing import Any
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from .drum_events import DrumEvent, DrumInstrument, DrumPerformance
 from .engine_adapter import DrumScriptEngine
 
 APP_DIR = Path(__file__).resolve().parent
@@ -68,6 +69,18 @@ class HealthResponse(BaseModel):
     status: str
     service: str
     transcription_engine: str
+
+
+class EventCreateRequest(BaseModel):
+    time_seconds: float = Field(ge=0)
+    instrument: DrumInstrument
+    velocity: int = Field(default=96, ge=1, le=127)
+
+
+class EventUpdateRequest(BaseModel):
+    time_seconds: float | None = Field(default=None, ge=0)
+    instrument: DrumInstrument | None = None
+    velocity: int | None = Field(default=None, ge=1, le=127)
 
 
 def initialize_storage() -> None:
@@ -320,6 +333,104 @@ def get_project_performance(project_id: str) -> dict[str, Any]:
         "performance": json.loads(row["performance_json"]),
         "midi_filename": row["midi_filename"],
     }
+
+
+def _load_editable_performance(connection: sqlite3.Connection, project_id: str):
+    row = connection.execute(
+        """
+        SELECT id, performance_json
+        FROM analysis_jobs
+        WHERE project_id=? AND status='completed' AND performance_json IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        (project_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No completed performance is available.")
+    return row, DrumPerformance.model_validate_json(row["performance_json"])
+
+
+def _save_edited_performance(
+    connection: sqlite3.Connection, job_id: str, performance: DrumPerformance
+) -> None:
+    connection.execute(
+        "UPDATE analysis_jobs SET performance_json=?, updated_at=? WHERE id=?",
+        (performance.model_dump_json(), utc_now(), job_id),
+    )
+
+
+@app.post("/api/projects/{project_id}/events", status_code=status.HTTP_201_CREATED)
+def add_manual_event(project_id: str, payload: EventCreateRequest) -> dict[str, Any]:
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, performance = _load_editable_performance(connection, project_id)
+        event = DrumEvent(
+            time_seconds=payload.time_seconds,
+            instrument=payload.instrument,
+            velocity=payload.velocity,
+            source="manual",
+            manually_corrected=True,
+        )
+        try:
+            updated = DrumPerformance.model_validate(
+                {**performance.model_dump(), "events": [*performance.events, event]}
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _save_edited_performance(connection, row["id"], updated)
+    return {"event": event.model_dump(), "performance": updated.model_dump()}
+
+
+@app.patch("/api/projects/{project_id}/events/{event_id}")
+def update_manual_event(
+    project_id: str, event_id: str, payload: EventUpdateRequest
+) -> dict[str, Any]:
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail="At least one event field must be provided.")
+    if any(value is None for value in changes.values()):
+        raise HTTPException(status_code=422, detail="Event fields cannot be null.")
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, performance = _load_editable_performance(connection, project_id)
+        events = []
+        found = False
+        for event in performance.events:
+            if event.id == event_id:
+                found = True
+                events.append(
+                    event.model_copy(
+                        update={**changes, "source": "manual", "manually_corrected": True}
+                    )
+                )
+            else:
+                events.append(event)
+        if not found:
+            raise HTTPException(status_code=404, detail="Drum event not found.")
+        try:
+            updated = DrumPerformance.model_validate(
+                {**performance.model_dump(), "events": events}
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _save_edited_performance(connection, row["id"], updated)
+    return {"event": next(event.model_dump() for event in updated.events if event.id == event_id),
+            "performance": updated.model_dump()}
+
+
+@app.delete("/api/projects/{project_id}/events/{event_id}")
+def delete_manual_event(project_id: str, event_id: str) -> dict[str, Any]:
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, performance = _load_editable_performance(connection, project_id)
+        events = [event for event in performance.events if event.id != event_id]
+        if len(events) == len(performance.events):
+            raise HTTPException(status_code=404, detail="Drum event not found.")
+        updated = DrumPerformance.model_validate(
+            {**performance.model_dump(), "events": events}
+        )
+        _save_edited_performance(connection, row["id"], updated)
+    return {"deleted_event_id": event_id, "performance": updated.model_dump()}
 
 
 @app.get("/api/projects/{project_id}/midi")
