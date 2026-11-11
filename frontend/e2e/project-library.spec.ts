@@ -86,6 +86,11 @@ test("creates a project, persists annotations, and restores them after reload", 
         instrument: note.getElementsByTagName("instrument")[0]?.getAttribute("id"),
         notehead: note.getElementsByTagName("notehead")[0]?.textContent,
       })),
+      staffPositions: unpitchedNotes.map((note) => ({
+        instrument: note.getElementsByTagName("instrument")[0]?.getAttribute("id"),
+        step: note.getElementsByTagName("display-step")[0]?.textContent,
+        octave: note.getElementsByTagName("display-octave")[0]?.textContent,
+      })),
       chordCount: document.getElementsByTagName("chord").length,
       drumChannels: Array.from(document.getElementsByTagName("midi-instrument")).map((item) =>
         item.getElementsByTagName("midi-channel")[0]?.textContent),
@@ -105,6 +110,17 @@ test("creates a project, persists annotations, and restores them after reload", 
   expect(parsedMusicXml.instrumentNoteheads).toEqual(expect.arrayContaining([
     { instrument: "Iclosed_hat", notehead: "x" },
     { instrument: "Iopen_hat", notehead: "circle-x" },
+  ]));
+  expect(parsedMusicXml.staffPositions).toEqual(expect.arrayContaining([
+    { instrument: "Ikick", step: "F", octave: "4" },
+    { instrument: "Isnare", step: "C", octave: "5" },
+    { instrument: "Iclosed_hat", step: "G", octave: "5" },
+    { instrument: "Iopen_hat", step: "G", octave: "5" },
+    { instrument: "Ilow_tom", step: "A", octave: "4" },
+    { instrument: "Imid_tom", step: "D", octave: "5" },
+    { instrument: "Ihigh_tom", step: "F", octave: "5" },
+    { instrument: "Icrash", step: "A", octave: "5" },
+    { instrument: "Iride", step: "E", octave: "5" },
   ]));
   expect(parsedMusicXml.drumChannels.every((channel) => channel === "10")).toBe(true);
   expect(parsedMusicXml.instrumentAfterDuration).toBe(true);
