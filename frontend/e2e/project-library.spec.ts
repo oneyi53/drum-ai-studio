@@ -49,7 +49,7 @@ test("creates a project, persists annotations, and restores them after reload", 
   for (const [time, kind] of [
     ["0.500", "closed_hat"], ["0.750", "open_hat"], ["1.000", "low_tom"],
     ["1.250", "mid_tom"], ["1.500", "high_tom"], ["1.750", "crash"],
-    ["2.000", "ride"], ["16.250", "ride"],
+    ["2.000", "ride"], ["8.250", "ride"],
   ]) {
     await page.getByLabel("时间（秒）").fill(time);
     await page.locator(".annotation-controls select").selectOption(kind);
@@ -116,5 +116,5 @@ test("creates a project, persists annotations, and restores them after reload", 
   await expect(page.getByText("人工确认事件 · 10")).toBeVisible();
   await expect(page.getByLabel("事件 1 时间")).toHaveValue("0.25");
   await expect(page.getByLabel("事件 1 力度")).toHaveValue("86");
-  await expect(page.getByLabel("事件 10 时间")).toHaveValue("16.25");
+  await expect(page.getByLabel("事件 10 时间")).toHaveValue("8.25");
 });
