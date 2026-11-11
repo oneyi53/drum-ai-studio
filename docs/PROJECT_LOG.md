@@ -368,3 +368,17 @@ code or validation state changes; do not infer completion from plans.
 - All changes are validated before persistence; invalid negative event times reject the entire batch. Each operation creates exactly one revision and regenerates MIDI from the canonical performance.
 - Added frontend multi-select, select-all, time-offset input, batch move/delete actions, and Chinese user-guide coverage.
 - Added API tests for one-revision semantics, MIDI synchronization, and atomic rejection.
+
+
+## 2026-11-11 — selected drum-event repetition
+
+- Added an atomic duplication endpoint that clones selected canonical drum events
+  at one or more fixed interval offsets. New events receive unique IDs, retain
+  instrument/velocity metadata, and are marked as manually corrected.
+- Repeat count is bounded to 1–16; invalid selections and any clone beyond the
+  track duration reject the entire request before persistence.
+- Added editor controls for interval and repeat count. A successful action
+  creates one undo/redo revision and regenerates MIDI from canonical events.
+- Added API tests for metadata preservation, unique IDs, repeat timing, single
+  history revision, MIDI synchronization, and out-of-duration atomic rejection.
+- CI validation for this increment is pending until the latest branch head runs.
