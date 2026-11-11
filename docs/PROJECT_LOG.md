@@ -1,5 +1,26 @@
 # DrumAI Studio project log
 
+## 2026-11-11 — tempo-aware drum quantization (implementation, CI pending)
+
+- Added a pure canonical-performance quantizer with 1/4, 1/8, 1/16, and
+  1/32-note grids, local BPM-aware spacing, tempo-change segment anchors, and
+  adjustable 0–100% interpolation strength. Event identity, instrument,
+  velocity, confidence, and provenance remain unchanged.
+- Added `POST /api/projects/{project_id}/quantize` with preview-only mode
+  (`apply=false`) and persistent apply mode. Applied quantization uses the
+  existing atomic JSON/MIDI save path so downloads remain synchronized.
+- Added editor controls for grid resolution and strength, plus a one-click
+  apply action. Preview remains available through the API for clients that
+  need a non-mutating comparison.
+- Added unit coverage for all supported grids, strength interpolation,
+  zero-strength no-op, tempo changes, invalid parameters, API preview/apply,
+  and MIDI round-trip synchronization.
+- DrumScript engine validation run #52 passed all steps, including upstream
+  tests, synthetic/repository MP3 smoke tests, and API-to-engine end-to-end.
+  This is engine integration evidence, not a transcription accuracy claim.
+- New quantization-specific backend CI and frontend build are pending; record
+  their outcomes after the run completes.
+
 ## 2026-11-11 — canonical drum-event editor
 
 - Added project-scoped event create, patch, and delete endpoints for the latest
