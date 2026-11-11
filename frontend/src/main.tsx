@@ -71,6 +71,10 @@ function App() {
   const [quantizeStrength, setQuantizeStrength] = React.useState(100);
   const [history, setHistory] = React.useState({ current_revision: 0, can_undo: false, can_redo: false });
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
+  const [audioTime, setAudioTime] = React.useState(0);
+  const [audioDuration, setAudioDuration] = React.useState(0);
+  const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   async function uploadAndAnalyze() {
     if (!file) return;
@@ -308,6 +312,38 @@ function App() {
             <label>力度<input type="number" min="1" max="127" value={newVelocity} onChange={(event) => setNewVelocity(event.target.value)} /></label>
             <button disabled={saving} onClick={addEvent}>添加事件</button>
           </div>
+          <section className="audio-player">
+            <div className="audio-player-heading">
+              <div><p className="eyebrow">AUDIO PLAYBACK</p><h3>原音频同步播放</h3></div>
+              <span>{audioTime.toFixed(2)}s / {(audioDuration || summary.durationSeconds).toFixed(2)}s</span>
+            </div>
+            <audio ref={audioRef} controls preload="metadata"
+              src={API_BASE + "/api/projects/" + summary.projectId + "/audio"}
+              onLoadedMetadata={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
+              onDurationChange={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
+              onTimeUpdate={(event) => {
+                const time = event.currentTarget.currentTime;
+                setAudioTime(time);
+                let nearest: DrumEvent | null = null;
+                let distance = Number.POSITIVE_INFINITY;
+                for (const item of summary.events) {
+                  const delta = Math.abs(item.time_seconds - time);
+                  if (delta < distance) { distance = delta; nearest = item; }
+                }
+                setActiveEventId(nearest && distance <= 0.14 ? nearest.id : null);
+              }}
+            />
+            <input className="audio-seek" aria-label="音频播放位置" type="range" min="0"
+              max={audioDuration || summary.durationSeconds} step="0.01"
+              value={Math.min(audioTime, audioDuration || summary.durationSeconds)}
+              onChange={(event) => {
+                const nextTime = Number(event.target.value);
+                if (audioRef.current) audioRef.current.currentTime = nextTime;
+                setAudioTime(nextTime);
+              }}
+            />
+            <small>播放时播放头会跟随时间轴移动；点击任一鼓点可跳转到对应音频位置。</small>
+          </section>
           <div className="timeline-panel">
             <div className="timeline-heading">
               <div><p className="eyebrow">ARRANGEMENT VIEW</p><h3>鼓点时间轴</h3></div>
@@ -318,11 +354,12 @@ function App() {
               {["kick", "snare", "closed_hihat", "open_hihat", "ride", "crash", "high_tom", "mid_tom", "low_tom", "pedal_hihat", "other"].map((lane) => {
                 const laneEvents = summary.events.filter((event) => event.instrument === lane);
                 return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replaceAll("_", " ")}</span><div className="timeline-track" style={{ backgroundSize: `${(60 / summary.bpm / summary.durationSeconds) * 100}% 100%` }}>
-                  {laneEvents.map((event) => <button key={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id ? "selected" : ""}`} style={{ left: `${(event.time_seconds / summary.durationSeconds) * 100}%`, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { setSelectedEventId(event.id); document.getElementById(`event-${event.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }} />)}
+                  <span className="timeline-playhead" style={{ left: `${(audioTime / summary.durationSeconds) * 100}%` }} />
+                  {laneEvents.map((event) => <button key={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id ? "selected" : ""} ${activeEventId === event.id ? "active" : ""}`} style={{ left: `${(event.time_seconds / summary.durationSeconds) * 100}%`, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { setSelectedEventId(event.id); if (audioRef.current) audioRef.current.currentTime = event.time_seconds; setAudioTime(event.time_seconds); document.getElementById(`event-${event.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }} />)}
                 </div></div>;
               })}
             </div></div>
-            <small className="timeline-help">点击鼓点可定位到下方事件表；标记亮度反映力度。</small>
+            <small className="timeline-help">点击鼓点可跳转音频并定位事件；绿色播放头随音频移动，标记亮度反映力度。</small>
           </div>
           <div className="event-table-wrap">
             <table className="event-table">
