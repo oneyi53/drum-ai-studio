@@ -95,3 +95,5 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .timeline-beat{position:absolute;top:0;bottom:0;width:1px;background:#ffffff12;pointer-events:none}
 .timeline-beat.bar{width:2px;background:#c9f36b55}
 @media(max-width:640px){.tempo-map-labels{margin-left:92px}}
+
+.timeline-tempo-change{position:absolute;z-index:1;top:0;bottom:0;width:2px;background:#f0a85b;opacity:.85;pointer-events:none}
