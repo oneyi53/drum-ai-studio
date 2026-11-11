@@ -97,25 +97,31 @@ def load_prediction(path: Path) -> list[Event]:
 
 
 def _match_group(reference: list[Event], prediction: list[Event], tolerance: float) -> dict:
-    """Greedy chronological one-to-one matching for a single instrument."""
+    """Maximum-cardinality chronological one-to-one matching for one instrument.
+
+    Since both event lists are one-dimensional onset times and every match uses
+    the same symmetric tolerance window, advancing the event that falls before
+    the other's window preserves the maximum possible number of matches.
+    """
     ref = sorted(reference)
     pred = sorted(prediction)
-    used_prediction: set[int] = set()
     errors: list[float] = []
+    ref_index = 0
+    pred_index = 0
     matches = 0
 
-    for ref_event in ref:
-        candidates = [
-            (abs(pred_event.onset_seconds - ref_event.onset_seconds), index)
-            for index, pred_event in enumerate(pred)
-            if index not in used_prediction
-            and abs(pred_event.onset_seconds - ref_event.onset_seconds) <= tolerance
-        ]
-        if candidates:
-            error, index = min(candidates)
-            used_prediction.add(index)
-            errors.append(error)
+    while ref_index < len(ref) and pred_index < len(pred):
+        ref_onset = ref[ref_index].onset_seconds
+        pred_onset = pred[pred_index].onset_seconds
+        if pred_onset < ref_onset - tolerance:
+            pred_index += 1
+        elif ref_onset < pred_onset - tolerance:
+            ref_index += 1
+        else:
+            errors.append(abs(pred_onset - ref_onset))
             matches += 1
+            ref_index += 1
+            pred_index += 1
 
     false_positives = len(pred) - matches
     false_negatives = len(ref) - matches
