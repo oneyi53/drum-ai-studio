@@ -1,8 +1,12 @@
 import mido
 import pytest
 
-from app.drum_events import DrumInstrument
-from app.midi_adapter import gm_note_to_instrument, midi_to_performance
+from app.drum_events import DrumEvent, DrumInstrument, DrumPerformance, TempoChange
+from app.midi_adapter import (
+    gm_note_to_instrument,
+    midi_to_performance,
+    performance_to_midi,
+)
 
 
 def _write_midi(path, tracks, ticks_per_beat=480):
@@ -67,3 +71,40 @@ def test_can_drop_unmapped_keys(tmp_path):
 def test_missing_file_fails_clearly(tmp_path):
     with pytest.raises(FileNotFoundError):
         midi_to_performance(tmp_path / "missing.mid")
+
+
+def test_exports_canonical_events_with_tempo_and_velocity(tmp_path):
+    performance = DrumPerformance(
+        duration_seconds=2.0,
+        tempo_map=[
+            TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4),
+            TempoChange(time_seconds=1, bpm=100, numerator=3, denominator=4),
+        ],
+        events=[
+            DrumEvent(
+                time_seconds=0.5,
+                instrument=DrumInstrument.KICK,
+                velocity=112,
+                source="manual",
+                manually_corrected=True,
+            ),
+            DrumEvent(
+                time_seconds=1.4,
+                instrument=DrumInstrument.OPEN_HIHAT,
+                velocity=77,
+                source="manual",
+                manually_corrected=True,
+            ),
+        ],
+    )
+    path = performance_to_midi(performance, tmp_path / "edited.mid")
+    restored = midi_to_performance(path)
+
+    assert [event.instrument for event in restored.events] == [
+        DrumInstrument.KICK,
+        DrumInstrument.OPEN_HIHAT,
+    ]
+    assert [event.velocity for event in restored.events] == [112, 77]
+    assert [event.time_seconds for event in restored.events] == pytest.approx([0.5, 1.4])
+    assert restored.tempo_map[-1].bpm == pytest.approx(100)
+    assert restored.tempo_map[-1].numerator == 3
