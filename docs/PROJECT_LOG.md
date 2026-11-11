@@ -23,6 +23,9 @@ code or validation state changes; do not infer completion from plans.
   event summary display, and generated MIDI download.
 - Added a guarded MIDI download endpoint that serves only the latest completed
   job artifact for the requested project.
+- Added an engine-validation workflow step that exercises the complete API path
+  against a synthetic mix: upload, enqueue, real DrumScript inference, canonical
+  performance retrieval, and MIDI download.
 - Added `docs/ANALYSIS_API.md` with endpoint contracts, runtime requirements,
   and the single-worker deployment limitation.
 
