@@ -386,3 +386,29 @@ def test_musicxml_download_requires_completed_performance(client):
         files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
     ).json()
     assert client.get(f"/api/projects/{uploaded['id']}/musicxml").status_code == 404
+
+
+def test_list_projects_includes_latest_analysis_state(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("saved.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return DrumPerformance(duration_seconds=2, events=[]), midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
+
+    response = client.get("/api/projects")
+    assert response.status_code == 200
+    projects = response.json()["projects"]
+    assert len(projects) == 1
+    assert projects[0]["id"] == uploaded["id"]
+    assert projects[0]["original_filename"] == "saved.wav"
+    assert projects[0]["latest_job_status"] == "completed"
+    assert projects[0]["latest_job_id"]
