@@ -194,6 +194,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             by_instrument[event.instrument].append((event, beat))
 
         voice_number = 0
+        measure_duration = round((end - start) * DIVISIONS)
         cursor = 0
         for instrument in DrumInstrument:
             notes = by_instrument.get(instrument, [])
@@ -231,6 +232,10 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                         chord=chord_index > 0,
                     )
                 cursor = onset + note_duration
+            if cursor < measure_duration:
+                forward = ET.SubElement(measure, "forward")
+                _add_text(forward, "duration", measure_duration - cursor)
+                cursor = measure_duration
 
     ET.indent(root, space="  ")
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
