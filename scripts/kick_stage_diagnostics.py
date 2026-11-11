@@ -9,7 +9,7 @@ from drumscript.audio_processor.audio_loader import load_audio, normalise_audio
 from drumscript.audio_processor.onset_detector import detect_onsets
 from drumscript.datasets.idmt import find_mix_files, reference_onsets_for_file, subset_of
 from drumscript.drum_classifier.classify import classify_events
-from drumscript.notation_generator.constants import SAMPLE_RATE
+from drumscript.notation_generator.constants import KICK_FREQ_MAX, KICK_FREQ_MIN, KICK_LFER_MIN, SAMPLE_RATE
 
 
 def match_count(reference: list[float], estimates: list[float], tolerance: float) -> int:
@@ -48,6 +48,37 @@ def evaluate_file(audio_path: Path, tolerance: float) -> dict[str, int | float |
 
     candidate_tp = match_count(reference_times, candidate_times, tolerance)
     kick_tp = match_count(reference_times, kick_times, tolerance)
+
+    # Inspect classifier features for reference kicks that already have an onset candidate.
+    matched_features: list[dict[str, float | bool]] = []
+    used_candidates: set[int] = set()
+    for reference_time in sorted(reference_times):
+        options = [
+            (abs(float(event["time_sec"]) - reference_time), index, event)
+            for index, event in enumerate(events)
+            if index not in used_candidates
+            and abs(float(event["time_sec"]) - reference_time) <= tolerance
+        ]
+        if not options:
+            continue
+        _, index, event = min(options, key=lambda item: item[0])
+        used_candidates.add(index)
+        features = event.get("debug_features", {})
+        if not features:
+            continue
+        lfer = float(features.get("lfer", 0.0))
+        peak_freq = float(features.get("peak_freq", 0.0))
+        matched_features.append({
+            "lfer": lfer,
+            "peak_freq": peak_freq,
+            "centroid": float(features.get("centroid", 0.0)),
+            "hfer": float(features.get("hfer", 0.0)),
+            "hfer_5k": float(features.get("hfer_5k", 0.0)),
+            "decay": float(features.get("decay", 0.0)),
+            "passes_lfer": lfer >= KICK_LFER_MIN,
+            "passes_peak_frequency": KICK_FREQ_MIN <= peak_freq <= KICK_FREQ_MAX,
+            "passes_kick_rule": lfer >= KICK_LFER_MIN and KICK_FREQ_MIN <= peak_freq <= KICK_FREQ_MAX,
+        })
     return {
         "track": audio_path.name,
         "subset": subset_of(audio_path),
@@ -59,6 +90,7 @@ def evaluate_file(audio_path: Path, tolerance: float) -> dict[str, int | float |
         "candidate_recall": candidate_tp / len(reference_times) if reference_times else 0.0,
         "kick_recall": kick_tp / len(reference_times) if reference_times else 0.0,
         "kick_precision": kick_tp / len(kick_times) if kick_times else 0.0,
+        "matched_candidate_kick_features": matched_features,
     }
 
 
@@ -85,6 +117,30 @@ def main() -> None:
     candidate_tp_total = sum(int(row["candidate_matches"]) for row in rows)
     kick_tp_total = sum(int(row["kick_matches"]) for row in rows)
     kick_prediction_total = sum(int(row["kick_predictions"]) for row in rows)
+    matched_features = [
+        feature for row in rows for feature in row["matched_candidate_kick_features"]
+    ]
+    feature_count = len(matched_features)
+    feature_diagnostics = {
+        "matched_candidate_count": feature_count,
+        "passes_lfer_count": sum(bool(item["passes_lfer"]) for item in matched_features),
+        "passes_peak_frequency_count": sum(bool(item["passes_peak_frequency"]) for item in matched_features),
+        "passes_kick_rule_count": sum(bool(item["passes_kick_rule"]) for item in matched_features),
+        "mean_lfer": (
+            sum(float(item["lfer"]) for item in matched_features) / feature_count
+            if feature_count else None
+        ),
+        "median_lfer": (
+            sorted(float(item["lfer"]) for item in matched_features)[feature_count // 2]
+            if feature_count else None
+        ),
+        "median_peak_freq_hz": (
+            sorted(float(item["peak_freq"]) for item in matched_features)[feature_count // 2]
+            if feature_count else None
+        ),
+        "kick_lfer_threshold": KICK_LFER_MIN,
+        "kick_peak_frequency_range_hz": [KICK_FREQ_MIN, KICK_FREQ_MAX],
+    }
 
     summary = {
         "subset": args.subset,
@@ -98,6 +154,7 @@ def main() -> None:
         "kick_recall": kick_tp_total / reference_total if reference_total else 0.0,
         "kick_precision": kick_tp_total / kick_prediction_total if kick_prediction_total else 0.0,
         "candidate_to_kick_match_retention": kick_tp_total / candidate_tp_total if candidate_tp_total else 0.0,
+        "kick_rule_feature_diagnostics": feature_diagnostics,
         "tracks": rows,
     }
 
@@ -114,7 +171,8 @@ def main() -> None:
         f"refs={reference_total} candidate_recall={summary['candidate_recall']:.3f} "
         f"kick_recall={summary['kick_recall']:.3f} "
         f"kick_precision={summary['kick_precision']:.3f} "
-        f"candidate_to_kick_retention={summary['candidate_to_kick_match_retention']:.3f}"
+        f"candidate_to_kick_retention={summary['candidate_to_kick_match_retention']:.3f} "
+        f"feature_rule_pass={feature_diagnostics['passes_kick_rule_count']}/{feature_count}"
     )
     print(f"KICK_STAGE_ARTIFACT json={args.output} csv={csv_path}")
 
