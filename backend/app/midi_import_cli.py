@@ -30,7 +30,7 @@ def main() -> int:
         percussion_channel_only=not args.all_channels,
         include_unmapped_notes=not args.drop_unmapped,
     )
-    payload = performance.model_dump_json(indent=2) + "\\n"
+    payload = performance.model_dump_json(indent=2) + "\n"
     if args.output:
         args.output.write_text(payload, encoding="utf-8")
     else:
