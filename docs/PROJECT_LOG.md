@@ -1,5 +1,24 @@
 # DrumAI Studio project log
 
+## 2026-11-11 — canonical drum-event editor
+
+- Added project-scoped event create, patch, and delete endpoints for the latest
+  completed canonical performance. Manual changes are marked with manual
+  provenance and validated against the audio duration.
+- Added canonical-to-GM MIDI export, preserving event timing, velocity, tempo,
+  and time signatures. Every successful edit regenerates the project's MIDI
+  download so it remains synchronized with canonical JSON.
+- Added a browser editor for adding events and changing time, instrument, and
+  velocity, plus deleting events. Enabled PATCH/DELETE in API CORS policy.
+- Added API integration coverage for CRUD behavior, validation, MIDI download
+  synchronization, and MIDI adapter round-trip coverage for tempo and velocity.
+- DrumScript engine validation run #34 passed, including synthetic + repository
+  MP3 smoke tests and the API-to-engine end-to-end upload/inference/result/MIDI
+  download path. This run predates the event-editor changes and does not
+  validate those new endpoints.
+- Fresh backend and frontend CI for the editor changes is pending. No accuracy
+  claim is made; model predictions still require human review.
+
 ## 2026-11-11 — CI regression fixes
 
 - The first fresh backend run for the asynchronous API changes exposed two stale
