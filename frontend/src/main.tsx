@@ -130,6 +130,8 @@ function App() {
   const [metronomeEnabled, setMetronomeEnabled] = React.useState(false);
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
   const [hiddenLanes, setHiddenLanes] = React.useState<string[]>([]);
+  const [selectedEventIds, setSelectedEventIds] = React.useState<string[]>([]);
+  const [batchTimeOffset, setBatchTimeOffset] = React.useState("0.010");
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const lastMetronomeBeatRef = React.useRef(-1);
@@ -229,6 +231,7 @@ function App() {
     setAudioDuration(0);
     setSelectedEventId(null);
     setActiveEventId(null);
+    setSelectedEventIds([]);
     try {
       let jobId = project.latest_job_id;
       let completed = project.latest_job_status === "completed";
@@ -280,6 +283,7 @@ function App() {
     setAudioDuration(0);
     setSelectedEventId(null);
     setActiveEventId(null);
+    setSelectedEventIds([]);
     setMessage("正在上传音频…");
     try {
       const body = new FormData();
@@ -344,6 +348,7 @@ function App() {
     }
     setSummary(summarizePerformance(jobId, projectId, result.performance));
     setQuantizePreview(null);
+    setSelectedEventIds([]);
     const historyResponse = await fetch(`${API_BASE}/api/projects/${projectId}/history`);
     if (historyResponse.ok) setHistory(await historyResponse.json());
   }
@@ -431,6 +436,41 @@ function App() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function batchEditEvents() {
+    if (!summary || !selectedEventIds.length) return;
+    const offset = Number(batchTimeOffset);
+    if (!Number.isFinite(offset) || offset === 0) { setMessage("请输入非零的时间偏移量。"); return; }
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/events/batch`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_ids: selectedEventIds, time_offset_seconds: offset }),
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "批量移动失败"));
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setMessage(`已批量移动 ${selectedEventIds.length} 个鼓点，生成一条历史记录并同步 MIDI。`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "批量移动失败"); }
+    finally { setSaving(false); }
+  }
+
+  async function batchDeleteEvents() {
+    if (!summary || !selectedEventIds.length) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/events/batch`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_ids: selectedEventIds }),
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "批量删除失败"));
+      const count = selectedEventIds.length;
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setMessage(`已批量删除 ${count} 个鼓点，生成一条历史记录并同步 MIDI。`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "批量删除失败"); }
+    finally { setSaving(false); }
   }
 
   async function previewQuantization() {
@@ -638,12 +678,20 @@ function App() {
             </div></div>
             <small className="timeline-help">点击鼓点可跳转音频并定位事件；绿色播放头随音频移动，标记亮度反映力度。</small>
           </div>
+          <div className="event-batch-controls">
+            <label><input type="checkbox" checked={selectedEventIds.length === summary.events.length && summary.events.length > 0} onChange={(event) => setSelectedEventIds(event.target.checked ? summary.events.map((item) => item.id) : [])} /> 全选</label>
+            <span>已选 {selectedEventIds.length} 个</span>
+            <label>时间偏移（秒）<input type="number" step="0.001" value={batchTimeOffset} onChange={(event) => setBatchTimeOffset(event.target.value)} /></label>
+            <button type="button" disabled={saving || selectedEventIds.length === 0 || !Number.isFinite(Number(batchTimeOffset)) || Number(batchTimeOffset) === 0} onClick={() => void batchEditEvents()}>批量移动</button>
+            <button type="button" className="delete-event" disabled={saving || selectedEventIds.length === 0} onClick={() => void batchDeleteEvents()}>批量删除</button>
+          </div>
           <div className="event-table-wrap">
             <table className="event-table">
-              <thead><tr><th>时间（秒）</th><th>鼓件</th><th>力度</th><th>来源</th><th>操作</th></tr></thead>
+              <thead><tr><th>选择</th><th>时间（秒）</th><th>鼓件</th><th>力度</th><th>来源</th><th>操作</th></tr></thead>
               <tbody>
                 {summary.events.map((event) => (
                   <tr id={`event-${event.id}`} key={`${event.id}-${event.time_seconds}-${event.instrument}-${event.velocity}`} className={selectedEventId === event.id ? "selected-event-row" : ""}>
+                    <td><input aria-label={`选择 ${event.instrument} 事件`} type="checkbox" checked={selectedEventIds.includes(event.id)} onChange={(input) => setSelectedEventIds((current) => input.target.checked ? [...current, event.id] : current.filter((id) => id !== event.id))} /></td>
                     <td><input aria-label="事件时间" type="number" min="0" max={summary.durationSeconds} step="0.001" defaultValue={event.time_seconds} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.time_seconds) void editEvent(event.id, { time_seconds: value }); }} /></td>
                     <td><select aria-label="鼓件" defaultValue={event.instrument} onChange={(input) => void editEvent(event.id, { instrument: input.target.value })}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></td>
                     <td><input aria-label="力度" type="number" min="1" max="127" defaultValue={event.velocity} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.velocity) void editEvent(event.id, { velocity: value }); }} /></td>
