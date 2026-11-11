@@ -109,3 +109,5 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .musicxml-link{margin-left:8px;background:#d8e0f2;color:#172033}
 .musicxml-link:hover{background:#eef2fb}
 @media(max-width:640px){.musicxml-link{margin-left:0}}
+
+.timeline-loop-range{position:absolute;z-index:0;top:0;bottom:0;background:#c9f36b18;border-left:1px solid #c9f36b99;border-right:1px solid #c9f36b99;pointer-events:none}
