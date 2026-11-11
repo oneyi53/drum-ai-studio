@@ -34,8 +34,10 @@ jobs:
       - name: Ensure FFmpeg is available
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
+            python -m pip install --no-cache-dir imageio-ffmpeg
+            FFMPEG_BIN="$(python -c "import pathlib, imageio_ffmpeg; print(pathlib.Path(imageio_ffmpeg.get_ffmpeg_exe()).parent)")"
+            echo "$FFMPEG_BIN" >> "$GITHUB_PATH"
+            export PATH="$FFMPEG_BIN:$PATH"
           fi
           ffmpeg -version
       - name: Install CPU PyTorch and DrumScript
