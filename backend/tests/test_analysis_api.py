@@ -412,3 +412,80 @@ def test_list_projects_includes_latest_analysis_state(client, monkeypatch):
     assert projects[0]["original_filename"] == "saved.wav"
     assert projects[0]["latest_job_status"] == "completed"
     assert projects[0]["latest_job_id"]
+
+
+
+def test_batch_event_shift_and_delete_are_atomic_single_history_edits(client, monkeypatch, tmp_path):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("batch.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=4,
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=1.5, instrument=DrumInstrument.SNARE),
+            DrumEvent(time_seconds=2.5, instrument=DrumInstrument.CRASH),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    before = client.get(f"/api/projects/{project_id}/performance").json()["performance"]
+    ids = [event["id"] for event in before["events"][:2]]
+
+    shifted = client.patch(
+        f"/api/projects/{project_id}/events/batch",
+        json={"event_ids": ids, "time_offset_seconds": 0.25},
+    )
+    assert shifted.status_code == 200
+    assert [event["time_seconds"] for event in shifted.json()["performance"]["events"]] == [0.75, 1.75, 2.5]
+    assert all(event["manually_corrected"] for event in shifted.json()["performance"]["events"][:2])
+    history = client.get(f"/api/projects/{project_id}/history").json()
+    assert history["current_revision"] == 1
+
+    deleted = client.request(
+        "DELETE", f"/api/projects/{project_id}/events/batch", json={"event_ids": ids}
+    )
+    assert deleted.status_code == 200
+    assert len(deleted.json()["performance"]["events"]) == 1
+    assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 2
+
+    midi_path = tmp_path / "batch.mid"
+    midi_path.write_bytes(client.get(f"/api/projects/{project_id}/midi").content)
+    assert len(midi_to_performance(midi_path).events) == 1
+
+
+def test_batch_event_edit_rejects_invalid_shift_without_persisting(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("batch.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=2,
+        events=[DrumEvent(time_seconds=0.25, instrument=DrumInstrument.KICK)],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    event_id = client.get(f"/api/projects/{project_id}/performance").json()["performance"]["events"][0]["id"]
+    response = client.patch(
+        f"/api/projects/{project_id}/events/batch",
+        json={"event_ids": [event_id], "time_offset_seconds": -1.0},
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 0
