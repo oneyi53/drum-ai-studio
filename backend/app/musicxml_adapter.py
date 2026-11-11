@@ -12,7 +12,14 @@ from .drum_events import DrumInstrument, DrumPerformance, TempoChange
 from .midi_adapter import INSTRUMENT_TO_GM_NOTE
 
 DIVISIONS = 480
-NOTE_DURATION = 60  # 32nd note in divisions per quarter note
+NOTE_VALUES = (
+    (DIVISIONS, "quarter"),
+    (DIVISIONS // 2, "eighth"),
+    (DIVISIONS // 4, "16th"),
+    (DIVISIONS // 8, "32nd"),
+    (DIVISIONS // 16, "64th"),
+    (DIVISIONS // 32, "128th"),
+)
 
 DISPLAY: dict[DrumInstrument, tuple[str, int, str]] = {
     DrumInstrument.KICK: ("F", 4, "normal"),
@@ -67,6 +74,7 @@ def _add_note(
     instrument: DrumInstrument,
     velocity: int,
     duration: int,
+    note_type: str,
     *,
     chord: bool,
 ) -> None:
@@ -80,7 +88,7 @@ def _add_note(
     ET.SubElement(note, "instrument", id=f"P1-{instrument.value}")
     _add_text(note, "duration", duration)
     _add_text(note, "voice", list(DrumInstrument).index(instrument) + 1)
-    _add_text(note, "type", "32nd")
+    _add_text(note, "type", note_type)
     _add_text(note, "stem", "up")
     _add_text(note, "notehead", notehead)
     play = ET.SubElement(note, "play")
@@ -222,13 +230,19 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                     if index < len(notes)
                     else round((end - start) * DIVISIONS)
                 )
-                note_duration = max(1, min(NOTE_DURATION, next_onset - onset))
+                available_gap = max(1, next_onset - onset)
+                note_duration, note_type = next(
+                    ((duration, kind) for duration, kind in NOTE_VALUES if duration <= available_gap),
+                    (1, "128th"),
+                )
+                note_duration = min(note_duration, available_gap)
                 for chord_index, grouped_event in enumerate(group):
                     _add_note(
                         measure,
                         instrument,
                         grouped_event.velocity,
                         note_duration,
+                        note_type,
                         chord=chord_index > 0,
                     )
                 cursor = onset + note_duration
