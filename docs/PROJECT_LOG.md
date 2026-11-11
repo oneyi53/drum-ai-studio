@@ -1,4 +1,15 @@
 
+## 2026-11-11 — saved project recovery (implementation, CI pending)
+
+- Added `GET /api/projects?limit=...` to list recent local projects with their
+  latest analysis-job state. The API clamps the requested list size to 1–100.
+- Added a workspace project picker that loads saved projects on startup,
+  restores completed canonical performances and edit history after reload,
+  and supports manual list refresh.
+- Added API integration coverage for project metadata and latest completed job
+  state. Frontend build and backend tests are pending for this increment.
+
+
 ## 2026-11-11 — editable MusicXML drum score export (implementation, CI pending)
 
 - Added a MusicXML 4.0 partwise exporter for canonical drum events, with a
