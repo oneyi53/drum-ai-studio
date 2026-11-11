@@ -50,3 +50,15 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .event-table input,.event-table select{padding:7px}
 .delete-event{background:#3a2730;color:#ff9ca8}
 @media(max-width:640px){.event-add{grid-template-columns:1fr 1fr}.event-add button{grid-column:1/-1}.event-table-wrap{margin-left:-2px;margin-right:-2px}}
+
+
+.quantize-panel{display:grid;grid-template-columns:1.4fr 1fr 1.2fr auto;align-items:end;gap:14px;margin:24px 0 8px;padding:16px;background:#111620;border:1px solid #c9f36b35;border-radius:12px}
+.quantize-panel h3{font-size:15px;margin:0 0 5px}
+.quantize-panel small{font-size:10px;line-height:1.5;color:#8993a6}
+.quantize-panel label{display:flex;flex-direction:column;gap:7px;font-size:10px;color:#aeb6c5}
+.quantize-panel select{width:100%;border:1px solid #ffffff24;border-radius:7px;background:#1b2230;color:#edf0f7;padding:9px;font:11px "DM Mono",monospace}
+.quantize-panel .strength-control{display:grid;grid-template-columns:1fr auto;align-items:center}
+.quantize-panel .strength-control input{grid-column:1/-1;width:100%;accent-color:#c9f36b}
+.quantize-panel button{border:0;border-radius:7px;background:#c9f36b;color:#141a0e;padding:10px 12px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}
+.quantize-panel button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:760px){.quantize-panel{grid-template-columns:1fr 1fr}.quantize-panel>div:first-child{grid-column:1/-1}.quantize-panel button{grid-column:1/-1}}
