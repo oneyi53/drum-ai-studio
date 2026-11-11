@@ -65,7 +65,7 @@ Always report the tolerance alongside metrics. Review 25 ms, 50 ms, and 100 ms t
 ## 6. Known limitations
 
 - The evaluator uses the exact pitch mapping in DrumScript's `DRUM_NOTATION_MAP` (36 kick, 38 snare, 41/45/48 toms, 42/46 hats, 49 crash, 51 ride) and requires a MIDI percussion track marked `is_drum=True`. This mapping was checked against the upstream `constants.py` and `midi_exporter.py` source.
-- Matching is greedy and chronological within each instrument; it is intended for a first benchmark, not a formal MIR challenge scorer.
+- Matching is maximum-cardinality and chronological within each instrument for the shared symmetric onset tolerance; it is intended for a first benchmark, not a formal MIR challenge scorer.
 - DrumScript's score builder quantizes event times to a sixteenth-note grid before writing MIDI. The evaluator therefore scores the exported, quantized times, not the raw onset detector timestamps; timing results must be interpreted with that limitation in mind.
 - It does not yet evaluate tempo maps, swing feel, note velocity, sticking, notation readability, or PDF/MusicXML export.
 - Synthetic smoke tests establish pipeline execution, not real-song accuracy.
