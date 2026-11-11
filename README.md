@@ -2,7 +2,7 @@
 
 A web-based workspace for turning a full mixed song into an editable drum transcription.
 
-> **Status: P1 analysis API integration in progress.** Project upload, persisted asynchronous analysis jobs, a lazy DrumScript adapter, canonical performance retrieval, and the event-evaluation toolchain are implemented on the feature branch. The worker still requires the optional DrumScript/PyTorch/FFmpeg runtime; production queueing, authenticated multi-user storage, notation editing, and PDF/MusicXML exports are not yet implemented.
+> **Status: P2 transcription and editing workspace in progress.** Upload, asynchronous DrumScript analysis, canonical drum-event editing, quantization, undo/redo, synchronized playback, A–B practice looping, a tempo-map metronome, MIDI export, and MusicXML score export are implemented on the feature branch. Real analysis still requires the optional DrumScript/PyTorch/FFmpeg runtime. A durable production queue, authenticated multi-user storage, full notation editing, and built-in PDF export remain future work.
 
 ## Product direction
 
@@ -10,7 +10,7 @@ A web-based workspace for turning a full mixed song into an editable drum transc
 2. Separate the drum stem.
 3. Detect drum events (kick, snare, hi-hat, cymbals, and toms).
 4. Review and correct events in an editable drum-grid/notation editor.
-5. Export PDF, MIDI, and MusicXML from one canonical event model.
+5. Export MIDI and MusicXML from one canonical event model; use notation software to lay out and export PDF.
 
 ## Architecture
 
@@ -21,7 +21,7 @@ A web-based workspace for turning a full mixed song into an editable drum transc
 - **Canonical data:** versioned Pydantic drum-event model with tempo map
 - **MIDI normalization:** Standard MIDI File to canonical events, General MIDI percussion map, tempo/time-signature preservation
 - **Accuracy evaluation:** event precision/recall/F1 with configurable timing tolerance
-- **Notation display:** OpenSheetMusicDisplay (MusicXML rendering); a dedicated editor will be built separately
+- **Score interchange:** MusicXML 4.0 percussion score export; final engraving is delegated to notation software
 
 ## Upstream audit and licensing
 
@@ -69,6 +69,7 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - Audio upload creates a project record and stores the original file locally.
 - The analysis endpoint creates an asynchronous job; the worker fails clearly if DrumScript or FFmpeg/ffprobe is not installed.
 - The event evaluator is ready for reviewed reference annotations, but no golden dataset or accuracy result is claimed.
+- MIDI and MusicXML downloads reflect the latest canonical performance; MusicXML can be imported into notation software, but PDF engraving is not built into the app.
 - Analysis jobs use FastAPI in-process background tasks and are intended for single-worker development only; use a durable queue before multi-worker or multi-replica deployment.
 - Local uploads are not yet authenticated or suitable for public multi-user deployment.
 - Do not upload copyrighted recordings unless you have the right to do so.
@@ -81,3 +82,4 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - [Canonical event schema and evaluation](docs/DRUM_EVENT_EVALUATION.md)
 - [MIDI adapter and GM mapping assumptions](docs/MIDI_ADAPTER.md)
 - [Asynchronous analysis API and engine runtime](docs/ANALYSIS_API.md)
+- [User guide: analysis, editing, practice, and export](docs/USER_GUIDE.md)
