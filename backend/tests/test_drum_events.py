@@ -63,3 +63,21 @@ def test_empty_inputs_are_perfect_and_invalid_tolerance_rejected():
 def test_event_rejects_non_finite_time():
     with pytest.raises(ValidationError):
         event(float("inf"))
+
+
+def test_overall_metrics_do_not_match_wrong_instrument_labels():
+    reference = [event(1.0, DrumInstrument.KICK), event(1.0, DrumInstrument.SNARE)]
+    predicted = [event(1.0, DrumInstrument.SNARE), event(1.0, DrumInstrument.KICK)]
+    report = evaluate_performance(reference, predicted)
+    assert report.overall.true_positives == 2
+    assert report.overall.false_positives == 0
+    assert report.overall.false_negatives == 0
+
+
+def test_instrument_substitution_is_not_counted_as_a_correct_hit():
+    reference = [event(1.0, DrumInstrument.KICK)]
+    predicted = [event(1.0, DrumInstrument.SNARE)]
+    report = evaluate_performance(reference, predicted)
+    assert report.overall.true_positives == 0
+    assert report.overall.false_positives == 1
+    assert report.overall.false_negatives == 1
