@@ -352,6 +352,32 @@ def get_analysis_job(job_id: str) -> dict[str, Any]:
     return dict(row)
 
 
+@app.get("/api/projects/{project_id}/audio")
+def get_project_audio(project_id: str) -> FileResponse:
+    """Stream the original uploaded audio for playback and timeline synchronization."""
+    with connect_db() as connection:
+        project = connection.execute(
+            "SELECT stored_filename, original_filename FROM projects WHERE id=?",
+            (project_id,),
+        ).fetchone()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    stored_filename = project["stored_filename"]
+    # Only use the server-generated basename stored in SQLite.
+    audio_path = (UPLOAD_DIR / stored_filename).resolve()
+    if audio_path.parent != UPLOAD_DIR.resolve() or not audio_path.is_file():
+        raise HTTPException(status_code=404, detail="Uploaded audio file is missing.")
+    import mimetypes
+
+    media_type = mimetypes.guess_type(project["original_filename"])[0] or "application/octet-stream"
+    return FileResponse(
+        audio_path,
+        media_type=media_type,
+        filename=Path(project["original_filename"]).name,
+        content_disposition_type="inline",
+    )
+
+
 @app.get("/api/projects/{project_id}/performance")
 def get_project_performance(project_id: str) -> dict[str, Any]:
     with connect_db() as connection:
