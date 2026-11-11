@@ -203,3 +203,19 @@ code or validation state changes; do not infer completion from plans.
 - Engine validation run #6 completed successfully and produced non-empty MIDI
   outputs for the synthetic signal and both repository MP3s. That earlier
   smoke verified pipeline execution only, not event-level accuracy.
+
+
+## 2026-11-11 — synchronized audio playback and timeline (implementation, CI pending)
+
+- Added `GET /api/projects/{project_id}/audio` to stream the original project
+  upload by project ID. Filesystem access uses the server-generated stored
+  filename, resolves under the upload directory, and returns 404 for unknown
+  projects or missing audio.
+- Added API coverage for audio bytes, media type, inline disposition, and
+  unknown-project handling.
+- Added browser audio playback controls and a seek slider to the editor.
+  Playback time moves a playhead across every timeline lane; nearby events are
+  highlighted during playback, and clicking a hit seeks the audio and selects
+  its corresponding event row.
+- Updated the API contract documentation. CI for this batch has not yet been
+  observed; implementation status is not a CI pass.
