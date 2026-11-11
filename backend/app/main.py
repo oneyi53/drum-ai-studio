@@ -93,6 +93,12 @@ class EventBatchRequest(BaseModel):
     time_offset_seconds: float | None = None
 
 
+class EventDuplicateRequest(BaseModel):
+    event_ids: list[str] = Field(min_length=1, max_length=5000)
+    repeat_count: int = Field(default=1, ge=1, le=16)
+    interval_seconds: float = Field(gt=0)
+
+
 
 def initialize_storage() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -539,6 +545,49 @@ def add_manual_event(project_id: str, payload: EventCreateRequest) -> dict[str, 
         _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
     return {"event": event.model_dump(), "performance": updated.model_dump()}
 
+
+
+@app.post("/api/projects/{project_id}/events/duplicate")
+def duplicate_events(project_id: str, payload: EventDuplicateRequest) -> dict[str, Any]:
+    if len(set(payload.event_ids)) != len(payload.event_ids):
+        raise HTTPException(status_code=422, detail="event_ids must be unique.")
+    selected = set(payload.event_ids)
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, performance = _load_editable_performance(connection, project_id)
+        originals = [event for event in performance.events if event.id in selected]
+        if len(originals) != len(selected):
+            raise HTTPException(status_code=404, detail="One or more drum events were not found.")
+        duplicates: list[DrumEvent] = []
+        for repeat in range(1, payload.repeat_count + 1):
+            offset = payload.interval_seconds * repeat
+            for event in originals:
+                clone_data = event.model_dump()
+                clone_data.update({
+                    "id": str(uuid.uuid4()),
+                    "time_seconds": event.time_seconds + offset,
+                    "source": "manual",
+                    "manually_corrected": True,
+                })
+                duplicates.append(DrumEvent.model_validate(clone_data))
+        if any(event.time_seconds > performance.duration_seconds for event in duplicates):
+            raise HTTPException(
+                status_code=422,
+                detail="Duplicated events must remain within the song duration.",
+            )
+        try:
+            updated = DrumPerformance.model_validate({
+                **performance.model_dump(),
+                "events": [*performance.events, *duplicates],
+            })
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
+    return {
+        "duplicated_count": len(duplicates),
+        "events": [event.model_dump() for event in duplicates],
+        "performance": updated.model_dump(),
+    }
 
 
 @app.patch("/api/projects/{project_id}/events/batch")
