@@ -777,6 +777,7 @@ function App() {
             </table>
           </div>
           <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/midi`} download>下载最新鼓谱 MIDI</a>
+          <a className="download-link pdf-link" href={`${API_BASE}/api/projects/${summary.projectId}/pdf`} download>下载打印版 PDF 鼓谱</a>
           <a className="download-link musicxml-link" href={`${API_BASE}/api/projects/${summary.projectId}/musicxml`} download>下载可编辑 MusicXML 乐谱</a>
           <small className="job-id">任务 ID：{summary.jobId} · {saving ? "正在保存…" : "编辑自动保存到标准事件和 MIDI"}</small>
         </section>
