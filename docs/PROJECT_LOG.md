@@ -522,3 +522,11 @@ code or validation state changes; do not infer completion from plans.
 - The previous benchmark run had not yet reached dataset download or scoring, so no IDMT accuracy result is claimed. The workflow will rerun on this commit.
 
 - Follow-up CI correction: imageio-ffmpeg exposes a versioned executable name rather than a literal ffmpeg command. The workflow now creates a runner-temp ffmpeg symlink and adds that directory to PATH before verifying the binary. The first pip-based attempt failed at the verification command before any benchmark work ran; no accuracy result is available yet.
+
+## 2026-11-11 — First labelled IDMT benchmark completed
+
+- The CI workflow successfully downloaded the IDMT-SMT-DRUMS-V2 evaluation archive, ran the upstream adapter on 10/10 RealDrum mixes, and uploaded the metrics artifact (workflow run #213, artifact `idmt-drum-transcription-benchmark`).
+- Macro-average at the upstream adapter's 50 ms onset tolerance: kick P=0.700 / R=0.070 / F1=0.123; snare P=0.706 / R=0.914 / F1=0.775; hi-hat P=0.907 / R=0.996 / F1=0.949.
+- Interpretation: kick recall is the major quality blocker; the score is an initial 10-item baseline, not a production-accuracy claim. Expand the held-out sample before making broad claims.
+- The same workflow passed synthetic full-mix separation/transcription and canonical MIDI normalization. Repository MP3 processing then failed during Demucs MP3 decoding because its loader could not locate/use FFmpeg in that subprocess, despite the workflow's FFmpeg verification step.
+- Updated `scripts/engine_smoke.py` to explicitly decode repository MP3 samples to PCM WAV with the imageio-ffmpeg executable (or system FFmpeg fallback) before passing the audio into Demucs. This preserves real repository MP3 coverage while avoiding Demucs' optional MP3 decoder lookup path. CI must validate this correction.
