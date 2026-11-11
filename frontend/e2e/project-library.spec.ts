@@ -37,7 +37,7 @@ test("creates a project, persists annotations, and restores them after reload", 
   await expect(page.getByText(/项目已创建：/)).toBeVisible();
 
   await page.getByLabel("时间（秒）").fill("0.250");
-  await page.getByLabel("鼓件", { exact: true }).selectOption("snare");
+  await page.locator(".annotation-controls select").selectOption("snare");
   await page.getByRole("button", { name: /记录鼓点/ }).click();
   await expect(page.getByText("人工确认事件 · 1")).toBeVisible();
   await expect(page.getByText("已保存到项目服务器 · 1 条参考标注")).toBeVisible();
@@ -52,7 +52,7 @@ test("creates a project, persists annotations, and restores them after reload", 
     ["2.000", "ride"], ["16.250", "ride"],
   ]) {
     await page.getByLabel("时间（秒）").fill(time);
-    await page.getByLabel("鼓件", { exact: true }).selectOption(kind);
+    await page.locator(".annotation-controls select").selectOption(kind);
     await page.getByRole("button", { name: /记录鼓点/ }).click();
   }
   await expect(page.getByText("人工确认事件 · 10")).toBeVisible();
