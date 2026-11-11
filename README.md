@@ -2,7 +2,7 @@
 
 A web-based workspace for turning a full mixed song into an editable drum transcription.
 
-> **Status: P2 transcription and editing workspace in progress.** Upload, asynchronous DrumScript analysis, canonical drum-event editing, quantization, undo/redo, synchronized playback, A–B practice looping, a tempo-map metronome, MIDI export, and MusicXML score export are implemented on the feature branch. Real analysis still requires the optional DrumScript/PyTorch/FFmpeg runtime. A durable production queue, authenticated multi-user storage, full notation editing, and built-in PDF export remain future work.
+> **Status: P2 transcription and editing workspace in progress.** Upload, asynchronous DrumScript analysis, canonical drum-event editing, quantization, undo/redo, synchronized playback, A–B practice looping, a tempo-map metronome, MIDI, editable MusicXML, and built-in printable PDF score export are implemented on the feature branch. Real analysis still requires the optional DrumScript/PyTorch/FFmpeg runtime. A durable production queue, authenticated multi-user storage, and full in-app notation engraving remain future work.
 
 ## Product direction
 
@@ -10,7 +10,7 @@ A web-based workspace for turning a full mixed song into an editable drum transc
 2. Separate the drum stem.
 3. Detect drum events (kick, snare, hi-hat, cymbals, and toms).
 4. Review and correct events in an editable drum-grid/notation editor.
-5. Export MIDI and MusicXML from one canonical event model; use notation software to lay out and export PDF.
+5. Export printable PDF, editable MusicXML, and MIDI from one canonical event model.
 
 ## Architecture
 
@@ -69,7 +69,7 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - Audio upload creates a project record and stores the original file locally.
 - The analysis endpoint creates an asynchronous job; the worker fails clearly if DrumScript or FFmpeg/ffprobe is not installed.
 - The event evaluator is ready for reviewed reference annotations, but no golden dataset or accuracy result is claimed.
-- MIDI and MusicXML downloads reflect the latest canonical performance; MusicXML can be imported into notation software, but PDF engraving is not built into the app.
+- PDF, MusicXML, and MIDI downloads reflect the latest canonical performance. PDF is generated in-app for printing; MusicXML can be imported into notation software for detailed editing and engraving.
 - Analysis jobs use FastAPI in-process background tasks and are intended for single-worker development only; use a durable queue before multi-worker or multi-replica deployment.
 - Local uploads are not yet authenticated or suitable for public multi-user deployment.
 - Do not upload copyrighted recordings unless you have the right to do so.
