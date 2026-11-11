@@ -103,6 +103,7 @@ class EventBarCopyRequest(BaseModel):
     source_start_seconds: float = Field(ge=0)
     source_end_seconds: float = Field(gt=0)
     target_start_seconds: float = Field(ge=0)
+    target_end_seconds: float = Field(gt=0)
 
 
 
@@ -557,6 +558,8 @@ def add_manual_event(project_id: str, payload: EventCreateRequest) -> dict[str, 
 def copy_event_bar(project_id: str, payload: EventBarCopyRequest) -> dict[str, Any]:
     if payload.source_end_seconds <= payload.source_start_seconds:
         raise HTTPException(status_code=422, detail="Source bar end must be after its start.")
+    if payload.target_end_seconds <= payload.target_start_seconds:
+        raise HTTPException(status_code=422, detail="Target bar end must be after its start.")
     with connect_db() as connection:
         connection.execute("BEGIN IMMEDIATE")
         row, performance = _load_editable_performance(connection, project_id)
@@ -574,7 +577,9 @@ def copy_event_bar(project_id: str, payload: EventBarCopyRequest) -> dict[str, A
             clone_data.update({
                 "id": str(uuid.uuid4()),
                 "time_seconds": payload.target_start_seconds
-                + event.time_seconds - payload.source_start_seconds,
+                + (event.time_seconds - payload.source_start_seconds)
+                / (payload.source_end_seconds - payload.source_start_seconds)
+                * (payload.target_end_seconds - payload.target_start_seconds),
                 "source": "manual",
                 "manually_corrected": True,
             })
