@@ -108,3 +108,4 @@ def test_exports_canonical_events_with_tempo_and_velocity(tmp_path):
     assert [event.time_seconds for event in restored.events] == pytest.approx([0.5, 1.4])
     assert restored.tempo_map[-1].bpm == pytest.approx(100)
     assert restored.tempo_map[-1].numerator == 3
+    assert restored.duration_seconds == pytest.approx(2.0)
