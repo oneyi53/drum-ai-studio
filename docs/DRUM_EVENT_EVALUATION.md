@@ -26,13 +26,12 @@ absolute seconds; bar/beat positions are derived from the tempo map and must
 not be treated as stable identifiers.
 
 Python API: `app.drum_events.DrumPerformance`, `DrumEvent`,
-`TempoChange`, and `evaluate_performance`. A CLI is also installed as
-`drumai-evaluate` when the backend package is installed.
+`TempoChange`, and `evaluate_performance`.
 
-## Accuracy evaluation
+## Single-pair accuracy evaluation
 
 `evaluate_performance(reference, predicted, tolerance_ms=50)` compares
-predictions to a human-annotated reference:
+predictions to a human-reviewed reference:
 
 - Instrument labels must match exactly.
 - A prediction can match at most one reference event.
@@ -47,26 +46,46 @@ Run the evaluator against two serialized `DrumPerformance` JSON files:
 
 ```bash
 cd backend
-pip install -e .
+pip install -e ".[dev]"
 drumai-evaluate --reference reference.json --predicted predicted.json --tolerance-ms 50
 ```
 
-The command prints a JSON report suitable for saving as a benchmark artifact.
-The evaluator is deterministic and does not claim that any engine meets a
-quality threshold. Empty-vs-empty is reported as 1.0 for precision, recall,
-and F1 because there are no errors; reports must still include event counts.
+## Batch benchmark manifest
+
+A batch runner now evaluates a manifest of reviewed cases and emits per-case
+and aggregate event metrics:
+
+```bash
+cd backend
+drumai-benchmark --manifest benchmarks/manifest.json --tolerance-ms 50 > benchmark-report.json
+```
+
+Start from `backend/benchmarks/manifest.example.json`. Each case must provide:
+
+- Unique case ID and stable source-recording ID.
+- Split: `development` or `evaluation`.
+- Relative paths to the source audio, canonical reference JSON, and predicted
+  canonical JSON (resolved relative to the manifest).
+- Permission basis: `public_domain`, `licensed`, or `written_permission`.
+- `annotation_status: "reviewed"`, reviewer, and annotation revision.
+
+The runner refuses unreviewed or unpermissioned cases, missing files, duplicate
+case IDs, and source recordings that leak across development/evaluation splits.
+The aggregate report pools matched events across all cases; it is micro-
+aggregated, not an unweighted mean of track scores. Preserve the manifest and
+report with the engine revision/configuration used to generate predictions.
+
+The example manifest is intentionally empty. Do not add private or copyrighted
+audio, annotations, or predictions to Git without explicit redistribution
+permission. A valid manifest is not itself evidence that the annotations are
+accurate; human review remains required.
 
 ## Ground-truth dataset policy
 
 Do not use copyrighted recordings unless the project has permission to process
-and retain them. Each benchmark case should include:
-
-1. Audio provenance and usage permission.
-2. Audio duration and sample rate.
-3. A manually reviewed reference event list in the canonical schema.
-4. Annotator/reviewer and annotation revision.
-5. Engine name, exact revision, and configuration for each prediction.
-6. The tolerance used when reporting metrics.
+and retain them. Each benchmark case should include audio provenance and usage
+permission, duration/sample rate, a manually reviewed event list, annotator and
+revision, and the engine revision/configuration used for predictions.
 
 Start with short, permission-cleared excerpts spanning sparse and dense
 arrangements. Split excerpts by source recording, not by random event, to
@@ -74,9 +93,11 @@ avoid leakage between development and evaluation sets.
 
 ## Current limitations
 
-- The evaluator scores canonical events; no DrumScript-to-canonical adapter is
-  implemented yet.
-- No human-annotated golden dataset is checked in.
-- No accuracy result is claimed until predictions are normalized and scored
-  against reviewed reference annotations.
-- Tempo-map-aware bar/beat derivation and export adapters remain future work.
+- DrumScript MIDI output has passed a compatibility smoke on synthetic audio
+  and two repository MP3s; this verifies conversion, not transcription accuracy.
+- No human-annotated golden dataset is checked in and no accuracy result is
+  claimed.
+- Benchmark cases still need permission-cleared audio and independently
+  reviewed reference annotations.
+- Tempo-map-aware bar/beat derivation and editor/export adapters remain future
+  work.
