@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from io import BytesIO
 import os
 import sqlite3
 import uuid
@@ -10,6 +11,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
+from zipfile import ZIP_DEFLATED, ZipFile
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, status
@@ -892,6 +894,52 @@ def download_project_pdf(project_id: str) -> Response:
         headers={"Content-Disposition": f'attachment; filename="{project_id}-drums.pdf"'},
     )
 
+
+@app.get("/api/projects/{project_id}/bundle")
+def download_project_bundle(project_id: str) -> Response:
+    """Download a portable archive of the source audio and latest editable outputs."""
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            SELECT projects.original_filename, projects.stored_filename,
+                   jobs.id AS job_id, jobs.performance_json, jobs.midi_filename
+            FROM projects
+            JOIN analysis_jobs AS jobs ON jobs.project_id = projects.id
+            WHERE projects.id=? AND jobs.status='completed'
+              AND jobs.performance_json IS NOT NULL
+            ORDER BY jobs.created_at DESC LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No completed performance is available.")
+
+    source_name = row["stored_filename"]
+    midi_name = row["midi_filename"]
+    if Path(source_name).name != source_name or not midi_name or Path(midi_name).name != midi_name:
+        raise HTTPException(status_code=500, detail="Stored project artifact filename is invalid.")
+    source_path = UPLOAD_DIR / source_name
+    midi_path = ANALYSIS_DIR / row["job_id"] / midi_name
+    if not source_path.is_file():
+        raise HTTPException(status_code=404, detail="Original uploaded audio is missing.")
+    if not midi_path.is_file():
+        raise HTTPException(status_code=404, detail="Generated MIDI file is missing.")
+
+    performance = DrumPerformance.model_validate_json(row["performance_json"])
+    archive = BytesIO()
+    with ZipFile(archive, "w", compression=ZIP_DEFLATED) as bundle:
+        bundle.writestr("performance.json", performance.model_dump_json(indent=2))
+        bundle.writestr("score.musicxml", performance_to_musicxml(performance))
+        bundle.writestr("score.pdf", performance_to_pdf(performance, title=f"{project_id} - Drum Score"))
+        bundle.write(midi_path, arcname="performance.mid")
+        bundle.write(source_path, arcname=f"source/{Path(row['original_filename']).name}")
+        bundle.writestr("README.txt", "DrumAI Studio project archive\nperformance.json: canonical events and tempo map\nperformance.mid: GM percussion MIDI\nscore.musicxml: editable notation interchange\nscore.pdf: printable score\nsource/: original uploaded audio\n")
+
+    return Response(
+        content=archive.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{project_id}-drumai-project.zip"',},
+    )
 
 @app.get("/api/projects/{project_id}/midi")
 def download_project_midi(project_id: str) -> FileResponse:
