@@ -88,6 +88,12 @@ class EventUpdateRequest(BaseModel):
     velocity: int | None = Field(default=None, ge=1, le=127)
 
 
+class EventBatchRequest(BaseModel):
+    event_ids: list[str] = Field(min_length=1, max_length=5000)
+    time_offset_seconds: float | None = None
+
+
+
 def initialize_storage() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -586,6 +592,54 @@ def delete_manual_event(project_id: str, event_id: str) -> dict[str, Any]:
         )
         _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
     return {"deleted_event_id": event_id, "performance": updated.model_dump()}
+
+
+@app.patch("/api/projects/{project_id}/events/batch")
+def batch_update_events(project_id: str, payload: EventBatchRequest) -> dict[str, Any]:
+    if payload.time_offset_seconds is None:
+        raise HTTPException(status_code=422, detail="time_offset_seconds must be provided.")
+    if len(set(payload.event_ids)) != len(payload.event_ids):
+        raise HTTPException(status_code=422, detail="event_ids must be unique.")
+    selected = set(payload.event_ids)
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, performance = _load_editable_performance(connection, project_id)
+        found = {event.id for event in performance.events if event.id in selected}
+        if found != selected:
+            raise HTTPException(status_code=404, detail="One or more drum events were not found.")
+        events = [
+            event.model_copy(update={
+                "time_seconds": event.time_seconds + payload.time_offset_seconds,
+                "source": "manual",
+                "manually_corrected": True,
+            }) if event.id in selected else event
+            for event in performance.events
+        ]
+        try:
+            updated = DrumPerformance.model_validate({**performance.model_dump(), "events": events})
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
+    return {"updated_event_ids": payload.event_ids, "performance": updated.model_dump()}
+
+
+@app.delete("/api/projects/{project_id}/events/batch")
+def batch_delete_events(project_id: str, payload: EventBatchRequest) -> dict[str, Any]:
+    if len(set(payload.event_ids)) != len(payload.event_ids):
+        raise HTTPException(status_code=422, detail="event_ids must be unique.")
+    selected = set(payload.event_ids)
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, performance = _load_editable_performance(connection, project_id)
+        found = {event.id for event in performance.events if event.id in selected}
+        if found != selected:
+            raise HTTPException(status_code=404, detail="One or more drum events were not found.")
+        updated = DrumPerformance.model_validate({
+            **performance.model_dump(),
+            "events": [event for event in performance.events if event.id not in selected],
+        })
+        _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
+    return {"deleted_event_ids": payload.event_ids, "performance": updated.model_dump()}
 
 
 
