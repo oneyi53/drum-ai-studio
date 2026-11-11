@@ -80,3 +80,5 @@ Latest MusicXML conformance-hardening changes:
 
 
 - 2026-11-11: Added an independent notation-application import/render gate after the MusicXML 4.0 XSD check. CI installs Ubuntu's MuseScore 3 package, imports the exact browser-generated five-measure fixture, renders a PDF in a virtual display, and checks that the PDF has at least one page. This tests MuseScore 3 import and pagination only; it does not claim visual correctness or MuseScore 4 compatibility. The workflow change is commit 79abd2ac9e3ce6a0c4b5f5531b9529a4fc547f07; its CI result is pending.
+
+- 2026-11-11: Diagnosed the first MuseScore CI failures from job logs: the version probe launched Qt without a display and aborted before attempting MusicXML import. Moved both the version probe and PDF render under `xvfb-run`; browser E2E and MusicXML XSD validation had passed in those runs. Fix commit: 2faf0d405beef2dea64cae5e3f54a2b4e8274910. MuseScore render result is pending.
