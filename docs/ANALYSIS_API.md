@@ -107,8 +107,9 @@ timestamps and audio playback remain in absolute seconds.
   canonical performance as a MusicXML 4.0 partwise score.
 - The export contains a percussion staff, instrument-specific voices and
   noteheads, GM percussion instrument metadata, tempo directions, and
-  time-signature-aware measures. It is intended for import into notation
-  software such as MuseScore; final engraving and layout are controlled by
-  that application.
+  time-signature-aware measures. Rhythmic note values are inferred from the
+  spacing between successive hits in each instrument voice. It is intended
+  for import into notation software such as MuseScore; final engraving and
+  layout are controlled by that application.
 - The export reflects the current canonical performance, including manual
   edits, quantization, undo, and redo. MIDI export remains available separately.
