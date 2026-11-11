@@ -537,6 +537,86 @@ def test_duplicate_events_reject_out_of_duration_atomically(client, monkeypatch)
     assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 0
 
 
+def test_copy_bar_preserves_relative_rhythm_and_syncs_midi_once(client, monkeypatch, tmp_path):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("bar-copy.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=4,
+        events=[
+            DrumEvent(time_seconds=0.25, instrument=DrumInstrument.KICK, velocity=110),
+            DrumEvent(time_seconds=0.75, instrument=DrumInstrument.SNARE, velocity=82),
+            DrumEvent(time_seconds=3.0, instrument=DrumInstrument.CRASH, velocity=100),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    response = client.post(
+        f"/api/projects/{project_id}/events/copy-bar",
+        json={
+            "source_start_seconds": 0.0,
+            "source_end_seconds": 2.0,
+            "target_start_seconds": 2.0,
+        },
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["copied_count"] == 2
+    assert result["pasted_count"] == 2
+    assert [event["time_seconds"] for event in result["events"]] == [2.25, 2.75]
+    assert [event["instrument"] for event in result["events"]] == ["kick", "snare"]
+    assert [event["velocity"] for event in result["events"]] == [110, 82]
+    assert all(event["manually_corrected"] for event in result["events"])
+    assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 1
+
+    midi_path = tmp_path / "bar-copy.mid"
+    midi_path.write_bytes(client.get(f"/api/projects/{project_id}/midi").content)
+    assert len(midi_to_performance(midi_path).events) == 5
+
+
+def test_copy_bar_rejects_empty_source_and_out_of_range_paste_atomically(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("bar-copy.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=3,
+        events=[DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK)],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    empty = client.post(
+        f"/api/projects/{project_id}/events/copy-bar",
+        json={"source_start_seconds": 1.0, "source_end_seconds": 2.0, "target_start_seconds": 2.0},
+    )
+    assert empty.status_code == 422
+    overflow = client.post(
+        f"/api/projects/{project_id}/events/copy-bar",
+        json={"source_start_seconds": 0.0, "source_end_seconds": 1.0, "target_start_seconds": 2.75},
+    )
+    assert overflow.status_code == 422
+    saved = client.get(f"/api/projects/{project_id}/performance").json()["performance"]
+    assert len(saved["events"]) == 1
+    assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 0
+
+
 def test_batch_event_edit_rejects_invalid_shift_without_persisting(client, monkeypatch):
     uploaded = client.post(
         "/api/projects", files={"audio": ("batch.wav", b"audio-bytes", "audio/wav")}
