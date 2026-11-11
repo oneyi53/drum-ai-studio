@@ -66,6 +66,7 @@ function App() {
   const [newVelocity, setNewVelocity] = React.useState("96");
   const [quantizeSubdivision, setQuantizeSubdivision] = React.useState("1/16");
   const [quantizeStrength, setQuantizeStrength] = React.useState(100);
+  const [history, setHistory] = React.useState({ current_revision: 0, can_undo: false, can_redo: false });
 
   async function uploadAndAnalyze() {
     if (!file) return;
@@ -133,6 +134,24 @@ function App() {
       throw new Error("无法读取标准鼓事件结果。");
     }
     setSummary(summarizePerformance(jobId, projectId, result.performance));
+    const historyResponse = await fetch(`${API_BASE}/api/projects/${projectId}/history`);
+    if (historyResponse.ok) setHistory(await historyResponse.json());
+  }
+
+  async function moveHistory(direction: "undo" | "redo") {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/${direction}`, { method: "POST" });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, `${direction} 操作失败`));
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setMessage(direction === "undo" ? "已撤销上一步，MIDI 已同步。" : "已重做上一步，MIDI 已同步。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "历史操作失败");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function editEvent(eventId: string, changes: Partial<Pick<DrumEvent, "time_seconds" | "instrument" | "velocity">>) {
@@ -248,6 +267,11 @@ function App() {
       {summary && (
         <section className="result-panel">
           <div className="panel-heading"><div><p className="eyebrow">CANONICAL PERFORMANCE</p><h2>标准鼓事件编辑器</h2></div><span className="complete">可编辑</span></div>
+          <div className="history-controls">
+            <button disabled={saving || !history.can_undo} onClick={() => void moveHistory("undo")}>↶ 撤销</button>
+            <button disabled={saving || !history.can_redo} onClick={() => void moveHistory("redo")}>↷ 重做</button>
+            <small>历史版本 {history.current_revision}</small>
+          </div>
           <div className="metrics">
             <div><strong>{summary.totalEvents.toLocaleString()}</strong><small>鼓事件</small></div>
             <div><strong>{summary.durationSeconds.toFixed(1)}s</strong><small>音频时长</small></div>
