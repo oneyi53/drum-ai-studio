@@ -40,3 +40,15 @@ def test_exports_empty_performance_as_valid_one_measure_score():
     root = ET.fromstring(performance_to_musicxml(performance))
     assert len(root.findall("./part/measure")) == 1
     assert root.findall(".//note") == []
+
+
+def test_engraves_note_values_from_spacing_between_repeated_hits():
+    performance = DrumPerformance(
+        duration_seconds=1.0,
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=0.25, instrument=DrumInstrument.KICK),
+        ],
+    )
+    root = ET.fromstring(performance_to_musicxml(performance))
+    assert [item.text for item in root.findall(".//note/type")] == ["eighth", "quarter"]
