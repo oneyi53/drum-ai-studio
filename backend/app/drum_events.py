@@ -176,7 +176,29 @@ def evaluate_performance(
         name: _metrics(reference_by[name], predicted_by[name], tolerance_ms / 1000)
         for name in names
     }
-    overall = _metrics(reference, predicted, tolerance_ms / 1000)
+    total_tp = sum(metric.true_positives for metric in by_instrument.values())
+    total_fp = sum(metric.false_positives for metric in by_instrument.values())
+    total_fn = sum(metric.false_negatives for metric in by_instrument.values())
+    total_reference = sum(metric.reference_events for metric in by_instrument.values())
+    total_predicted = sum(metric.predicted_events for metric in by_instrument.values())
+    precision = total_tp / (total_tp + total_fp) if total_tp + total_fp else (1.0 if total_fn == 0 else 0.0)
+    recall = total_tp / (total_tp + total_fn) if total_tp + total_fn else (1.0 if total_fp == 0 else 0.0)
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    timing_error_total = sum(
+        (metric.mean_absolute_timing_error_ms or 0.0) * metric.true_positives
+        for metric in by_instrument.values()
+    )
+    overall = InstrumentMetrics(
+        reference_events=total_reference,
+        predicted_events=total_predicted,
+        true_positives=total_tp,
+        false_positives=total_fp,
+        false_negatives=total_fn,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        mean_absolute_timing_error_ms=timing_error_total / total_tp if total_tp else None,
+    )
     return EvaluationReport(
         tolerance_ms=tolerance_ms,
         overall=overall,
