@@ -24,16 +24,17 @@ code or validation state changes; do not infer completion from plans.
 - Added `backend/app/midi_adapter.py` to normalize General MIDI percussion note-ons into canonical events, preserving velocity, tempo, time signatures, and absolute seconds.
 - Added `drumai-midi-import` CLI, MIDI fixtures/tests, and `docs/MIDI_ADAPTER.md` documenting the channel-10 and GM pitch assumptions.
 - Added a dedicated backend GitHub Actions workflow to install backend dev dependencies, run the complete backend test suite, and lint the touched pipeline modules.
-- Extended the DrumScript smoke workflow to install this adapter and require each generated MIDI to normalize into non-empty canonical events; the next PR run will validate this end-to-end.
-- This is a generic GM adapter only: DrumScript-specific channel/pitch semantics remain unverified until its generated MIDI can be inspected.
+- Extended the DrumScript smoke workflow to install this adapter and require each generated MIDI to normalize into non-empty canonical events; PR engine run #27 is in progress.
+- DrumScript's published MIDI exporter documents General MIDI Level 1 percussion mapping and a drum track routed to MIDI channel 10. The current smoke run checks that the actual generated files satisfy this contract.
 - Overall metrics aggregate per-instrument matches so an instrument substitution cannot be counted as a correct hit.
 - Updated README and architecture documentation.
 
 ### Validation state
 
-- Unit tests are committed but PR CI result is not yet available at log time.
+- Backend CI run #5 completed successfully: 17 tests passed and Ruff reported all checks passed. The repository CI run #111 also completed both backend and frontend jobs successfully.
+- Engine validation run #27 is currently installing the upstream engine and will next test canonical MIDI conversion on the synthetic signal and repository MP3s.
 - No human-annotated golden dataset has been committed.
-- The generic GM MIDI-to-canonical adapter exists, but DrumScript-specific channel and pitch mapping has not been verified.
+- The generic GM MIDI-to-canonical adapter exists; actual DrumScript MIDI output compatibility is being verified by engine run #27.
 - The analysis endpoint remains HTTP 501; it must not be enabled until the
   engine adapter and end-to-end outputs are validated.
 - Event metrics are an evaluation tool, not evidence of current transcription
@@ -41,16 +42,12 @@ code or validation state changes; do not infer completion from plans.
 
 ## In progress / next engineering milestones
 
-1. Verify PR #3 CI and correct any schema/test issues.
-2. Inspect the DrumScript MIDI output format from the engine validation run and
-   verify whether its channel and note numbers follow the General MIDI map; add
-   a versioned engine mapping profile if they do not.
-3. Add permission-cleared, manually reviewed reference annotations and a
-   reproducible benchmark manifest.
-4. Run event-level scoring against those references; report per-instrument
+1. Complete engine run #27 and fix any real DrumScript MIDI compatibility issues it reveals.
+2. Create a permission-cleared, manually reviewed reference set and benchmark manifest.
+3. Run event-level scoring against those references; report per-instrument
    metrics and timing tolerance without inventing thresholds.
-5. Only then integrate the adapter behind an explicit analysis-job boundary.
-6. Add editor operations and MIDI/MusicXML/PDF exporters against the same
+4. Integrate the adapter behind an explicit analysis-job boundary.
+5. Add editor operations and MIDI/MusicXML/PDF exporters against the same
    canonical model.
 
 ## 2026-11-10/11 — engine integration spike (PR #2)
