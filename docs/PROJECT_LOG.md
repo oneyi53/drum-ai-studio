@@ -539,3 +539,11 @@ code or validation state changes; do not infer completion from plans.
 - Expanded IDMT CI evaluation from the first 10 RealDrum mixes to 15 examples each from RealDrum, WaveDrum, and TechnoDrum, with distinct run names and archived per-track metrics. This checks whether the low kick recall is domain-specific instead of extrapolating from one subset.
 - Disabled cancellation of an in-progress engine-validation run when a new commit arrives; this long-running CPU benchmark should finish rather than repeatedly being cancelled by rapid pushes.
 - The expanded benchmark and MP3-to-WAV smoke correction are awaiting CI execution. No accuracy improvement is claimed yet.
+
+
+## 2026-11-11 — stage-wise kick miss diagnostics
+
+- Added `scripts/kick_stage_diagnostics.py`. It evaluates each IDMT kick reference twice: first against all onset candidates before classification, then against events classified as kick. It reports candidate recall, final kick recall, kick precision, and candidate-to-kick match retention per subset and per track.
+- The engine-validation workflow now runs this diagnostic on 15 tracks from each of RealDrum, WaveDrum, and TechnoDrum and uploads JSON/CSV alongside the upstream per-track benchmark archives.
+- Interpretation rule: low candidate recall indicates the shared onset stage is missing kick opportunities; healthy candidate recall but low final kick recall points to classification/feature rules. This is a diagnostic decomposition, not a claim that either failure mode has already been observed.
+- CI is running/pending for the new diagnostic script and workflow. The first output will determine which algorithm branch to change next.
