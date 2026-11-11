@@ -18,7 +18,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   drumscript:
@@ -70,11 +70,21 @@ jobs:
           IDMT_ROOT="$(find /tmp/idmt-dataset -type d -name annotation_xml -print -quit | xargs dirname)"
           test -d "$IDMT_ROOT/audio"
           echo "IDMT_ROOT=$IDMT_ROOT" >> "$GITHUB_ENV"
-      - name: Score first 10 annotated RealDrum mixes
+      - name: Score annotated RealDrum mixes
         working-directory: /tmp/DrumScript
         run: >-
-          python benchmarks/run.py --limit 10 IDMT-SMT-DRUMS-V2
-          --root "$IDMT_ROOT" --subset RealDrum
+          python benchmarks/run.py --run-name kick-baseline-realdrum
+          --limit 15 IDMT-SMT-DRUMS-V2 --root "$IDMT_ROOT" --subset RealDrum
+      - name: Score annotated WaveDrum mixes
+        working-directory: /tmp/DrumScript
+        run: >-
+          python benchmarks/run.py --run-name kick-baseline-wavedrum
+          --limit 15 IDMT-SMT-DRUMS-V2 --root "$IDMT_ROOT" --subset WaveDrum
+      - name: Score annotated TechnoDrum mixes
+        working-directory: /tmp/DrumScript
+        run: >-
+          python benchmarks/run.py --run-name kick-baseline-technodrum
+          --limit 15 IDMT-SMT-DRUMS-V2 --root "$IDMT_ROOT" --subset TechnoDrum
       - name: Upload IDMT benchmark metrics
         if: always()
         uses: actions/upload-artifact@v4
