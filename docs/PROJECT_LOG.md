@@ -1,4 +1,15 @@
 
+## 2026-11-11 — saved-project retry and recovery
+
+- Improved workspace recovery so uploaded projects with no analysis job can be
+  started directly, and projects whose latest analysis failed can be retried
+  without uploading the audio again.
+- Existing completed projects still restore the latest canonical performance;
+  queued/running jobs remain resumable after a browser refresh.
+- Added API coverage for the saved-project listing endpoint and documented the
+  retry flow in the user guide. Frontend/backend CI for this increment pending.
+
+
 ## 2026-11-11 — saved project recovery (implementation, CI pending)
 
 - Added `GET /api/projects?limit=...` to list recent local projects with their
