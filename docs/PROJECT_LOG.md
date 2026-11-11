@@ -437,3 +437,16 @@ code or validation state changes; do not infer completion from plans.
   conversion, and PDF assembly on the next run.
 - OSS references: https://github.com/rism-digital/verovio and
   https://book.verovio.org/installing-or-building-from-sources/python.html .
+
+
+## 2026-11-11 — timeline marquee selection and drag move
+
+- Added pointer-based marquee selection across visible instrument lanes and a
+  live selection rectangle. Dragging on empty timeline space selects events
+  within both the time and lane range.
+- Dragging a selected hit previews and applies a shared time offset to the
+  whole selected group through the existing atomic batch-edit endpoint. The
+  API still enforces song bounds, creates one history revision, and regenerates
+  MIDI; click-to-seek behavior is preserved for non-drag clicks.
+- Added visual marquee styling and updated the user guide. Frontend production
+  build is pending for this increment.
