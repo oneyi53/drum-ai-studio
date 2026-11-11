@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import sqlite3
+from threading import Lock
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -23,6 +24,7 @@ ANALYSIS_DIR = DATA_DIR / "analysis"
 DB_PATH = DATA_DIR / "drumai.sqlite3"
 MAX_UPLOAD_BYTES = int(os.getenv("DRUMAI_MAX_UPLOAD_BYTES", 100 * 1024 * 1024))
 ALLOWED_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"}
+ENGINE_LOCK = Lock()
 
 
 def utc_now() -> str:
@@ -204,7 +206,10 @@ def run_analysis_job(job_id: str) -> None:
     try:
         audio_path = UPLOAD_DIR / job["stored_filename"]
         output_dir = ANALYSIS_DIR / job_id
-        performance, midi_path = DrumScriptEngine().analyze(audio_path, output_dir)
+        # Keep one in-process model inference active to avoid duplicate model
+        # loads and unbounded CPU/RAM contention in the single-worker setup.
+        with ENGINE_LOCK:
+            performance, midi_path = DrumScriptEngine().analyze(audio_path, output_dir)
         with connect_db() as connection:
             connection.execute(
                 """
