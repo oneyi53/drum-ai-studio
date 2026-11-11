@@ -32,21 +32,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Verify or install FFmpeg, ffprobe, and PDF raster tools
+      - name: Install portable FFmpeg and Python PDF renderer
         run: |
-          missing=()
-          for binary in ffmpeg ffprobe pdftoppm; do
-            if ! command -v "$binary" >/dev/null 2>&1; then
-              missing+=("$binary")
-            fi
-          done
-          if (("${#missing[@]}" > 0)); then
-            echo "Missing media tools: ${missing[*]}"
-            sudo apt-get install --no-install-recommends --yes ffmpeg poppler-utils
-          fi
+          python -m pip install --upgrade pip
+          python -m pip install ffmpeg-downloader==0.5.3 pypdfium2
+          mkdir -p "$HOME/.local/bin"
+          ffdl install 7@static
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
           command -v ffmpeg
           command -v ffprobe
-          command -v pdftoppm
           ffmpeg -version
           ffprobe -version
       - name: Install CPU PyTorch and DrumScript
