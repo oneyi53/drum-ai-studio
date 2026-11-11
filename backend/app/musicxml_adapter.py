@@ -84,7 +84,8 @@ def _add_note(
     _add_text(note, "stem", "up")
     _add_text(note, "notehead", notehead)
     play = ET.SubElement(note, "play")
-    _add_text(ET.SubElement(play, "other-play", type="midi-velocity"), "value", velocity)
+    midi_velocity = ET.SubElement(play, "other-play", type="midi-velocity")
+    midi_velocity.text = str(velocity)
 
 
 def performance_to_musicxml(performance: DrumPerformance) -> str:
