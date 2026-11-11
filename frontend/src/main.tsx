@@ -4,6 +4,7 @@ import "./style.css";
 
 type AnalysisSummary = {
   jobId: string;
+  projectId: string;
   durationSeconds: number;
   totalEvents: number;
   instruments: Record<string, number>;
@@ -91,6 +92,7 @@ function App() {
       }
       setSummary({
         jobId,
+        projectId,
         durationSeconds: result.performance.duration_seconds,
         totalEvents: result.performance.events.length,
         instruments,
@@ -138,6 +140,7 @@ function App() {
               <span key={name}><strong>{name}</strong><small>{count}</small></span>
             ))}
           </div>
+          <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/midi`} download>下载鼓谱 MIDI</a>
           <small className="job-id">任务 ID：{summary.jobId}</small>
         </section>
       )}
