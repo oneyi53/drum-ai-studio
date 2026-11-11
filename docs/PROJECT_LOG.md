@@ -405,3 +405,20 @@ code or validation state changes; do not infer completion from plans.
 - Backend tests run #171 passed: 62 tests; Ruff passed.
 - DrumScript engine validation run #162 is queued/pending. This editor-only API change does not modify the inference engine; engine workflow completion is still tracked.
 - A fresh repository frontend build result has not yet been confirmed for this head.
+
+
+## 2026-11-11 — built-in printable PDF drum score export (implementation, CI pending)
+
+- Added a ReportLab-based PDF renderer that lays canonical drum events onto a
+  landscape percussion staff with measure boundaries/numbers, tempo and meter
+  metadata, velocity-scaled noteheads, instrument-specific notehead styles,
+  and a compact instrument legend. Long arrangements paginate by systems.
+- Added `GET /api/projects/{project_id}/pdf`, which always renders the latest
+  completed canonical performance, so manual corrections, quantization,
+  undo, and redo are reflected in the printout.
+- Added a PDF download link next to MIDI and editable MusicXML, declared the
+  ReportLab runtime dependency, and updated the user guide/API/README.
+- Added API tests for PDF signature/content type/download disposition and the
+  missing-performance 404 path. CI is pending; no build or test pass is claimed
+  until the workflow results are observed. MusicXML remains the editable score
+  interchange format; PDF is the printable reading/printing format.
