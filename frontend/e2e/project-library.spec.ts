@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 function makeWav(): { name: string; mimeType: string; buffer: Buffer } {
   const sampleRate = 8_000;
-  const sampleCount = sampleRate;
+  const sampleCount = sampleRate * 20;
   const data = Buffer.alloc(sampleCount * 2);
   for (let i = 0; i < sampleCount; i += 1) {
     data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 5000), i * 2);
@@ -46,6 +46,17 @@ test("creates a project, persists annotations, and restores them after reload", 
   await page.getByRole("button", { name: "kick 第3格 空" }).click();
   await expect(page.getByText("人工确认事件 · 2")).toBeVisible();
   await expect(page.getByText("已保存到项目服务器 · 2 条参考标注")).toBeVisible();
+  for (const [time, kind] of [
+    ["0.500", "closed_hat"], ["0.750", "open_hat"], ["1.000", "low_tom"],
+    ["1.250", "mid_tom"], ["1.500", "high_tom"], ["1.750", "crash"],
+    ["2.000", "ride"], ["16.250", "ride"],
+  ]) {
+    await page.getByLabel("时间（秒）").fill(time);
+    await page.getByLabel("鼓件").selectOption(kind);
+    await page.getByRole("button", { name: /记录鼓点/ }).click();
+  }
+  await expect(page.getByText("人工确认事件 · 10")).toBeVisible();
+  await expect(page.getByText("已保存到项目服务器 · 10 条参考标注")).toBeVisible();
   const musicXmlDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出 MusicXML" }).click();
   const musicXmlDownload = await musicXmlDownloadPromise;
@@ -67,6 +78,10 @@ test("creates a project, persists annotations, and restores them after reload", 
     return {
       parserErrors: document.getElementsByTagName("parsererror").length,
       noteCount: notes.length,
+      drumNoteCount: unpitchedNotes.length,
+      restCount: notes.filter((note) => note.getElementsByTagName("rest").length > 0).length,
+      measureCount: document.getElementsByTagName("measure").length,
+      instrumentPitches: Array.from(document.getElementsByTagName("midi-unpitched")).map((item) => item.textContent),
       chordCount: document.getElementsByTagName("chord").length,
       drumChannels: Array.from(document.getElementsByTagName("midi-instrument")).map((item) =>
         item.getElementsByTagName("midi-channel")[0]?.textContent),
@@ -79,6 +94,10 @@ test("creates a project, persists annotations, and restores them after reload", 
   }, musicXmlText);
   expect(parsedMusicXml.parserErrors).toBe(0);
   expect(parsedMusicXml.chordCount).toBe(1);
+  expect(parsedMusicXml.drumNoteCount).toBe(10);
+  expect(parsedMusicXml.restCount).toBeGreaterThan(0);
+  expect(parsedMusicXml.measureCount).toBe(5);
+  expect(parsedMusicXml.instrumentPitches).toEqual(expect.arrayContaining(["36", "38", "41", "42", "45", "46", "48", "49", "51"]));
   expect(parsedMusicXml.drumChannels.every((channel) => channel === "10")).toBe(true);
   expect(parsedMusicXml.instrumentAfterDuration).toBe(true);
 
@@ -94,7 +113,8 @@ test("creates a project, persists annotations, and restores them after reload", 
   await expect(page.getByText(/已重新打开项目：playwright-e2e-tone\.wav/)).toBeVisible();
   // The connection message is transient and is immediately replaced by the save status.
   // The restored event count and field values below are the durable persistence assertions.
-  await expect(page.getByText("人工确认事件 · 2")).toBeVisible();
+  await expect(page.getByText("人工确认事件 · 10")).toBeVisible();
   await expect(page.getByLabel("事件 1 时间")).toHaveValue("0.25");
   await expect(page.getByLabel("事件 1 力度")).toHaveValue("86");
+  await expect(page.getByLabel("事件 10 时间")).toHaveValue("16.25");
 });
