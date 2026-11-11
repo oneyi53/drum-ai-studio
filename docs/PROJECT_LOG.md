@@ -476,3 +476,13 @@ code or validation state changes; do not infer completion from plans.
   scores, PDF page readability, system labels, and time-signature repetition.
 - CI is pending for this increment. Visual review of a freshly rendered PDF
   remains required before calling the layout fully accepted.
+
+
+## 2026-11-11 — portable full-project backup export
+
+- Added a ZIP endpoint and workspace download link bundling the original uploaded
+  audio, latest canonical performance JSON, MIDI, editable MusicXML, printable
+  PDF, and a short README manifest.
+- The bundle reads the latest completed canonical performance so edits and
+  history restores are reflected in the exported files. Added API coverage for
+  archive contents and the not-yet-analyzed response. CI pending.
