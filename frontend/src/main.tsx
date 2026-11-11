@@ -104,12 +104,25 @@ function App() {
   const [loopEnabled, setLoopEnabled] = React.useState(false);
   const [loopStart, setLoopStart] = React.useState(0);
   const [loopEnd, setLoopEnd] = React.useState(0);
+  const [metronomeEnabled, setMetronomeEnabled] = React.useState(false);
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+  const lastMetronomeBeatRef = React.useRef(-1);
   const timelineBeats = React.useMemo(
     () => summary ? buildTimelineBeats(summary.durationSeconds, summary.tempoMap) : [],
     [summary],
   );
+  React.useEffect(() => () => {
+    if (audioContextRef.current) void audioContextRef.current.close();
+  }, []);
+
+  function toggleMetronome() {
+    if (!audioContextRef.current) audioContextRef.current = new window.AudioContext();
+    if (audioContextRef.current.state === "suspended") void audioContextRef.current.resume();
+    lastMetronomeBeatRef.current = -1;
+    setMetronomeEnabled((enabled) => !enabled);
+  }
 
   async function uploadAndAnalyze() {
     if (!file) return;
@@ -361,8 +374,32 @@ function App() {
                 const effectiveLoopEnd = loopEnd || audioDuration || summary.durationSeconds;
                 if (loopEnabled && effectiveLoopEnd > loopStart && time >= effectiveLoopEnd) {
                   event.currentTarget.currentTime = loopStart;
+                  lastMetronomeBeatRef.current = -1;
                   setAudioTime(loopStart);
                   return;
+                }
+                if (metronomeEnabled && audioContextRef.current) {
+                  let beatIndex = -1;
+                  for (let index = 0; index < timelineBeats.length; index += 1) {
+                    if (timelineBeats[index].time <= time + 0.005) beatIndex = index;
+                    else break;
+                  }
+                  if (beatIndex < lastMetronomeBeatRef.current) lastMetronomeBeatRef.current = -1;
+                  if (beatIndex >= 0 && beatIndex !== lastMetronomeBeatRef.current) {
+                    const beat = timelineBeats[beatIndex];
+                    const context = audioContextRef.current;
+                    const oscillator = context.createOscillator();
+                    const gain = context.createGain();
+                    oscillator.frequency.value = beat.isBar ? 1320 : 880;
+                    gain.gain.setValueAtTime(0.0001, context.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.004);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.055);
+                    oscillator.connect(gain);
+                    gain.connect(context.destination);
+                    oscillator.start();
+                    oscillator.stop(context.currentTime + 0.06);
+                    lastMetronomeBeatRef.current = beatIndex;
+                  }
                 }
                 setAudioTime(time);
                 let nearest: DrumEvent | null = null;
@@ -385,6 +422,7 @@ function App() {
             />
             <div className="loop-controls">
               <label className="loop-toggle"><input type="checkbox" checked={loopEnabled} onChange={(event) => setLoopEnabled(event.target.checked)} /> A–B 循环</label>
+              <button type="button" className={metronomeEnabled ? "metronome-on" : ""} onClick={toggleMetronome}>{metronomeEnabled ? "关闭节拍器" : "开启节拍器"}</button>
               <span>A：{loopStart.toFixed(2)}s</span>
               <button type="button" onClick={() => setLoopStart(audioRef.current?.currentTime ?? audioTime)}>设为 A 点</button>
               <span>B：{(loopEnd || audioDuration || summary.durationSeconds).toFixed(2)}s</span>
