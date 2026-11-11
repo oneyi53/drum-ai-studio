@@ -562,6 +562,11 @@ def batch_update_events(project_id: str, payload: EventBatchRequest) -> dict[str
             }) if event.id in selected else event
             for event in performance.events
         ]
+        if any(event.time_seconds < 0 for event in events):
+            raise HTTPException(
+                status_code=422,
+                detail="A batch time shift cannot move drum events before time zero.",
+            )
         try:
             updated = DrumPerformance.model_validate({**performance.model_dump(), "events": events})
         except ValueError as exc:
