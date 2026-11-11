@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+
+from app.midi_adapter import midi_to_performance
 
 
 def make_synthetic_full_mix(path: Path, sample_rate: int = 44100, seconds: float = 8.0) -> None:
@@ -46,7 +49,7 @@ def make_synthetic_full_mix(path: Path, sample_rate: int = 44100, seconds: float
 
 
 def transcribe_and_check(ds: object, source: Path, label: str) -> None:
-    """Run full-song transcription and require a non-empty MIDI artifact."""
+    """Run full-song transcription and validate its MIDI-to-event normalization."""
     result = ds.transcribe(
         str(source),
         full_song=True,
@@ -64,6 +67,18 @@ def transcribe_and_check(ds: object, source: Path, label: str) -> None:
     if not midi_path.is_file() or midi_path.stat().st_size == 0:
         raise RuntimeError(f"{label}: MIDI output missing or empty: {midi_path}")
 
+    performance = midi_to_performance(midi_path)
+    if not performance.events:
+        raise RuntimeError(
+            f"{label}: MIDI exists but produced no canonical events on GM percussion channel 10"
+        )
+
+    instruments = Counter(event.instrument.value for event in performance.events)
+    print(
+        f"ENGINE_CANONICAL_OK label={label} events={len(performance.events)} "
+        f"instruments={dict(sorted(instruments.items()))} "
+        f"duration_seconds={performance.duration_seconds:.3f}"
+    )
     print(f"ENGINE_SMOKE_OK label={label} midi_bytes={midi_path.stat().st_size}")
 
 
