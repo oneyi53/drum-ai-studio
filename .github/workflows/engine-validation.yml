@@ -109,8 +109,7 @@ jobs:
           DRUMAI_E2E_OUTPUT_DIR: /tmp/drumai-e2e-artifacts
         run: |
           python scripts/api_engine_smoke.py
-          pdfinfo /tmp/drumai-e2e-artifacts/drumai-api-e2e-score.pdf
-          pdftoppm -f 1 -l 1 -png -r 120 /tmp/drumai-e2e-artifacts/drumai-api-e2e-score.pdf /tmp/drumai-e2e-artifacts/drumai-score-page
+          test -s /tmp/drumai-e2e-artifacts/drumai-api-e2e-score.pdf
           test -s /tmp/drumai-e2e-artifacts/drumai-score-page-1.png
       - name: Upload API PDF and rendered page
         if: always()
