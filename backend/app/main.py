@@ -182,6 +182,36 @@ def health() -> HealthResponse:
     )
 
 
+@app.get("/api/projects")
+def list_projects(limit: int = 20) -> dict[str, list[dict[str, Any]]]:
+    """List recent local projects and the latest analysis state for each."""
+    bounded_limit = max(1, min(limit, 100))
+    with connect_db() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                projects.id,
+                projects.original_filename,
+                projects.size_bytes,
+                projects.created_at,
+                projects.status,
+                jobs.id AS latest_job_id,
+                jobs.status AS latest_job_status
+            FROM projects
+            LEFT JOIN analysis_jobs AS jobs
+              ON jobs.id = (
+                  SELECT id FROM analysis_jobs
+                  WHERE project_id=projects.id
+                  ORDER BY created_at DESC LIMIT 1
+              )
+            ORDER BY projects.created_at DESC
+            LIMIT ?
+            """,
+            (bounded_limit,),
+        ).fetchall()
+    return {"projects": [dict(row) for row in rows]}
+
+
 @app.post("/api/projects", status_code=status.HTTP_201_CREATED)
 async def create_project(audio: UploadFile = File(...)) -> dict[str, str | int]:  # noqa: B008
     suffix = Path(audio.filename or "").suffix.lower()
