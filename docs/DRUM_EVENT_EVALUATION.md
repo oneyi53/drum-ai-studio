@@ -26,7 +26,8 @@ absolute seconds; bar/beat positions are derived from the tempo map and must
 not be treated as stable identifiers.
 
 Python API: `app.drum_events.DrumPerformance`, `DrumEvent`,
-`TempoChange`, and `evaluate_performance`.
+`TempoChange`, and `evaluate_performance`. A CLI is also installed as
+`drumai-evaluate` when the backend package is installed.
 
 ## Accuracy evaluation
 
@@ -42,6 +43,15 @@ predictions to a human-annotated reference:
 - Mean absolute timing error is reported for matched events only.
 - Results include overall and per-instrument metrics.
 
+Run the evaluator against two serialized `DrumPerformance` JSON files:
+
+```bash
+cd backend
+pip install -e .
+drumai-evaluate --reference reference.json --predicted predicted.json --tolerance-ms 50
+```
+
+The command prints a JSON report suitable for saving as a benchmark artifact.
 The evaluator is deterministic and does not claim that any engine meets a
 quality threshold. Empty-vs-empty is reported as 1.0 for precision, recall,
 and F1 because there are no errors; reports must still include event counts.
