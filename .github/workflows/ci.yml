@@ -94,9 +94,9 @@ jobs:
         run: |
           python -m pip install lxml
           mkdir -p /tmp/musicxml-4.0-schema
-          curl -fsSL https://www.w3.org/2021/06/musicxml40/listings/musicxml.xsd/ -o /tmp/musicxml-4.0-schema/musicxml.xsd
-          curl -fsSL https://www.w3.org/2021/06/musicxml40/listings/xml.xsd/ -o /tmp/musicxml-4.0-schema/xml.xsd
-          curl -fsSL https://www.w3.org/2021/06/musicxml40/listings/xlink.xsd/ -o /tmp/musicxml-4.0-schema/xlink.xsd
+          curl -fsSL https://raw.githubusercontent.com/w3c-cg/musicxml/v4.0/schema/musicxml.xsd -o /tmp/musicxml-4.0-schema/musicxml.xsd
+          curl -fsSL https://raw.githubusercontent.com/w3c-cg/musicxml/v4.0/schema/xml.xsd -o /tmp/musicxml-4.0-schema/xml.xsd
+          curl -fsSL https://raw.githubusercontent.com/w3c-cg/musicxml/v4.0/schema/xlink.xsd -o /tmp/musicxml-4.0-schema/xlink.xsd
           python - <<'PY'
           from pathlib import Path
           schema = Path("/tmp/musicxml-4.0-schema/musicxml.xsd")
