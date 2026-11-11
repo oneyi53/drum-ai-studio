@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import tempfile
 from collections import Counter
 from pathlib import Path
@@ -101,7 +102,40 @@ def main() -> None:
             sample_dir.mkdir()
             isolated_source = sample_dir / sample.name
             shutil.copy2(sample, isolated_source)
-            transcribe_and_check(ds, isolated_source, f"repository-mp3-{index}")
+
+            # Decode MP3 explicitly before Demucs. This avoids relying on the
+            # optional ffmpeg-python executable lookup inside Demucs' loader,
+            # while still exercising the repository's real MP3 input files.
+            try:
+                import imageio_ffmpeg
+
+                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            except ImportError:
+                ffmpeg_exe = shutil.which("ffmpeg")
+            if not ffmpeg_exe:
+                raise RuntimeError("MP3 smoke test requires FFmpeg or imageio-ffmpeg")
+
+            decoded_wav = sample_dir / f"{sample.stem}.decoded.wav"
+            subprocess.run(
+                [
+                    ffmpeg_exe,
+                    "-y",
+                    "-i",
+                    str(isolated_source),
+                    "-vn",
+                    "-ac",
+                    "2",
+                    "-ar",
+                    "44100",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(decoded_wav),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            transcribe_and_check(ds, decoded_wav, f"repository-mp3-{index}")
 
 
 if __name__ == "__main__":
