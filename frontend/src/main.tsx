@@ -149,7 +149,13 @@ function App() {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const lastMetronomeBeatRef = React.useRef(-1);
-  const visibleLanesForBox = (box: { startLane: string; endLane: string }, hidden: string[], lanes: string[]) => {\n    const visible = lanes.filter((lane) => !hidden.includes(lane));\n    const first = visible.indexOf(box.startLane);\n    const last = visible.indexOf(box.endLane);\n    return visible.slice(Math.min(first, last), Math.max(first, last) + 1);\n  };\n  const timelineBeats = React.useMemo(
+  const visibleLanesForBox = (box: { startLane: string; endLane: string }, hidden: string[], lanes: string[]) => {
+    const visible = lanes.filter((lane) => !hidden.includes(lane));
+    const first = visible.indexOf(box.startLane);
+    const last = visible.indexOf(box.endLane);
+    return visible.slice(Math.min(first, last), Math.max(first, last) + 1);
+  };
+  const timelineBeats = React.useMemo(
     () => summary ? buildTimelineBeats(summary.durationSeconds, summary.tempoMap) : [],
     [summary],
   );
