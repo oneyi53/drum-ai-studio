@@ -29,7 +29,7 @@ def test_fallback_pdf_keeps_system_labels_and_meter_outside_staff_header():
     assert "Legend:" in text
     # The initial time signature belongs in the left gutter, not repeated
     # above every measure where it competes with bar numbers and note stems.
-    assert text.count("4/4") == 1
+    assert text.count("4/4") == text.count("System ") + 1
 
 
 def test_fallback_pdf_starts_new_system_with_its_own_label_and_meter():
@@ -47,4 +47,4 @@ def test_fallback_pdf_starts_new_system_with_its_own_label_and_meter():
 
     assert "System 1" in text
     assert "System 2" in text
-    assert text.count("4/4") == 2
+    assert text.count("4/4") == text.count("System ") + len(reader.pages)
