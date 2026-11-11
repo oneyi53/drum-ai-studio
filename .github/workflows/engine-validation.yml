@@ -32,18 +32,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Ensure FFmpeg is available
+      - name: Install FFmpeg and ffprobe
         run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            python -m pip install --no-cache-dir imageio-ffmpeg
-            FFMPEG_EXE="$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")"
-            mkdir -p "$RUNNER_TEMP/ffmpeg-bin"
-            ln -sf "$FFMPEG_EXE" "$RUNNER_TEMP/ffmpeg-bin/ffmpeg"
-            echo "$RUNNER_TEMP/ffmpeg-bin" >> "$GITHUB_PATH"
-            export PATH="$RUNNER_TEMP/ffmpeg-bin:$PATH"
-          fi
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
           command -v ffmpeg
+          command -v ffprobe
           ffmpeg -version
+          ffprobe -version
       - name: Install CPU PyTorch and DrumScript
         run: |
           python -m pip install --upgrade pip
