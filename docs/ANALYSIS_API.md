@@ -63,7 +63,13 @@ GET /api/projects/{project_id}/performance
 
 The result contains the canonical `DrumPerformance` JSON and generated MIDI
 filename. Download the MIDI artifact with `GET /api/projects/{project_id}/midi`.
-The API does not yet provide event-edit endpoints.
+Event create/update/delete operations are persisted as revisions. The editor exposes
+persistent undo/redo through `POST /api/projects/{project_id}/undo` and
+`POST /api/projects/{project_id}/redo`; query
+`GET /api/projects/{project_id}/history` for the current revision and
+`can_undo`/`can_redo` flags. Undo/redo restore canonical JSON and regenerate
+the MIDI artifact in the same database transaction. A new edit after undo
+discards the redo branch.
 
 ## Failure modes
 
