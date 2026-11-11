@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from xml.etree import ElementTree as ET
 from pathlib import Path
 import sys
 
@@ -51,9 +52,18 @@ with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
         if midi.status_code != 200 or not midi.content:
             raise RuntimeError("API did not return a non-empty generated MIDI download")
 
+        musicxml = client.get(f"/api/projects/{project_id}/musicxml")
+        if musicxml.status_code != 200 or not musicxml.content:
+            raise RuntimeError(
+                f"API MusicXML export failed: {musicxml.status_code} {musicxml.text}"
+            )
+        score = ET.fromstring(musicxml.content)
+        if score.tag != "score-partwise" or not score.findall(".//note"):
+            raise RuntimeError("MusicXML export did not contain a populated partwise drum score")
+
         print(
             "API_ENGINE_E2E_OK "
             f"job_id={job_id} events={len(events)} "
             f"duration_seconds={performance['duration_seconds']:.3f} "
-            f"midi_bytes={len(midi.content)}"
+            f"midi_bytes={len(midi.content)} musicxml_bytes={len(musicxml.content)}"
         )
