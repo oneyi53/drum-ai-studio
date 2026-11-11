@@ -89,3 +89,13 @@ route resolves the stored path under the upload directory and returns 404 for
 unknown projects or missing artifacts. The frontend uses the browser audio
 element for playback, seeking, and timeline playhead synchronization; selecting
 a drum event seeks the player to that event's absolute timestamp.
+
+
+### Tempo-map visualization
+
+The arrangement view derives beat and bar markers from each tempo-map segment.
+A tempo change starts a new segment at its declared absolute timestamp; the
+segment's BPM determines quarter-note spacing and its time signature determines
+bar length. Tempo boundaries and BPM labels are shown on the timeline. When no
+tempo metadata exists, the view uses a 120 BPM, 4/4 display fallback. Event
+timestamps and audio playback remain in absolute seconds.
