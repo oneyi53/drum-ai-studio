@@ -120,7 +120,13 @@ def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
     import verovio
     from pypdf import PdfReader, PdfWriter
 
-    toolkit = verovio.toolkit()
+    # The wheel bundles SMuFL fonts in verovio/data, but some CI/container
+    # layouts do not resolve the default resource path correctly. Initialize
+    # without implicit font loading and point Verovio at its packaged assets.
+    toolkit = verovio.toolkit(False)
+    resource_path = Path(verovio.__file__).resolve().parent / "data"
+    if not resource_path.is_dir() or not toolkit.setResourcePath(str(resource_path)):
+        raise ValueError(f"Verovio font resources are unavailable at {resource_path}")
     toolkit.setOptions(
         {
             "inputFrom": "xml",
