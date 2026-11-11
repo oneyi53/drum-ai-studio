@@ -278,3 +278,57 @@ def test_quantization_rejects_unknown_subdivision(client, monkeypatch):
         json={"subdivision": "1/64"},
     )
     assert response.status_code == 422
+
+
+def test_persistent_undo_redo_restores_performance_and_midi(client, monkeypatch, tmp_path):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=3,
+        events=[DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK)],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+
+    baseline = client.get(f"/api/projects/{project_id}/history").json()
+    assert baseline["can_undo"] is False
+    created = client.post(
+        f"/api/projects/{project_id}/events",
+        json={"time_seconds": 1.25, "instrument": "snare", "velocity": 110},
+    )
+    assert created.status_code == 201
+    assert client.get(f"/api/projects/{project_id}/history").json()["can_undo"] is True
+
+    undone = client.post(f"/api/projects/{project_id}/undo")
+    assert undone.status_code == 200
+    assert len(undone.json()["performance"]["events"]) == 1
+    assert undone.json()["can_redo"] is True
+
+    redone = client.post(f"/api/projects/{project_id}/redo")
+    assert redone.status_code == 200
+    assert len(redone.json()["performance"]["events"]) == 2
+    assert redone.json()["can_redo"] is False
+
+    midi_path = tmp_path / "history.mid"
+    midi_path.write_bytes(client.get(f"/api/projects/{project_id}/midi").content)
+    exported = midi_to_performance(midi_path)
+    assert len(exported.events) == 2
+
+    client.post(f"/api/projects/{project_id}/undo")
+    client.post(
+        f"/api/projects/{project_id}/events",
+        json={"time_seconds": 2.0, "instrument": "crash", "velocity": 90},
+    )
+    assert client.get(f"/api/projects/{project_id}/history").json()["can_redo"] is False
+    assert client.post(f"/api/projects/{project_id}/redo").status_code == 409
