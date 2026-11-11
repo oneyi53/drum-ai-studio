@@ -16,11 +16,12 @@
   MP3 smoke tests and the API-to-engine end-to-end upload/inference/result/MIDI
   download path. This run predates the event-editor changes and does not
   validate those new endpoints.
-- Backend tests run #57 passed: 35 tests and Ruff. Repository CI run #143 passed
-  both the frontend build and backend test jobs for the event editor.
-- A fresh DrumScript engine validation run #48 is still running; it validates
-  the engine path on the latest code but is not required for the isolated
-  editor unit tests. No accuracy claim is made; model predictions still require
+- Backend tests run #60 passed: 35 tests and Ruff, including CRUD, synchronized
+  MIDI download, and MIDI round-trip checks for tempo, velocity, timing, and
+  full performance duration. Repository CI run #146 passed frontend build and
+  backend tests.
+- DrumScript engine validation run #51 is still running against the latest
+  head; its end-to-end steps remain pending. No accuracy claim is made; model predictions still require
   human review.
 
 ## 2026-11-11 — CI regression fixes
