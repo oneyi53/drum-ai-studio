@@ -136,10 +136,20 @@ function App() {
   const [duplicateRepeatCount, setDuplicateRepeatCount] = React.useState("1");
   const [sourceBarNumber, setSourceBarNumber] = React.useState("1");
   const [targetBarNumber, setTargetBarNumber] = React.useState("2");
+  const [timelineSelectionBox, setTimelineSelectionBox] = React.useState<{
+    startTime: number; endTime: number; startLane: string; endLane: string;
+  } | null>(null);
+  const [timelineDragDelta, setTimelineDragDelta] = React.useState(0);
+  const timelineDragRef = React.useRef<{
+    mode: "select" | "move"; pointerId: number; startX: number; startY: number;
+    startTime: number; currentTime: number; startLane: string; currentLane: string;
+    trackLeft: number; trackWidth: number; eventIds: string[]; moved: boolean;
+  } | null>(null);
+  const suppressTimelineClickRef = React.useRef(false);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const lastMetronomeBeatRef = React.useRef(-1);
-  const timelineBeats = React.useMemo(
+  const visibleLanesForBox = (box: { startLane: string; endLane: string }, hidden: string[], lanes: string[]) => {\n    const visible = lanes.filter((lane) => !hidden.includes(lane));\n    const first = visible.indexOf(box.startLane);\n    const last = visible.indexOf(box.endLane);\n    return visible.slice(Math.min(first, last), Math.max(first, last) + 1);\n  };\n  const timelineBeats = React.useMemo(
     () => summary ? buildTimelineBeats(summary.durationSeconds, summary.tempoMap) : [],
     [summary],
   );
@@ -442,6 +452,128 @@ function App() {
     }
   }
 
+  async function moveEventsByOffset(eventIds: string[], offset: number) {
+    if (!summary || !eventIds.length || Math.abs(offset) < 0.001) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/events/batch`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_ids: eventIds, time_offset_seconds: offset }),
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "拖动移动失败"));
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setMessage(`已拖动移动 ${eventIds.length} 个鼓点（${offset >= 0 ? "+" : ""}${offset.toFixed(3)}s），已记录历史并同步 MIDI。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "拖动移动失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function timelinePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!summary || saving) return;
+    const target = event.target as HTMLElement;
+    const track = target.closest(".timeline-track") as HTMLElement | null;
+    if (!track) return;
+    const lane = (track.closest(".timeline-lane") as HTMLElement | null)?.dataset.lane;
+    if (!lane) return;
+    const rect = track.getBoundingClientRect();
+    const startTime = Math.max(0, Math.min(
+      summary.durationSeconds,
+      ((event.clientX - rect.left) / Math.max(1, rect.width)) * summary.durationSeconds,
+    ));
+    const hit = target.closest(".timeline-hit") as HTMLButtonElement | null;
+    const eventId = hit?.dataset.eventId;
+    const eventIds = eventId
+      ? (selectedEventIds.includes(eventId) ? [...selectedEventIds] : [eventId])
+      : [];
+    if (eventId && !selectedEventIds.includes(eventId)) setSelectedEventIds(eventIds);
+    if (eventId) setSelectedEventId(eventId);
+    timelineDragRef.current = {
+      mode: hit ? "move" : "select",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startTime,
+      currentTime: startTime,
+      startLane: lane,
+      currentLane: lane,
+      trackLeft: rect.left,
+      trackWidth: rect.width,
+      eventIds,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (!hit) setTimelineSelectionBox({ startTime, endTime: startTime, startLane: lane, endLane: lane });
+  }
+
+  function timelinePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = timelineDragRef.current;
+    if (!summary || !drag || drag.pointerId !== event.pointerId) return;
+    if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) {
+      drag.moved = true;
+    }
+    drag.currentTime = Math.max(0, Math.min(
+      summary.durationSeconds,
+      ((event.clientX - drag.trackLeft) / Math.max(1, drag.trackWidth)) * summary.durationSeconds,
+    ));
+    const underPointer = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    const laneUnderPointer = underPointer?.closest(".timeline-lane") as HTMLElement | null;
+    if (laneUnderPointer?.dataset.lane) drag.currentLane = laneUnderPointer.dataset.lane;
+    if (drag.mode === "select") {
+      setTimelineSelectionBox({
+        startTime: drag.startTime,
+        endTime: drag.currentTime,
+        startLane: drag.startLane,
+        endLane: drag.currentLane,
+      });
+    } else {
+      setTimelineDragDelta(drag.moved ? drag.currentTime - drag.startTime : 0);
+    }
+  }
+
+  function timelinePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = timelineDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    timelineDragRef.current = null;
+    setTimelineSelectionBox(null);
+    setTimelineDragDelta(0);
+    if (!drag.moved || !summary) return;
+    if (drag.mode === "select") {
+      const visibleLanes = TIMELINE_LANES.filter((lane) => !hiddenLanes.includes(lane));
+      const first = visibleLanes.indexOf(drag.startLane);
+      const last = visibleLanes.indexOf(drag.currentLane);
+      const laneStart = Math.min(first, last);
+      const laneEnd = Math.max(first, last);
+      const timeStart = Math.min(drag.startTime, drag.currentTime);
+      const timeEnd = Math.max(drag.startTime, drag.currentTime);
+      const ids = summary.events
+        .filter((item) => {
+          const laneIndex = visibleLanes.indexOf(item.instrument);
+          return laneIndex >= laneStart && laneIndex <= laneEnd
+            && item.time_seconds >= timeStart && item.time_seconds <= timeEnd;
+        })
+        .map((item) => item.id);
+      setSelectedEventIds(ids);
+      setSelectedEventId(ids[0] ?? null);
+      setMessage(`框选完成：已选择 ${ids.length} 个鼓点。`);
+      return;
+    }
+    const offset = drag.currentTime - drag.startTime;
+    if (Math.abs(offset) >= 0.001 && drag.eventIds.length) {
+      suppressTimelineClickRef.current = true;
+      void moveEventsByOffset(drag.eventIds, offset);
+    }
+  }
+
+  function timelinePointerCancel(event: React.PointerEvent<HTMLDivElement>) {
+    if (timelineDragRef.current?.pointerId !== event.pointerId) return;
+    timelineDragRef.current = null;
+    setTimelineSelectionBox(null);
+    setTimelineDragDelta(0);
+  }
+
   async function batchEditEvents() {
     if (!summary || !selectedEventIds.length) return;
     const offset = Number(batchTimeOffset);
@@ -728,19 +860,26 @@ function App() {
                 {lane.replace(/_/g, " ")}
               </label>)}
             </div>
-            <div className="timeline-scroll"><div className="timeline-grid">
+            <div className="timeline-scroll"><div className="timeline-grid" onPointerDown={timelinePointerDown} onPointerMove={timelinePointerMove} onPointerUp={timelinePointerUp} onPointerCancel={timelinePointerCancel}>
               {TIMELINE_LANES.filter((lane) => !hiddenLanes.includes(lane)).map((lane) => {
                 const laneEvents = summary.events.filter((event) => event.instrument === lane);
-                return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replace(/_/g, " ")}</span><div className="timeline-track">
+                return <div className="timeline-lane" data-lane={lane} key={lane}><span className="timeline-lane-name">{lane.replace(/_/g, " ")}</span><div className="timeline-track">
                   {loopEnabled && loopRangeValid && <span className="timeline-loop-range" style={{ left: (loopStart / summary.durationSeconds) * 100 + "%", width: ((activeLoopEnd - loopStart) / summary.durationSeconds) * 100 + "%" }} />}
                   {timelineBeats.map((beat, index) => <span key={beat.time + "-" + index} className={"timeline-beat " + (beat.isBar ? "bar" : "")} style={{ left: (beat.time / summary.durationSeconds) * 100 + "%" }} />)}
                   {summary.tempoMap.filter((change) => change.time_seconds > 0).map((change) => <span key={"tempo-" + change.time_seconds} className="timeline-tempo-change" style={{ left: (change.time_seconds / summary.durationSeconds) * 100 + "%" }} />)}
                   <span className="timeline-playhead" style={{ left: `${(audioTime / summary.durationSeconds) * 100}%` }} />
-                  {laneEvents.map((event) => <button key={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id ? "selected" : ""} ${activeEventId === event.id ? "active" : ""}`} style={{ left: `${(event.time_seconds / summary.durationSeconds) * 100}%`, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { setSelectedEventId(event.id); if (audioRef.current) audioRef.current.currentTime = event.time_seconds; setAudioTime(event.time_seconds); document.getElementById(`event-${event.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }} />)}
+                  {timelineSelectionBox && visibleLanesForBox(timelineSelectionBox, hiddenLanes, TIMELINE_LANES).includes(lane) && <span className="timeline-marquee" style={{ left: `${Math.min(timelineSelectionBox.startTime, timelineSelectionBox.endTime) / summary.durationSeconds * 100}%`, width: `${Math.abs(timelineSelectionBox.endTime - timelineSelectionBox.startTime) / summary.durationSeconds * 100}%` }} />}
+                  {laneEvents.map((event) => {
+                    const basePercent = event.time_seconds / summary.durationSeconds * 100;
+                    const previewLeft = selectedEventIds.includes(event.id) && timelineDragDelta
+                      ? `calc(${basePercent}% + ${timelineDragDelta / summary.durationSeconds * 100}%)`
+                      : `${basePercent}%`;
+                    return <button key={event.id} data-event-id={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id || selectedEventIds.includes(event.id) ? "selected" : ""} ${activeEventId === event.id ? "active" : ""}`} style={{ left: previewLeft, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { if (suppressTimelineClickRef.current) { suppressTimelineClickRef.current = false; return; } setSelectedEventId(event.id); if (audioRef.current) audioRef.current.currentTime = event.time_seconds; setAudioTime(event.time_seconds); document.getElementById(`event-${event.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }} />;
+                  })}
                 </div></div>;
               })}
             </div></div>
-            <small className="timeline-help">点击鼓点可跳转音频并定位事件；绿色播放头随音频移动，标记亮度反映力度。</small>
+            <small className="timeline-help">拖动空白区域可跨鼓件框选鼓点；拖动已选鼓点可整体移动选区。点击鼓点可跳转音频；标记亮度反映力度。</small>
           </div>
           <div className="event-batch-controls">
             <label><input type="checkbox" checked={selectedEventIds.length === summary.events.length && summary.events.length > 0} onChange={(event) => setSelectedEventIds(event.target.checked ? summary.events.map((item) => item.id) : [])} /> 全选</label>
