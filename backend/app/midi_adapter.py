@@ -11,7 +11,6 @@ from .drum_events import DrumEvent, DrumInstrument, DrumPerformance, TempoChange
 GM_DRUM_MAP: dict[int, DrumInstrument] = {
     35: DrumInstrument.KICK, 36: DrumInstrument.KICK,
     38: DrumInstrument.SNARE, 40: DrumInstrument.SNARE,
-    37: DrumInstrument.SNARE, 39: DrumInstrument.SNARE,
     42: DrumInstrument.CLOSED_HIHAT, 44: DrumInstrument.PEDAL_HIHAT,
     46: DrumInstrument.OPEN_HIHAT,
     49: DrumInstrument.CRASH, 52: DrumInstrument.CRASH,
