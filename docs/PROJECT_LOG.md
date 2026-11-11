@@ -33,7 +33,7 @@ This log records implemented work and evidence. A passing CI run demonstrates th
 - Added a 4-bar, 4/4, 16th-note drum grid with adjustable fixed BPM and per-event velocity editing.
 - Added a simplified five-line percussion-staff preview derived from the same event list.
 - Added downloadable MusicXML 4.0 partwise output with percussion clef, a drum-set part, GM percussion pitch mapping, tempo marking, and events quantized to the nearest sixteenth note.
-- Added browser E2E coverage for MusicXML download, XML parsing, simultaneous kick/snare chord notation, channel 10, instrument pitch mapping, and note element order. The test saves the exact browser-generated artifact for a separate CI schema-validation step.
+- Added browser E2E coverage for MusicXML download, XML parsing, simultaneous kick/snare chord notation, channel 10, instrument pitch mapping, rests, a fifth measure, and note element order. The test saves the exact browser-generated artifact for a separate CI schema-validation step.
 - Corrected MusicXML note child ordering so duration precedes the instrument reference.
 - MusicXML currently uses one fixed BPM and 4/4 time. It does not encode a tempo map, swing, tuplets, expressive microtiming, or the source event's velocity. Original onset seconds and velocity remain in the project's event records; CSV reference export remains available.
 - The staff preview is intentionally a lightweight visual check, not a substitute for a dedicated notation engine or engraving review.
@@ -56,7 +56,7 @@ Latest MusicXML conformance-hardening changes:
 
 ## Next engineering gates
 
-1. Open the validated generated MusicXML in a notation application and inspect rendered notation for all nine supported drum instruments.
+1. Validate the expanded all-instrument, rest, and fifth-measure MusicXML fixture in CI; then open the generated file in a notation application and inspect rendered notation for all nine supported drum instruments.
 3. Decide and document how tempo maps, swing/tuplets, and velocity should be represented before promising faithful score/MIDI round trips.
 4. Add a rights-cleared, independently human-annotated evaluation set before reporting transcription metrics or enabling the analysis API.
 5. Review upload security, authentication, quotas, cleanup, and deployment configuration before any public multi-user deployment.
@@ -73,3 +73,5 @@ Latest MusicXML conformance-hardening changes:
 - CI run [42863319135](https://github.com/oneyi53/drum-ai-studio/actions/runs/42863319135) on the previous head: backend, frontend build, evaluator tests, and browser E2E all passed. The XSD step failed while parsing the downloaded `musicxml.xsd` because the W3C listing endpoint returned an HTML document (`Opening and ending tag mismatch: link ... head`); the MusicXML artifact itself was not evaluated. Corrected the download source to the official GitHub `w3c-cg/musicxml` tag `v4.0` in commit `6027d6fb797adc09a5c46a2522f676641bc03d0f`. Conformance remains unverified pending CI.
 
 - CI run [42934628583](https://github.com/oneyi53/drum-ai-studio/actions/runs/42934628583): all four jobs passed (backend, frontend, evaluation, browser E2E). The browser E2E test passed, and the exact downloaded browser artifact passed official MusicXML 4.0 XSD validation. The schema step output was `MusicXML 4.0 XSD validation passed: frontend/test-results/drumai-transcription.musicxml`. This verifies XSD conformance of the tested export fixture, not visual engraving in a notation application or all possible event combinations.
+
+- Expanded the Playwright MusicXML fixture to include all nine supported instruments, simultaneous kick/snare hits, rests, and an event at 16.25 seconds (measure five). Added assertions for all nine GM percussion pitches, ten drum events, rests, and five measures. CI validation for this expanded fixture is pending.
