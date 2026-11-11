@@ -16,6 +16,15 @@ type Performance = {
   tempo_map?: { time_seconds: number; bpm: number; numerator: number; denominator: number }[];
 };
 
+type SavedProject = {
+  id: string;
+  original_filename: string;
+  created_at: string;
+  status: string;
+  latest_job_id: string | null;
+  latest_job_status: string | null;
+};
+
 type AnalysisSummary = {
   jobId: string;
   projectId: string;
@@ -99,6 +108,7 @@ function App() {
   const [busy, setBusy] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [summary, setSummary] = React.useState<AnalysisSummary | null>(null);
+  const [projects, setProjects] = React.useState<SavedProject[]>([]);
   const [newTime, setNewTime] = React.useState("0");
   const [newInstrument, setNewInstrument] = React.useState("kick");
   const [newVelocity, setNewVelocity] = React.useState("96");
@@ -184,6 +194,44 @@ function App() {
     setMetronomeEnabled((enabled) => !enabled);
   }
 
+  async function loadProjects() {
+    try {
+      const response = await fetch(`${API_BASE}/api/projects?limit=30`);
+      if (!response.ok) return;
+      const result = await response.json() as { projects?: SavedProject[] };
+      setProjects(result.projects ?? []);
+    } catch {
+      // The API may not be running yet when the workspace first mounts.
+    }
+  }
+
+  async function restoreProject(projectId: string) {
+    if (!projectId) return;
+    const project = projects.find((item) => item.id === projectId);
+    if (!project || project.latest_job_status !== "completed" || !project.latest_job_id) {
+      setMessage("该项目还没有完成的鼓谱分析结果。");
+      return;
+    }
+    setSaving(true);
+    setSummary(null);
+    audioRef.current?.pause();
+    setLoopEnabled(false);
+    setMetronomeEnabled(false);
+    setAudioTime(0);
+    try {
+      await refreshPerformance(projectId, project.latest_job_id);
+      setMessage(`已恢复项目：${project.original_filename}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "恢复项目失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  React.useEffect(() => {
+    void loadProjects();
+  }, []);
+
   async function uploadAndAnalyze() {
     if (!file) return;
     setBusy(true);
@@ -235,6 +283,7 @@ function App() {
       if (!completed) throw new Error("分析耗时较长，任务仍在后台运行；请稍后刷新项目结果。");
 
       await refreshPerformance(projectId, jobId);
+      await loadProjects();
       setMessage(`分析完成：项目 ${projectId}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "处理失败，请检查后端服务。");
@@ -372,6 +421,15 @@ function App() {
       </section>
       <section className="panel">
         <div className="panel-heading"><div><p className="eyebrow">NEW PROJECT</p><h2>导入并分析音频</h2></div><span className="step">01 / 04</span></div>
+        {projects.length > 0 && <div className="saved-projects">
+          <label>恢复已保存项目<select value={summary?.projectId ?? ""} onChange={(event) => void restoreProject(event.target.value)}>
+            <option value="">选择已完成的项目</option>
+            {projects.map((project) => <option key={project.id} value={project.id} disabled={project.latest_job_status !== "completed"}>
+              {project.original_filename} · {project.latest_job_status ?? project.status}
+            </option>)}
+          </select></label>
+          <button type="button" onClick={() => void loadProjects()} disabled={busy || saving}>刷新列表</button>
+        </div>}
         <label className="dropzone">
           <input type="file" accept=".wav,.mp3,.flac,.m4a,.ogg,.aac,audio/*" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
           <span className="upload-icon">↑</span>
