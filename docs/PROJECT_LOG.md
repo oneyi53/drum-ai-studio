@@ -246,3 +246,16 @@ code or validation state changes; do not infer completion from plans.
   seconds, so tempo visualization does not shift the canonical event times.
 - Frontend build and regression CI for this increment are pending; no pass is
   claimed until the latest branch head completes validation.
+
+
+## 2026-11-11 — playback integration validation
+
+- DrumScript engine validation run #77 passed all steps on the playback batch
+  head, including upstream non-slow tests, synthetic and both repository MP3
+  smoke tests, and API-to-engine end-to-end smoke.
+- Repository CI run #173 passed frontend build and backend tests; backend
+  tests run #86 also passed with Ruff. These runs validated the playback
+  implementation and the runner compatibility fixes.
+- The later tempo-map-aware timeline commits were added after run #173. They
+  still require a fresh frontend build; do not extend the earlier pass claim
+  to those commits.
