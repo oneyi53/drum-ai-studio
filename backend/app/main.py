@@ -103,6 +103,13 @@ def initialize_storage() -> None:
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_analysis_jobs_project ON analysis_jobs(project_id, created_at)"
         )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_analysis_jobs_single_active
+            ON analysis_jobs(project_id)
+            WHERE status IN ('queued', 'running')
+            """
+        )
         now = utc_now()
         connection.execute(
             """
@@ -243,6 +250,7 @@ def analyze_project(
     project_id: str, background_tasks: BackgroundTasks
 ) -> dict[str, str]:
     with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
         project = connection.execute(
             "SELECT id FROM projects WHERE id=?", (project_id,)
         ).fetchone()
