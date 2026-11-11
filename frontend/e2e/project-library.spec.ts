@@ -37,7 +37,7 @@ test("creates a project, persists annotations, and restores them after reload", 
   await expect(page.getByText(/项目已创建：/)).toBeVisible();
 
   await page.getByLabel("时间（秒）").fill("0.250");
-  await page.getByLabel("鼓件").selectOption("snare");
+  await page.getByLabel("鼓件", { exact: true }).selectOption("snare");
   await page.getByRole("button", { name: /记录鼓点/ }).click();
   await expect(page.getByText("人工确认事件 · 1")).toBeVisible();
   await expect(page.getByText("已保存到项目服务器 · 1 条参考标注")).toBeVisible();
@@ -52,7 +52,7 @@ test("creates a project, persists annotations, and restores them after reload", 
     ["2.000", "ride"], ["16.250", "ride"],
   ]) {
     await page.getByLabel("时间（秒）").fill(time);
-    await page.getByLabel("鼓件").selectOption(kind);
+    await page.getByLabel("鼓件", { exact: true }).selectOption(kind);
     await page.getByRole("button", { name: /记录鼓点/ }).click();
   }
   await expect(page.getByText("人工确认事件 · 10")).toBeVisible();
@@ -65,7 +65,7 @@ test("creates a project, persists annotations, and restores them after reload", 
   const musicXmlChunks: Buffer[] = [];
   for await (const chunk of musicXml) musicXmlChunks.push(Buffer.from(chunk));
   const musicXmlText = Buffer.concat(musicXmlChunks).toString("utf8");
-  expect(musicXmlText).toContain("<score-partwise version=\"4.0\">");
+  expect(musicXmlText).toContain("<score-partwise version=\\"4.0\\">");
   expect(musicXmlText).toContain("<midi-unpitched>38</midi-unpitched>");
   expect(musicXmlText).toContain("<midi-unpitched>36</midi-unpitched>");
   expect(musicXmlText).toContain("<midi-channel>10</midi-channel>");
@@ -110,7 +110,7 @@ test("creates a project, persists annotations, and restores them after reload", 
   await projectSelect.selectOption(projectId!);
   await page.getByRole("button", { name: "打开项目" }).click();
 
-  await expect(page.getByText(/已重新打开项目：playwright-e2e-tone\.wav/)).toBeVisible();
+  await expect(page.getByText(/已重新打开项目：playwright-e2e-tone\\.wav/)).toBeVisible();
   // The connection message is transient and is immediately replaced by the save status.
   // The restored event count and field values below are the durable persistence assertions.
   await expect(page.getByText("人工确认事件 · 10")).toBeVisible();
