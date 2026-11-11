@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from .drum_events import DrumEvent, DrumInstrument, DrumPerformance
 from .engine_adapter import DrumScriptEngine
+from .midi_adapter import performance_to_midi
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("DRUMAI_DATA_DIR", APP_DIR.parent.parent / "data"))
@@ -338,7 +339,7 @@ def get_project_performance(project_id: str) -> dict[str, Any]:
 def _load_editable_performance(connection: sqlite3.Connection, project_id: str):
     row = connection.execute(
         """
-        SELECT id, performance_json
+        SELECT id, performance_json, midi_filename
         FROM analysis_jobs
         WHERE project_id=? AND status='completed' AND performance_json IS NOT NULL
         ORDER BY created_at DESC LIMIT 1
@@ -351,8 +352,20 @@ def _load_editable_performance(connection: sqlite3.Connection, project_id: str):
 
 
 def _save_edited_performance(
-    connection: sqlite3.Connection, job_id: str, performance: DrumPerformance
+    connection: sqlite3.Connection,
+    job_id: str,
+    midi_filename: str,
+    performance: DrumPerformance,
 ) -> None:
+    midi_path = ANALYSIS_DIR / job_id / midi_filename
+    if not midi_path.is_file():
+        raise HTTPException(status_code=404, detail="Generated MIDI file is missing.")
+    temporary_path = midi_path.with_suffix(".tmp.mid")
+    try:
+        performance_to_midi(performance, temporary_path)
+        temporary_path.replace(midi_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
     connection.execute(
         "UPDATE analysis_jobs SET performance_json=?, updated_at=? WHERE id=?",
         (performance.model_dump_json(), utc_now(), job_id),
@@ -377,7 +390,7 @@ def add_manual_event(project_id: str, payload: EventCreateRequest) -> dict[str, 
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        _save_edited_performance(connection, row["id"], updated)
+        _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
     return {"event": event.model_dump(), "performance": updated.model_dump()}
 
 
