@@ -204,6 +204,25 @@ function App() {
     }
   }
 
+  async function applyQuantization() {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/quantize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subdivision: quantizeSubdivision, strength: quantizeStrength, apply: true }),
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "量化失败"));
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setMessage(`量化已应用：${quantizeSubdivision} 网格，强度 ${quantizeStrength}%，MIDI 已同步。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "量化失败");
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <main className="shell">
       <header className="topbar">
