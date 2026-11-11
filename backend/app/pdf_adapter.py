@@ -163,7 +163,11 @@ def _render_fallback_pdf(
         (event, _seconds_to_quarters(event.time_seconds, changes))
         for event in performance.events
     ]
-    usable_width = PAGE_W - LEFT - RIGHT
+    # Reserve a dedicated left gutter for system labels and meter information.
+    # The old layout started the staff only 24pt from the page edge, placing
+    # "System", "Drums", bar numbers and the time signature on top of staff lines.
+    x0 = LEFT + 58
+    usable_width = PAGE_W - RIGHT - x0
     measure_width = (usable_width - (MEASURES_PER_SYSTEM - 1) * MEASURE_GAP) / MEASURES_PER_SYSTEM
     page_system = 0
 
@@ -176,28 +180,32 @@ def _render_fallback_pdf(
             pdf.drawString(LEFT, PAGE_H - 46, f"Tempo: {first.bpm:g} BPM    Meter: {first.numerator}/{first.denominator}    Duration: {performance.duration_seconds:.1f}s")
             pdf.drawRightString(PAGE_W - RIGHT, PAGE_H - 46, f"{len(performance.events)} drum events")
         top = PAGE_H - 76 - page_system * SYSTEM_HEIGHT
-        staff_mid = top - 43
-        x0 = LEFT + 24
+        staff_mid = top - 48
         pdf.setFont("Helvetica-Bold", 8)
-        pdf.drawString(LEFT, staff_mid + 13, f"System {system_index // MEASURES_PER_SYSTEM + 1}")
+        pdf.drawString(LEFT, staff_mid + 39, f"System {system_index // MEASURES_PER_SYSTEM + 1}")
+        # Keep the time signature in the left gutter, not over the first bar.
+        first_bar = bars[system_index]
+        pdf.setFont("Helvetica", 8)
+        pdf.drawString(LEFT + 4, staff_mid + 22, f"{first_bar[2]}/{first_bar[3]}")
         # Five-line percussion staff.
         for line in range(5):
             y = staff_mid + (line - 2) * STAFF_SPACING
             pdf.setLineWidth(0.55)
             pdf.line(x0, y, PAGE_W - RIGHT, y)
-        pdf.setFont("Helvetica-Bold", 9)
-        pdf.drawString(LEFT, staff_mid - 2, "Drums")
         system_bars = bars[system_index:system_index + MEASURES_PER_SYSTEM]
         for local_index, (bar_start, bar_end, numerator, denominator) in enumerate(system_bars):
             bx = x0 + local_index * (measure_width + MEASURE_GAP)
             pdf.setFont("Helvetica", 8)
-            pdf.drawString(bx + 3, staff_mid + 27, f"{system_index + local_index + 1}")
+            # Bar numbers sit above the staff, with enough clearance for note stems.
+            pdf.drawString(bx + 3, staff_mid + 34, f"{system_index + local_index + 1}")
             pdf.setLineWidth(0.7)
             pdf.line(bx, staff_mid - 22, bx, staff_mid + 22)
             pdf.line(bx + measure_width, staff_mid - 22, bx + measure_width, staff_mid + 22)
-            if local_index == 0 or (bar_start, numerator, denominator) != (0.0, 4, 4):
+            # Time-signature changes are annotated above the affected measure.
+            # The initial signature is already printed in the dedicated gutter.
+            if local_index > 0 and (numerator, denominator) != (system_bars[local_index - 1][2], system_bars[local_index - 1][3]):
                 pdf.setFont("Helvetica", 7)
-                pdf.drawString(bx + 4, staff_mid + 31, f"{numerator}/{denominator}")
+                pdf.drawString(bx + 4, staff_mid + 23, f"{numerator}/{denominator}")
             for event, beat in event_beats:
                 if bar_start - 1e-8 <= beat < bar_end - 1e-8:
                     ratio = (beat - bar_start) / max(bar_end - bar_start, 1e-8)
