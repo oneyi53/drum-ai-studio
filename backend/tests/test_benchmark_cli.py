@@ -19,6 +19,8 @@ def _case(case_id="take-01", source="recording-01", split="evaluation"):
         "source_recording_id": source,
         "split": split,
         "audio_path": "audio.wav",
+        "audio_duration_seconds": 2.0,
+        "audio_sample_rate_hz": 44100,
         "reference_path": "reference.json",
         "predicted_path": "predicted.json",
         "permission_basis": "written_permission",
