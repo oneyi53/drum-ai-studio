@@ -1,3 +1,16 @@
+## 2026-11-11 — interactive drum arrangement timeline (implementation, CI pending)
+
+- Added a full-song, instrument-lane timeline to the editor with a time ruler,
+  tempo readout, velocity-weighted hit markers, and horizontally scrollable
+  layout on smaller screens.
+- Clicking a hit selects it and scrolls the corresponding editable event row
+  into view. The timeline is driven directly by the canonical performance,
+  so edits and quantization refresh the visualization from the saved source.
+- Uses the performance tempo-map's initial BPM when available and a clearly
+  labelled 120 BPM fallback when no tempo metadata exists; horizontal event
+  positions remain absolute audio seconds.
+- Frontend CI is pending for this commit; no build result is claimed yet.
+
 ## 2026-11-11 — persistent undo/redo for drum editing (implementation, CI pending)
 
 - Added SQLite-backed performance revision snapshots and a current-revision
