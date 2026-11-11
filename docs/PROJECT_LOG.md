@@ -219,3 +219,15 @@ code or validation state changes; do not infer completion from plans.
   its corresponding event row.
 - Updated the API contract documentation. CI for this batch has not yet been
   observed; implementation status is not a CI pass.
+
+
+### CI feedback and follow-up fixes
+
+- The first CI attempt for the audio playback batch exposed two issues in the
+  merge checkout: the WAV MIME type on the runner is `audio/x-wav` rather than
+  the equally valid `audio/wav`, and the frontend TypeScript target does not
+  include `String.replaceAll`.
+- Relaxed the API assertion to require an audio media type and replaced the
+  lane-label `replaceAll` call with an ES-compatible regular expression.
+- These fixes are committed on the PR branch. A fresh CI result for the updated
+  head is still pending; the earlier failed run is not counted as validation.
