@@ -127,7 +127,7 @@ jobs:
           import re
           pdf = Path("/tmp/drumai-musescore-render.pdf")
           info = Path("/tmp/drumai-musescore-pdfinfo.txt").read_text(encoding="utf-8")
-          match = re.search(r"^Pages:\\s+(\\d+)$", info, re.MULTILINE)
+          match = re.search(r"^Pages:\s+(\d+)$", info, re.MULTILINE)
           if not match or int(match.group(1)) < 1:
               raise SystemExit("MuseScore did not produce a non-empty paginated score PDF")
           print(f"MuseScore import/render passed: pages={match.group(1)} bytes={pdf.stat().st_size}")
