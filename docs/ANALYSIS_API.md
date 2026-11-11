@@ -62,7 +62,8 @@ GET /api/projects/{project_id}/performance
 ```
 
 The result contains the canonical `DrumPerformance` JSON and generated MIDI
-filename. The API does not yet provide MIDI download or event-edit endpoints.
+filename. Download the MIDI artifact with `GET /api/projects/{project_id}/midi`.
+The API does not yet provide event-edit endpoints.
 
 ## Failure modes
 
