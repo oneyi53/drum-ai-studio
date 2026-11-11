@@ -7,10 +7,10 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 
 from .drum_events import DrumInstrument, DrumPerformance, TempoChange
+from .musicxml_adapter import performance_to_musicxml
 
 PAGE_W, PAGE_H = landscape(A4)
 LEFT, RIGHT = 38.0, 38.0
-STAFF_TOP = 0.0
 SYSTEM_HEIGHT = 154.0
 MEASURE_GAP = 5.0
 MEASURES_PER_SYSTEM = 4
@@ -114,8 +114,45 @@ def _draw_note(pdf: canvas.Canvas, x: float, y: float, instrument: DrumInstrumen
     pdf.restoreState()
 
 
-def performance_to_pdf(performance: DrumPerformance, title: str = "DrumAI Studio — Drum Score") -> bytes:
-    """Return a landscape, printable PDF score derived from canonical drum events."""
+def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
+    """Engrave MusicXML with Verovio and convert its vector SVG pages to PDF."""
+    import cairosvg
+    import verovio
+    from pypdf import PdfReader, PdfWriter
+
+    toolkit = verovio.toolkit()
+    toolkit.setOptions(
+        {
+            "inputFrom": "xml",
+            "pageWidth": 2970,
+            "pageHeight": 2100,
+            "scale": 40,
+            "breaks": "auto",
+        }
+    )
+    if not toolkit.loadData(performance_to_musicxml(performance)):
+        raise ValueError("Verovio could not load the generated drum MusicXML.")
+    page_count = toolkit.getPageCount()
+    if page_count < 1:
+        raise ValueError("Verovio produced no pages for the drum score.")
+
+    writer = PdfWriter()
+    for page_number in range(1, page_count + 1):
+        svg = toolkit.renderToSVG(page_number)
+        if not svg:
+            raise ValueError(f"Verovio failed to render score page {page_number}.")
+        page_pdf = cairosvg.svg2pdf(bytestring=svg.encode("utf-8"))
+        writer.append_pages_from_reader(PdfReader(BytesIO(page_pdf)))
+    writer.add_metadata({"/Title": title, "/Author": "DrumAI Studio"})
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def _render_fallback_pdf(
+    performance: DrumPerformance, title: str = "DrumAI Studio — Drum Score"
+) -> bytes:
+    """Render a dependency-light emergency score if the engraving stack is absent."""
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=landscape(A4), pageCompression=1)
     pdf.setTitle(title)
@@ -183,3 +220,20 @@ def performance_to_pdf(performance: DrumPerformance, title: str = "DrumAI Studio
         pdf.drawString(LEFT, PAGE_H - 90, "No measures or drum events to display.")
     pdf.save()
     return buffer.getvalue()
+
+
+def performance_to_pdf(
+    performance: DrumPerformance, title: str = "DrumAI Studio — Drum Score"
+) -> bytes:
+    """Return a professionally engraved, printable PDF from canonical drum events.
+
+    Verovio is the primary engraving engine. The ReportLab fallback keeps
+    minimal installations usable, but production installs include Verovio.
+    """
+    try:
+        return _render_with_verovio(performance, title)
+    except ImportError as exc:
+        missing = exc.name or "engraving dependency"
+        if missing not in {"verovio", "cairosvg", "pypdf"}:
+            raise
+        return _render_fallback_pdf(performance, title)
