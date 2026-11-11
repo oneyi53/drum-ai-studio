@@ -332,3 +332,20 @@ def test_persistent_undo_redo_restores_performance_and_midi(client, monkeypatch,
     )
     assert client.get(f"/api/projects/{project_id}/history").json()["can_redo"] is False
     assert client.post(f"/api/projects/{project_id}/redo").status_code == 409
+
+
+
+def test_project_audio_stream_returns_uploaded_audio_and_unknown_project_404(client):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("groove.wav", b"RIFF-test-audio", "audio/wav")},
+    ).json()
+
+    response = client.get(f"/api/projects/{uploaded['id']}/audio")
+    assert response.status_code == 200
+    assert response.content == b"RIFF-test-audio"
+    assert response.headers["content-type"].startswith("audio/wav")
+    assert "inline" in response.headers.get("content-disposition", "")
+
+    missing = client.get("/api/projects/not-a-project/audio")
+    assert missing.status_code == 404
