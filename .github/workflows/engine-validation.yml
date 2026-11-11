@@ -16,6 +16,10 @@ on:
       - "scripts/engine_smoke.py"
       - "*.mp3"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   drumscript:
     runs-on: ubuntu-latest
