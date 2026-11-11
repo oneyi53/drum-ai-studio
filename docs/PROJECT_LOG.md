@@ -23,6 +23,7 @@ code or validation state changes; do not infer completion from plans.
 - Added unit tests, a `drumai-evaluate` JSON-report CLI, and `docs/DRUM_EVENT_EVALUATION.md`.
 - Added `backend/app/midi_adapter.py` to normalize General MIDI percussion note-ons into canonical events, preserving velocity, tempo, time signatures, and absolute seconds.
 - Added `drumai-midi-import` CLI, MIDI fixtures/tests, and `docs/MIDI_ADAPTER.md` documenting the channel-10 and GM pitch assumptions.
+- Added a dedicated backend GitHub Actions workflow to install backend dev dependencies, run the complete backend test suite, and lint the touched pipeline modules.
 - This is a generic GM adapter only: DrumScript-specific channel/pitch semantics remain unverified until its generated MIDI can be inspected.
 - Overall metrics aggregate per-instrument matches so an instrument substitution cannot be counted as a correct hit.
 - Updated README and architecture documentation.
