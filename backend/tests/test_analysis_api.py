@@ -208,3 +208,73 @@ def test_event_edit_rejects_out_of_range_time_and_unknown_event(client, monkeypa
         f"/api/projects/{uploaded['id']}/events/not-an-event"
     )
     assert missing.status_code == 404
+
+
+def test_quantization_preview_and_apply_keep_midi_synchronized(client, monkeypatch, tmp_path):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=3,
+        events=[
+            DrumEvent(time_seconds=0.61, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=1.12, instrument=DrumInstrument.SNARE),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
+
+    preview = client.post(
+        f"/api/projects/{uploaded['id']}/quantize",
+        json={"subdivision": "1/4", "strength": 100, "apply": False},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["applied"] is False
+    assert preview.json()["performance"]["events"][0]["time_seconds"] == pytest.approx(0.5)
+    unchanged = client.get(f"/api/projects/{uploaded['id']}/performance").json()
+    assert unchanged["performance"]["events"][0]["time_seconds"] == pytest.approx(0.61)
+
+    applied = client.post(
+        f"/api/projects/{uploaded['id']}/quantize",
+        json={"subdivision": "1/4", "strength": 100},
+    )
+    assert applied.status_code == 200
+    saved = client.get(f"/api/projects/{uploaded['id']}/performance").json()
+    assert saved["performance"]["events"][0]["time_seconds"] == pytest.approx(0.5)
+
+    midi_path = tmp_path / "quantized.mid"
+    midi_path.write_bytes(client.get(f"/api/projects/{uploaded['id']}/midi").content)
+    exported = midi_to_performance(midi_path)
+    assert exported.events[0].time_seconds == pytest.approx(0.5)
+
+
+def test_quantization_rejects_unknown_subdivision(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(duration_seconds=2, events=[])
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
+    response = client.post(
+        f"/api/projects/{uploaded['id']}/quantize",
+        json={"subdivision": "1/64"},
+    )
+    assert response.status_code == 422
