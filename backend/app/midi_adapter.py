@@ -112,3 +112,114 @@ def midi_to_performance(
         events=events,
         tempo_map=tempo_map,
     )
+
+
+# Canonical instrument to General MIDI percussion key. OTHER is represented by
+# side stick (37) as a neutral fallback; source metadata remains in canonical JSON.
+INSTRUMENT_TO_GM_NOTE: dict[DrumInstrument, int] = {
+    DrumInstrument.KICK: 36,
+    DrumInstrument.SNARE: 38,
+    DrumInstrument.CLOSED_HIHAT: 42,
+    DrumInstrument.OPEN_HIHAT: 46,
+    DrumInstrument.PEDAL_HIHAT: 44,
+    DrumInstrument.RIDE: 51,
+    DrumInstrument.CRASH: 49,
+    DrumInstrument.HIGH_TOM: 48,
+    DrumInstrument.MID_TOM: 45,
+    DrumInstrument.LOW_TOM: 41,
+    DrumInstrument.OTHER: 37,
+}
+
+
+def performance_to_midi(
+    performance: DrumPerformance,
+    midi_path: str | Path,
+    *,
+    ticks_per_beat: int = 480,
+) -> Path:
+    """Write canonical events to a GM percussion MIDI file on channel 10."""
+    if ticks_per_beat <= 0:
+        raise ValueError("ticks_per_beat must be positive")
+    destination = Path(midi_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    midi = mido.MidiFile(type=0, ticks_per_beat=ticks_per_beat)
+    track = mido.MidiTrack()
+    midi.tracks.append(track)
+
+    tempo_map = performance.tempo_map or [
+        TempoChange(time_seconds=0.0, bpm=120.0, numerator=4, denominator=4)
+    ]
+    if tempo_map[0].time_seconds > 0:
+        tempo_map = [
+            TempoChange(time_seconds=0.0, bpm=120.0, numerator=4, denominator=4),
+            *tempo_map,
+        ]
+
+    change_ticks: list[tuple[int, TempoChange]] = []
+    accumulated_ticks = 0.0
+    previous_time = 0.0
+    previous_tempo = 500_000
+    for change in tempo_map:
+        accumulated_ticks += (
+            (change.time_seconds - previous_time)
+            * ticks_per_beat
+            * 1_000_000
+            / previous_tempo
+        )
+        tick = round(accumulated_ticks)
+        change_ticks.append((tick, change))
+        previous_time = change.time_seconds
+        previous_tempo = round(60_000_000 / change.bpm)
+
+    def seconds_to_ticks(seconds: float) -> int:
+        selected_tick, selected_change = change_ticks[0]
+        for tick, change in change_ticks:
+            if change.time_seconds > seconds:
+                break
+            selected_tick, selected_change = tick, change
+        tempo = round(60_000_000 / selected_change.bpm)
+        return selected_tick + round(
+            (seconds - selected_change.time_seconds)
+            * ticks_per_beat
+            * 1_000_000
+            / tempo
+        )
+
+    messages: list[tuple[int, int, mido.Message | mido.MetaMessage]] = []
+    for tick, change in change_ticks:
+        messages.append(
+            (tick, 0, mido.MetaMessage("set_tempo", tempo=round(60_000_000 / change.bpm)))
+        )
+        messages.append(
+            (
+                tick,
+                1,
+                mido.MetaMessage(
+                    "time_signature",
+                    numerator=change.numerator,
+                    denominator=change.denominator,
+                ),
+            )
+        )
+    for event in performance.events:
+        messages.append(
+            (
+                seconds_to_ticks(event.time_seconds),
+                2,
+                mido.Message(
+                    "note_on",
+                    channel=9,
+                    note=INSTRUMENT_TO_GM_NOTE[event.instrument],
+                    velocity=event.velocity,
+                ),
+            )
+        )
+    messages.sort(key=lambda item: (item[0], item[1]))
+    previous_tick = 0
+    for tick, _, message in messages:
+        message.time = tick - previous_tick
+        track.append(message)
+        previous_tick = tick
+    track.append(mido.MetaMessage("end_of_track", time=0))
+    midi.save(destination)
+    return destination
