@@ -566,6 +566,7 @@ def test_copy_bar_preserves_relative_rhythm_and_syncs_midi_once(client, monkeypa
             "source_start_seconds": 0.0,
             "source_end_seconds": 2.0,
             "target_start_seconds": 2.0,
+            "target_end_seconds": 4.0,
         },
     )
     assert response.status_code == 200
@@ -604,12 +605,12 @@ def test_copy_bar_rejects_empty_source_and_out_of_range_paste_atomically(client,
     client.post(f"/api/projects/{project_id}/analyze")
     empty = client.post(
         f"/api/projects/{project_id}/events/copy-bar",
-        json={"source_start_seconds": 1.0, "source_end_seconds": 2.0, "target_start_seconds": 2.0},
+        json={"source_start_seconds": 1.0, "source_end_seconds": 2.0, "target_start_seconds": 2.0, "target_end_seconds": 3.0},
     )
     assert empty.status_code == 422
     overflow = client.post(
         f"/api/projects/{project_id}/events/copy-bar",
-        json={"source_start_seconds": 0.0, "source_end_seconds": 1.0, "target_start_seconds": 2.75},
+        json={"source_start_seconds": 0.0, "source_end_seconds": 1.0, "target_start_seconds": 2.75, "target_end_seconds": 3.25},
     )
     assert overflow.status_code == 422
     saved = client.get(f"/api/projects/{project_id}/performance").json()["performance"]
