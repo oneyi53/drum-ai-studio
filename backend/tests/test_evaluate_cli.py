@@ -1,4 +1,4 @@
-import json
+import pytest
 
 from app.drum_events import DrumEvent, DrumInstrument, DrumPerformance
 from app.evaluate_cli import evaluate_files
@@ -20,4 +20,4 @@ def test_evaluate_files_reads_canonical_performance_json(tmp_path):
 
     report = evaluate_files(reference_path, predicted_path)
     assert report.overall.f1 == 1.0
-    assert report.overall.mean_absolute_timing_error_ms == 20.000000000000018
+    assert report.overall.mean_absolute_timing_error_ms == pytest.approx(20.0)
