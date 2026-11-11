@@ -349,3 +349,40 @@ def test_project_audio_stream_returns_uploaded_audio_and_unknown_project_404(cli
 
     missing = client.get("/api/projects/not-a-project/audio")
     assert missing.status_code == 404
+
+
+def test_musicxml_download_uses_latest_canonical_performance(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=2,
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, velocity=105)
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
+    response = client.get(f"/api/projects/{uploaded['id']}/musicxml")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/vnd.recordare.musicxml+xml")
+    assert "attachment" in response.headers["content-disposition"]
+    assert b"<score-partwise" in response.content
+    assert b"midi-velocity" in response.content
+
+
+def test_musicxml_download_requires_completed_performance(client):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    assert client.get(f"/api/projects/{uploaded['id']}/musicxml").status_code == 404
