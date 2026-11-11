@@ -50,7 +50,7 @@ def test_fallback_pdf_starts_new_system_with_its_own_label_and_meter():
     assert 'System 1' in text
     assert 'System 2' in text
     _assert_landscape_a4(reader)
-    assert text.count('4/4') == text.count('System ') + 1
+    assert text.count('4/4') == text.count('System ') + len(reader.pages)
 
 
 def test_verovio_pdf_pages_use_landscape_a4_dimensions():
