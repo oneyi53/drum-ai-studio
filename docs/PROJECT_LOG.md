@@ -3,6 +3,39 @@
 This log records repository milestones and verified boundaries. Update it when
 code or validation state changes; do not infer completion from plans.
 
+## 2026-11-11 — asynchronous analysis API integration (implementation, CI pending)
+
+### Implemented in PR #3
+
+- Added a lazy-loaded `DrumScriptEngine` adapter. It invokes full-song
+  transcription, requires a usable exported MIDI, converts GM percussion
+  channel 10 into the canonical event model, and persists a normalized MIDI
+  artifact plus canonical performance JSON.
+- Replaced the placeholder HTTP 501 analysis route with a job-creation endpoint
+  returning HTTP 202, SQLite-backed job status, job polling, and canonical
+  performance retrieval.
+- Added explicit `queued`, `running`, `completed`, and `failed` states,
+  duplicate-active-job protection, restart recovery for interrupted jobs, and
+  concise failure reporting.
+- Added API and engine-adapter unit tests; backend CI now runs Ruff across the
+  application and test tree.
+- Added `docs/ANALYSIS_API.md` with endpoint contracts, runtime requirements,
+  and the single-worker deployment limitation.
+
+### Validation boundary
+
+- The new API/adapter code and tests are committed, but the fresh CI run for
+  these changes is still pending. Do not report the new tests as passing yet.
+- Existing Engine validation run #27 proves the underlying DrumScript-to-MIDI
+  and MIDI-to-canonical conversion path on synthetic and repository audio. It
+  does not by itself prove this new API worker has run successfully in a
+  deployed application.
+- The regular backend install deliberately does not install PyTorch/DrumScript.
+  The analysis job will report a clear failure until the optional worker
+  runtime and FFmpeg/ffprobe are installed.
+- FastAPI in-process background tasks are single-process development plumbing,
+  not a durable production queue.
+
 ## 2026-11-11 — canonical events, engine compatibility, and benchmark harness
 
 ### Implemented in PR #3
@@ -46,8 +79,9 @@ code or validation state changes; do not infer completion from plans.
 - No human-annotated golden dataset is checked in. The benchmark manifest
   starter is empty by design; permission-cleared audio and reviewed reference
   events are still required.
-- The analysis endpoint remains HTTP 501; do not enable it until the application
-  analysis-job boundary and end-to-end outputs are implemented and tested.
+- The asynchronous analysis API is implemented, but its new CI run and a live
+  API-to-DrumScript job have not yet passed. Do not claim deployed end-to-end
+  readiness until those validations succeed.
 
 ## Next engineering milestones
 
@@ -56,8 +90,8 @@ code or validation state changes; do not infer completion from plans.
    redistribution permission.
 2. Run batch scoring against those references and record engine revision,
    configuration, per-instrument metrics, and timing tolerance.
-3. Integrate the validated engine behind an explicit asynchronous analysis-job
-   boundary.
+3. Replace the in-process background task with a durable worker queue before
+   multi-worker deployment; add artifact download and job cancellation.
 4. Add canonical event editing operations and MIDI/MusicXML/PDF exporters.
 
 ## 2026-11-10/11 — engine integration spike (PR #2)
