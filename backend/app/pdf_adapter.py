@@ -141,7 +141,12 @@ def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
         svg = toolkit.renderToSVG(page_number)
         if not svg:
             raise ValueError(f"Verovio failed to render score page {page_number}.")
-        page_pdf = cairosvg.svg2pdf(bytestring=svg.encode("utf-8"))
+        # Normalize SVG pixels to landscape A4 PDF points at CairoSVG 96 DPI.
+        page_pdf = cairosvg.svg2pdf(
+            bytestring=svg.encode("utf-8"),
+            output_width=PAGE_W * 96.0 / 72.0,
+            output_height=PAGE_H * 96.0 / 72.0,
+        )
         writer.append_pages_from_reader(PdfReader(BytesIO(page_pdf)))
     writer.add_metadata({"/Title": title, "/Author": "DrumAI Studio"})
     output = BytesIO()
