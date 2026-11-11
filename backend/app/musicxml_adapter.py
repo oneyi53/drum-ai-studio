@@ -54,8 +54,10 @@ def _seconds_to_quarters(seconds: float, changes: list[TempoChange]) -> float:
     return quarters + (seconds - elapsed_seconds) * bpm / 60.0
 
 
-def _add_text(parent: ET.Element, tag: str, value: str | int | float) -> ET.Element:
-    child = ET.SubElement(parent, tag)
+def _add_text(
+    parent: ET.Element, tag: str, value: str | int | float, **attributes: str
+) -> ET.Element:
+    child = ET.SubElement(parent, tag, attributes)
     child.text = str(value)
     return child
 
@@ -81,9 +83,8 @@ def _add_note(
     _add_text(note, "type", "32nd")
     _add_text(note, "stem", "up")
     _add_text(note, "notehead", notehead)
-    notations = ET.SubElement(note, "notations")
-    technical = ET.SubElement(notations, "technical")
-    _add_text(technical, "other-technical", f"velocity:{velocity}")
+    play = ET.SubElement(note, "play")
+    _add_text(ET.SubElement(play, "other-play", type="midi-velocity"), "value", velocity)
 
 
 def performance_to_musicxml(performance: DrumPerformance) -> str:
@@ -200,7 +201,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             voice_number += 1
             if voice_number > 1:
                 backup = ET.SubElement(measure, "backup")
-                _add_text(backup, "duration", round((end - start) * DIVISIONS))
+                _add_text(backup, "duration", cursor)
             cursor = 0
             index = 0
             while index < len(notes):
