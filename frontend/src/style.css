@@ -103,3 +103,5 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .loop-controls button{border:1px solid #c9f36b55;border-radius:6px;background:#202a26;color:#c9f36b;padding:7px 9px;font-size:10px;cursor:pointer}
 .loop-toggle{display:flex;align-items:center;gap:6px;color:#c9f36b;font-size:11px;font-weight:600}
 .loop-toggle input{accent-color:#c9f36b}
+
+.loop-controls button.metronome-on{background:#c9f36b;color:#141a0e;border-color:#c9f36b}
