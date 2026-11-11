@@ -382,3 +382,18 @@ code or validation state changes; do not infer completion from plans.
 - Added API tests for metadata preservation, unique IDs, repeat timing, single
   history revision, MIDI synchronization, and out-of-duration atomic rejection.
 - CI validation for this increment is pending until the latest branch head runs.
+
+
+## 2026-11-11 — measure-based drum phrase copy and paste
+
+- Added an atomic API that copies all canonical events in a source time range
+  to a target start time, preserving their within-bar offsets, instruments,
+  velocity, and confidence while assigning new IDs and manual provenance.
+- Added frontend source/target measure controls driven by the tempo-aware
+  timeline beat/bar grid. Original events remain untouched.
+- Empty source ranges, invalid ranges, and pasted events beyond track duration
+  reject the operation before saving. Successful pastes create one history
+  revision and regenerate MIDI from canonical events.
+- Added API tests for relative timing, metadata preservation, one-revision
+  semantics, MIDI synchronization, empty-source rejection, and overflow
+  atomicity. CI validation is pending for this increment.
