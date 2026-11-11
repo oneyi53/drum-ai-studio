@@ -101,6 +101,7 @@ function App() {
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
   const [audioTime, setAudioTime] = React.useState(0);
   const [audioDuration, setAudioDuration] = React.useState(0);
+  const [audioPlaying, setAudioPlaying] = React.useState(false);
   const [loopEnabled, setLoopEnabled] = React.useState(false);
   const [loopStart, setLoopStart] = React.useState(0);
   const [loopEnd, setLoopEnd] = React.useState(0);
@@ -114,7 +115,7 @@ function App() {
     [summary],
   );
   React.useEffect(() => {
-    if (!metronomeEnabled) return;
+    if (!metronomeEnabled || !audioPlaying) return;
     let frame = 0;
     const tick = () => {
       const audio = audioRef.current;
@@ -146,7 +147,7 @@ function App() {
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [metronomeEnabled, timelineBeats]);
+  }, [audioPlaying, metronomeEnabled, timelineBeats]);
 
   React.useEffect(() => () => {
     if (audioContextRef.current) void audioContextRef.current.close();
@@ -402,6 +403,9 @@ function App() {
             </div>
             <audio ref={audioRef} controls preload="metadata"
               src={API_BASE + "/api/projects/" + summary.projectId + "/audio"}
+              onPlay={() => setAudioPlaying(true)}
+              onPause={() => setAudioPlaying(false)}
+              onEnded={() => setAudioPlaying(false)}
               onLoadedMetadata={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
               onDurationChange={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
               onTimeUpdate={(event) => {
