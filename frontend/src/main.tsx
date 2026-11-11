@@ -433,15 +433,15 @@ function App() {
       </section>
       <section className="panel">
         <div className="panel-heading"><div><p className="eyebrow">NEW PROJECT</p><h2>导入并分析音频</h2></div><span className="step">01 / 04</span></div>
-        {projects.length > 0 && <div className="saved-projects">
+        <div className="saved-projects">
           <label>恢复已保存项目<select value={summary?.projectId ?? ""} onChange={(event) => void restoreProject(event.target.value)}>
-            <option value="">选择已完成的项目</option>
+            <option value="">{projects.length ? "选择已保存项目" : "暂无已保存项目"}</option>
             {projects.map((project) => <option key={project.id} value={project.id} disabled={!project.latest_job_id || project.latest_job_status === "failed"}>
               {project.original_filename} · {project.latest_job_status ?? project.status}
             </option>)}
           </select></label>
           <button type="button" onClick={() => void loadProjects()} disabled={busy || saving}>刷新列表</button>
-        </div>}
+        </div>
         <label className="dropzone">
           <input type="file" accept=".wav,.mp3,.flac,.m4a,.ogg,.aac,audio/*" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
           <span className="upload-icon">↑</span>
