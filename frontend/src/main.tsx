@@ -101,6 +101,9 @@ function App() {
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
   const [audioTime, setAudioTime] = React.useState(0);
   const [audioDuration, setAudioDuration] = React.useState(0);
+  const [loopEnabled, setLoopEnabled] = React.useState(false);
+  const [loopStart, setLoopStart] = React.useState(0);
+  const [loopEnd, setLoopEnd] = React.useState(0);
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const timelineBeats = React.useMemo(
@@ -355,6 +358,12 @@ function App() {
               onDurationChange={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
               onTimeUpdate={(event) => {
                 const time = event.currentTarget.currentTime;
+                const effectiveLoopEnd = loopEnd || audioDuration || summary.durationSeconds;
+                if (loopEnabled && effectiveLoopEnd > loopStart && time >= effectiveLoopEnd) {
+                  event.currentTarget.currentTime = loopStart;
+                  setAudioTime(loopStart);
+                  return;
+                }
                 setAudioTime(time);
                 let nearest: DrumEvent | null = null;
                 let distance = Number.POSITIVE_INFINITY;
@@ -374,7 +383,15 @@ function App() {
                 setAudioTime(nextTime);
               }}
             />
-            <small>播放时播放头会跟随时间轴移动；点击任一鼓点可跳转到对应音频位置。</small>
+            <div className="loop-controls">
+              <label className="loop-toggle"><input type="checkbox" checked={loopEnabled} onChange={(event) => setLoopEnabled(event.target.checked)} /> A–B 循环</label>
+              <span>A：{loopStart.toFixed(2)}s</span>
+              <button type="button" onClick={() => setLoopStart(audioRef.current?.currentTime ?? audioTime)}>设为 A 点</button>
+              <span>B：{(loopEnd || audioDuration || summary.durationSeconds).toFixed(2)}s</span>
+              <button type="button" onClick={() => setLoopEnd(audioRef.current?.currentTime ?? audioTime)}>设为 B 点</button>
+              <button type="button" onClick={() => { setLoopStart(0); setLoopEnd(audioDuration || summary.durationSeconds); setLoopEnabled(false); }}>重置</button>
+            </div>
+            <small>播放时播放头会跟随时间轴移动；点击任一鼓点可跳转音频位置。设置 A/B 点可循环练习指定段落。</small>
           </section>
           <div className="timeline-panel">
             <div className="timeline-heading">
