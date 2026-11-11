@@ -570,3 +570,20 @@ code or validation state changes; do not infer completion from plans.
   run must still prove that all three tools are present and the full engine,
   benchmark, MP3, and PDF-render stages complete; no pass is inferred from this
   workflow change alone.
+
+
+## 2026-11-12 — remove Ubuntu apt mirror dependency from engine validation
+
+- Inspected the failed GitHub Actions job log: the runner did not have
+  ffmpeg/ffprobe/pdftoppm preinstalled, and Ubuntu package downloads repeatedly
+  failed DNS resolution against the Azure archive mirror. The install step
+  spent about 33 minutes downloading most packages before apt exited 100.
+- Replaced apt-based media provisioning with the Python ffmpeg-downloader
+  package and its static FFmpeg build, exposing both ffmpeg and ffprobe on PATH.
+  The workflow also installs pypdfium2 from PyPI for PDF rasterization.
+- The API smoke now renders the first PDF page in-process, validates the PNG
+  signature and non-trivial file size, and uploads the PDF plus rendered PNG.
+  Poppler/pdfinfo are no longer required.
+- This removes the failing Ubuntu mirror dependency, but the next CI run must
+  still verify the binary download, full inference, repository MP3s, PDF
+  generation, and raster output. No engine or visual pass is claimed yet.
