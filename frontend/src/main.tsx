@@ -113,6 +113,41 @@ function App() {
     () => summary ? buildTimelineBeats(summary.durationSeconds, summary.tempoMap) : [],
     [summary],
   );
+  React.useEffect(() => {
+    if (!metronomeEnabled) return;
+    let frame = 0;
+    const tick = () => {
+      const audio = audioRef.current;
+      const context = audioContextRef.current;
+      if (audio && !audio.paused && context && timelineBeats.length) {
+        const time = audio.currentTime;
+        let beatIndex = -1;
+        for (let index = 0; index < timelineBeats.length; index += 1) {
+          if (timelineBeats[index].time <= time + 0.005) beatIndex = index;
+          else break;
+        }
+        if (beatIndex < lastMetronomeBeatRef.current) lastMetronomeBeatRef.current = -1;
+        if (beatIndex >= 0 && beatIndex !== lastMetronomeBeatRef.current) {
+          const beat = timelineBeats[beatIndex];
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.frequency.value = beat.isBar ? 1320 : 880;
+          gain.gain.setValueAtTime(0.0001, context.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.004);
+          gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.055);
+          oscillator.connect(gain);
+          gain.connect(context.destination);
+          oscillator.start();
+          oscillator.stop(context.currentTime + 0.06);
+          lastMetronomeBeatRef.current = beatIndex;
+        }
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [metronomeEnabled, timelineBeats]);
+
   React.useEffect(() => () => {
     if (audioContextRef.current) void audioContextRef.current.close();
   }, []);
@@ -377,29 +412,6 @@ function App() {
                   lastMetronomeBeatRef.current = -1;
                   setAudioTime(loopStart);
                   return;
-                }
-                if (metronomeEnabled && audioContextRef.current) {
-                  let beatIndex = -1;
-                  for (let index = 0; index < timelineBeats.length; index += 1) {
-                    if (timelineBeats[index].time <= time + 0.005) beatIndex = index;
-                    else break;
-                  }
-                  if (beatIndex < lastMetronomeBeatRef.current) lastMetronomeBeatRef.current = -1;
-                  if (beatIndex >= 0 && beatIndex !== lastMetronomeBeatRef.current) {
-                    const beat = timelineBeats[beatIndex];
-                    const context = audioContextRef.current;
-                    const oscillator = context.createOscillator();
-                    const gain = context.createGain();
-                    oscillator.frequency.value = beat.isBar ? 1320 : 880;
-                    gain.gain.setValueAtTime(0.0001, context.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.004);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.055);
-                    oscillator.connect(gain);
-                    gain.connect(context.destination);
-                    oscillator.start();
-                    oscillator.stop(context.currentTime + 0.06);
-                    lastMetronomeBeatRef.current = beatIndex;
-                  }
                 }
                 setAudioTime(time);
                 let nearest: DrumEvent | null = null;
