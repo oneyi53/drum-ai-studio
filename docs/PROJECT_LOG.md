@@ -465,3 +465,14 @@ code or validation state changes; do not infer completion from plans.
 - DrumScript upstream test and repository MP3 end-to-end workflow is still
   running; do not treat the engine smoke test as passed until its final status
   is recorded.
+
+
+## 2026-11-11 — PDF fallback layout correction and regression coverage
+
+- Moved system labels and the initial time signature into a dedicated left
+  gutter, separated bar numbers from the staff, and annotate later meter
+  changes only where they occur instead of repeating the initial meter.
+- Added fallback-renderer regression tests for single- and multi-system
+  scores, PDF page readability, system labels, and time-signature repetition.
+- CI is pending for this increment. Visual review of a freshly rendered PDF
+  remains required before calling the layout fully accepted.
