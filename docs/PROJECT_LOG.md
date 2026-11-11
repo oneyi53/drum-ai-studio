@@ -11,7 +11,10 @@
 - Added XML structure, tempo/time-signature, velocity, empty-score, and API
   download tests. Import into notation software is supported; final engraving
   remains the notation application's responsibility.
-- Latest backend and frontend CI are pending; no validation pass is claimed yet.
+- Backend tests run #113 passed all 54 tests and Ruff. Repository CI run #202
+  passed frontend build and backend tests. DrumScript engine validation run
+  #104 remains in progress; this is integration validation, not an accuracy
+  claim.
 
 
 ## 2026-11-11 — tempo-synchronized practice metronome (implementation, CI pending)
@@ -21,7 +24,9 @@
 - Metronome clicks are generated locally with Web Audio and do not upload or
   persist audio. Seeking backward and A–B loop restarts reset beat tracking.
 - The metronome is opt-in and can be toggled independently of A–B looping.
-  Latest frontend build and engine validation are pending for this increment.
+  Its animation-frame scheduler follows the audio element clock and stops while
+  playback is paused. Repository CI run #202 passed frontend build and backend
+  tests; DrumScript engine validation run #104 remains in progress.
 
 
 ## 2026-11-11 — A–B loop practice playback (implementation, CI pending)
@@ -31,8 +36,9 @@
   and reset the range to the full track.
 - Looping is evaluated against the audio element's playback clock; drum-event
   positions and the timeline remain anchored to absolute seconds.
-- Invalid or zero-length ranges do not trigger a loop. Latest branch CI is
-  required before this increment is considered validated.
+- Invalid or zero-length ranges do not trigger a loop. A–B range shading is
+  shown across the drum lanes while looping is active. Repository CI run #202
+  passed frontend build and backend tests; engine validation remains pending.
 
 ## 2026-11-11 — interactive drum arrangement timeline (implementation, CI pending)
 
