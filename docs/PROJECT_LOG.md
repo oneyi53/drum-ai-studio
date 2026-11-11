@@ -1,0 +1,58 @@
+# DrumAI Studio project log
+
+This log records repository milestones and verified boundaries. Update it when
+code or validation state changes; do not infer completion from plans.
+
+## 2026-11-11 — canonical event and evaluation foundation
+
+### Implemented in PR #3
+
+- Added `backend/app/drum_events.py` with schema version 1.0:
+  - Drum instruments: kick, snare, closed/open/pedal hi-hat, ride, crash,
+    high/mid/low tom, other.
+  - Absolute event time, MIDI velocity, optional confidence, source,
+    manual-correction flag, and unique event ID.
+  - Performance duration and ordered tempo/time-signature map.
+  - Strict validation for unknown fields, invalid values, and events outside
+    the performance duration.
+- Added deterministic event-level evaluator:
+  - One-to-one instrument-aware matching.
+  - Configurable timing tolerance (default 50 ms).
+  - Overall and per-instrument precision, recall, F1, counts, and matched-event
+    mean absolute timing error.
+- Added unit tests and `docs/DRUM_EVENT_EVALUATION.md`.
+- Updated README and architecture documentation.
+
+### Validation state
+
+- Unit tests are committed but PR CI result is not yet available at log time.
+- No human-annotated golden dataset has been committed.
+- No DrumScript-to-canonical event adapter exists yet.
+- The analysis endpoint remains HTTP 501; it must not be enabled until the
+  engine adapter and end-to-end outputs are validated.
+- Event metrics are an evaluation tool, not evidence of current transcription
+  accuracy.
+
+## In progress / next engineering milestones
+
+1. Verify PR #3 CI and correct any schema/test issues.
+2. Inspect the DrumScript MIDI output format from the engine validation run and
+   implement a narrow, tested MIDI-to-canonical adapter.
+3. Add permission-cleared, manually reviewed reference annotations and a
+   reproducible benchmark manifest.
+4. Run event-level scoring against those references; report per-instrument
+   metrics and timing tolerance without inventing thresholds.
+5. Only then integrate the adapter behind an explicit analysis-job boundary.
+6. Add editor operations and MIDI/MusicXML/PDF exporters against the same
+   canonical model.
+
+## 2026-11-10/11 — engine integration spike (PR #2)
+
+- Added isolated Python 3.12 GitHub Actions validation for CPU PyTorch,
+  DrumScript import/CLI, upstream non-slow tests, synthetic full-mix smoke,
+  and repository-root MP3 smoke.
+- The latest recorded engine run at the time of this log is still running its
+  synthetic/repository audio smoke step. Its result must be checked before
+  calling the engine validation complete.
+- A non-empty MIDI artifact is only an integration smoke result; it is not an
+  accuracy benchmark.
