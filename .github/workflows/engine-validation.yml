@@ -38,6 +38,8 @@ jobs:
           git -C /tmp/DrumScript rev-parse HEAD
           python -m pip install -e /tmp/DrumScript
           python -m pip install pytest mir-eval requests
+      - name: Install DrumAI canonical MIDI adapter
+        run: python -m pip install -e ./backend
       - name: Verify package and CLI
         run: |
           python -c "import drumscript; print('drumscript import OK')"
