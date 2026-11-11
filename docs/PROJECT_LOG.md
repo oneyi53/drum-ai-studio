@@ -231,3 +231,18 @@ code or validation state changes; do not infer completion from plans.
   lane-label `replaceAll` call with an ES-compatible regular expression.
 - These fixes are committed on the PR branch. A fresh CI result for the updated
   head is still pending; the earlier failed run is not counted as validation.
+
+
+## 2026-11-11 — tempo-map-aware arrangement grid (implementation, CI pending)
+
+- Replaced the fixed single-BPM timeline grid with beat positions generated
+  from the canonical tempo map. Each tempo segment uses its own BPM and time
+  signature; bar starts and quarter-note beat lines are rendered independently
+  in absolute audio time.
+- Tempo-change boundaries are marked on every instrument lane and BPM labels
+  are placed at their corresponding audio timestamps. A 120 BPM, 4/4 fallback
+  remains in effect when a performance has no tempo metadata.
+- Event positions and playback synchronization remain based on absolute
+  seconds, so tempo visualization does not shift the canonical event times.
+- Frontend build and regression CI for this increment are pending; no pass is
+  claimed until the latest branch head completes validation.
