@@ -11,7 +11,8 @@ schema-version-1.0 `DrumPerformance`.
   percussion channel. Set `percussion_channel_only=False` only when an
   upstream engine is known to put percussion on another channel.
 - Maps standard General MIDI percussion pitches to kick, snare, hi-hat,
-  cymbal, and tom instruments. Unmapped pitches are retained as `other`
+  cymbal, and tom instruments. Side stick and hand clap remain `other` rather
+  than being mislabeled as snare. Unmapped pitches are retained as `other`
   unless `include_unmapped_notes=False`.
 - Converts MIDI ticks to absolute seconds while applying tempo meta-events.
 - Preserves tempo and time-signature changes in the canonical tempo map.
