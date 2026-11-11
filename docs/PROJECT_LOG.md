@@ -1,4 +1,14 @@
 
+## 2026-11-11 — non-destructive quantization preview
+
+- Added a two-step quantization flow: generate a preview without persisting,
+  inspect how many events will move, then explicitly confirm application.
+- Changing the grid or strength invalidates the previous preview. Only the
+  confirmed apply action creates a revision and synchronizes MIDI.
+- This exposes the existing backend preview mode in the workspace and avoids
+  accidental destructive quantization.
+
+
 ## 2026-11-11 — A–B loop range guard
 
 - Prevented enabling A–B practice looping when the selected range is zero or
