@@ -85,12 +85,21 @@ jobs:
         run: >-
           python benchmarks/run.py --run-name kick-baseline-technodrum
           --limit 15 IDMT-SMT-DRUMS-V2 --root "$IDMT_ROOT" --subset TechnoDrum
+      - name: Diagnose kick misses before and after classification
+        working-directory: /tmp/DrumScript
+        run: |
+          mkdir -p /tmp/kick-diagnostics
+          python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset RealDrum --limit 15 --output /tmp/kick-diagnostics/realdrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset WaveDrum --limit 15 --output /tmp/kick-diagnostics/wavedrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset TechnoDrum --limit 15 --output /tmp/kick-diagnostics/technodrum.json
       - name: Upload IDMT benchmark metrics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: idmt-drum-transcription-benchmark
-          path: /tmp/DrumScript/outputs/benchmarks/
+          path: |
+            /tmp/DrumScript/outputs/benchmarks/
+            /tmp/kick-diagnostics/
           if-no-files-found: ignore
       - name: Run synthetic and repository MP3 smoke tests
         run: python scripts/engine_smoke.py
