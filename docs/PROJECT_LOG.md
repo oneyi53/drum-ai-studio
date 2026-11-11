@@ -547,3 +547,12 @@ code or validation state changes; do not infer completion from plans.
 - The engine-validation workflow now runs this diagnostic on 15 tracks from each of RealDrum, WaveDrum, and TechnoDrum and uploads JSON/CSV alongside the upstream per-track benchmark archives.
 - Interpretation rule: low candidate recall indicates the shared onset stage is missing kick opportunities; healthy candidate recall but low final kick recall points to classification/feature rules. This is a diagnostic decomposition, not a claim that either failure mode has already been observed.
 - CI is running/pending for the new diagnostic script and workflow. The first output will determine which algorithm branch to change next.
+
+
+## 2026-11-12 — API runtime dependency and export visual smoke coverage
+
+- The first expanded stage-wise run evaluated 14 RealDrum, 15 WaveDrum, and 11 TechnoDrum tracks (the dataset contains fewer eligible files in two subsets). Candidate-onset recall was 0.983 / 0.963 / 0.990, while final kick recall was 0.053 / 0.172 / 0.571. These are subset-level diagnostic results, not production accuracy claims.
+- The API-to-engine end-to-end smoke exposed a real worker-image dependency gap: the workflow had ffmpeg but not ffprobe, which the API uses to read source duration. Replaced the workflow provisioning step with system FFmpeg installation and explicit checks for both executables. Backend unit tests and frontend/backend CI passed on the dependency-fix commit; the full engine workflow is rerunning.
+- Added feature-level diagnostics for IDMT reference kicks that already match an onset candidate. The archived JSON now includes per-candidate LFER, peak frequency, centroid, HFER, high-frequency energy, decay, and pass/fail against the current kick-rule thresholds. This measures which boundaries reject candidate kick events before any classifier changes are attempted.
+- Extended the API end-to-end smoke to call the PDF endpoint, validate PDF signature/page count/landscape-A4 geometry, preserve the generated PDF, rasterize its first page with Poppler, and upload both PDF and PNG as a CI artifact. This creates a reviewable visual regression artifact rather than relying only on PDF metadata tests.
+- The PDF raster/artifact step and expanded kick-feature diagnostics are pending on the current PR #4 engine-validation run. No PDF visual acceptance or kick-recall improvement is claimed until those artifacts and metrics are reviewed.
