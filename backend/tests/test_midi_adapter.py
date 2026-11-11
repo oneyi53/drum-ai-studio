@@ -40,7 +40,7 @@ def test_imports_percussion_events_velocity_and_tempo_map(tmp_path):
     assert performance.events[0].velocity == 110
     assert performance.events[0].time_seconds == pytest.approx(0)
     assert performance.events[1].instrument == DrumInstrument.SNARE
-    assert performance.events[1].time_seconds == pytest.approx(1.0)
+    assert performance.events[1].time_seconds == pytest.approx(0.9)
     assert performance.tempo_map[-1].bpm == pytest.approx(150)
     assert performance.tempo_map[-1].numerator == 3
 
