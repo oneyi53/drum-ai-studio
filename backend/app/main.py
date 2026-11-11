@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from .drum_events import DrumEvent, DrumInstrument, DrumPerformance
 from .engine_adapter import DrumScriptEngine
 from .midi_adapter import performance_to_midi
+from .quantization_api import router as quantization_router
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("DRUMAI_DATA_DIR", APP_DIR.parent.parent / "data"))
@@ -54,6 +55,8 @@ app = FastAPI(
     version="0.2.0",
     description="Audio upload and asynchronous DrumScript analysis API.",
 )
+
+app.include_router(quantization_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -476,7 +479,3 @@ def download_project_midi(project_id: str) -> FileResponse:
         filename=f"{project_id}-drums.mid",
     )
 
-
-from .quantization_api import router as quantization_router
-
-app.include_router(quantization_router)
