@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .drum_events import DrumPerformance, evaluate_performance
 
@@ -26,6 +26,14 @@ class BenchmarkCase(BaseModel):
     annotation_status: Literal["reviewed"]
     reviewer: str = Field(min_length=1)
     annotation_revision: str = Field(min_length=1)
+
+    @field_validator("audio_path", "reference_path", "predicted_path")
+    @classmethod
+    def paths_must_stay_within_manifest_directory(cls, value: str) -> str:
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("benchmark paths must be relative and cannot escape the manifest directory")
+        return value
 
 
 class BenchmarkManifest(BaseModel):
