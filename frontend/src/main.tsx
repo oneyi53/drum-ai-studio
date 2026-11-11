@@ -37,6 +37,10 @@ type AnalysisSummary = {
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const TIMELINE_LANES = [
+  "kick", "snare", "closed_hihat", "open_hihat", "ride", "crash",
+  "high_tom", "mid_tom", "low_tom", "pedal_hihat", "other",
+];
 const INSTRUMENTS = [
   "kick", "snare", "closed_hihat", "open_hihat", "pedal_hihat",
   "ride", "crash", "high_tom", "mid_tom", "low_tom", "other",
@@ -125,6 +129,7 @@ function App() {
   const [loopEnd, setLoopEnd] = React.useState(0);
   const [metronomeEnabled, setMetronomeEnabled] = React.useState(false);
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
+  const [hiddenLanes, setHiddenLanes] = React.useState<string[]>([]);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const lastMetronomeBeatRef = React.useRef(-1);
@@ -610,8 +615,17 @@ function App() {
               ))}
             </div>
             <div className="timeline-ruler"><span>0:00</span><span>{(summary.durationSeconds * 0.25).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.5).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.75).toFixed(1)}s</span><span>{summary.durationSeconds.toFixed(1)}s</span></div>
+            <div className="timeline-lane-filters" aria-label="时间轴轨道显示筛选">
+              <span>显示轨道</span>
+              <button type="button" onClick={() => setHiddenLanes([])} disabled={hiddenLanes.length === 0}>全部显示</button>
+              <button type="button" onClick={() => setHiddenLanes(TIMELINE_LANES)} disabled={hiddenLanes.length === TIMELINE_LANES.length}>全部隐藏</button>
+              {TIMELINE_LANES.map((lane) => <label key={lane}>
+                <input type="checkbox" checked={!hiddenLanes.includes(lane)} onChange={(event) => setHiddenLanes((current) => event.target.checked ? current.filter((item) => item !== lane) : [...current, lane])} />
+                {lane.replace(/_/g, " ")}
+              </label>)}
+            </div>
             <div className="timeline-scroll"><div className="timeline-grid">
-              {["kick", "snare", "closed_hihat", "open_hihat", "ride", "crash", "high_tom", "mid_tom", "low_tom", "pedal_hihat", "other"].map((lane) => {
+              {TIMELINE_LANES.filter((lane) => !hiddenLanes.includes(lane)).map((lane) => {
                 const laneEvents = summary.events.filter((event) => event.instrument === lane);
                 return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replace(/_/g, " ")}</span><div className="timeline-track">
                   {loopEnabled && loopRangeValid && <span className="timeline-loop-range" style={{ left: (loopStart / summary.durationSeconds) * 100 + "%", width: ((activeLoopEnd - loopStart) / summary.durationSeconds) * 100 + "%" }} />}
