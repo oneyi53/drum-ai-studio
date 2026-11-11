@@ -136,7 +136,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             (item[0] for item in signature_changes if item[0] > bar_start + 1e-9),
             default=bar_end,
         )
-        bar_end = min(bar_end, next_change)
+        bar_end = min(bar_end, next_change, total_beats)
         if bar_end <= bar_start + 1e-9:
             bar_end = bar_start + numerator * 4.0 / denominator
         measures.append((bar_start, bar_end, numerator, denominator))
@@ -168,7 +168,11 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     part = ET.SubElement(root, "part", id="P1")
     ordered_events = sorted(event_beats, key=lambda item: (item[1], item[0].instrument.value))
     for measure_number, (start, end, numerator, denominator) in enumerate(measures, 1):
-        measure = ET.SubElement(part, "measure", number=str(measure_number))
+        measure_attributes = {"number": str(measure_number)}
+        nominal_measure_beats = numerator * 4.0 / denominator
+        if end - start < nominal_measure_beats - 1e-9:
+            measure_attributes["implicit"] = "yes"
+        measure = ET.SubElement(part, "measure", measure_attributes)
         attributes = ET.SubElement(measure, "attributes")
         _add_text(attributes, "divisions", DIVISIONS)
         time = ET.SubElement(attributes, "time")
