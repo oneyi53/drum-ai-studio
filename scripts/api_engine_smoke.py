@@ -8,6 +8,7 @@ import sys
 
 from fastapi.testclient import TestClient
 from pypdf import PdfReader
+import pypdfium2 as pdfium
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -79,10 +80,27 @@ with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
         pdf_path = output_dir / "drumai-api-e2e-score.pdf"
         pdf_path.write_bytes(pdf.content)
 
+        # Render the first page in-process so visual smoke does not depend on
+        # Poppler/system package mirrors in the GitHub runner.
+        pdf_document = pdfium.PdfDocument(pdf.content)
+        try:
+            pdf_page = pdf_document[0]
+            bitmap = pdf_page.render(scale=120 / 72)
+            rendered_image = bitmap.to_pil()
+            png_path = output_dir / "drumai-score-page-1.png"
+            rendered_image.save(png_path, format="PNG")
+            if not png_path.is_file() or png_path.stat().st_size < 1024:
+                raise RuntimeError("PDF rasterization produced an empty or implausibly small PNG")
+            if png_path.read_bytes()[:8] != b"\\x89PNG\\r\\n\\x1a\\n":
+                raise RuntimeError("PDF rasterization output is not a valid PNG")
+        finally:
+            pdf_document.close()
+
         print(
             "API_ENGINE_E2E_OK "
             f"job_id={job_id} events={len(events)} "
             f"duration_seconds={performance['duration_seconds']:.3f} "
             f"midi_bytes={len(midi.content)} musicxml_bytes={len(musicxml.content)} "
-            f"pdf_bytes={len(pdf.content)} pdf_pages={len(pdf_reader.pages)} pdf_path={pdf_path}"
+            f"pdf_bytes={len(pdf.content)} pdf_pages={len(pdf_reader.pages)} "
+            f"pdf_path={pdf_path} png_path={png_path} png_bytes={png_path.stat().st_size}"
         )
