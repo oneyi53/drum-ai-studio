@@ -19,3 +19,15 @@ h1{font-size:clamp(36px,6vw,64px);line-height:1.14;letter-spacing:-.055em;margin
 .pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}.pipeline-item{background:#191e29;border:1px solid #ffffff12;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:9px}.pipeline-item span{font:10px "DM Mono",monospace;color:#c9f36b}.pipeline-item strong{font-size:12px}.pipeline-item small{font-size:10px;color:#788398}
 footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 @media(max-width:640px){.shell{padding:18px 16px 32px}.hero{padding:52px 0 34px}.panel{padding:18px}.pipeline{grid-template-columns:repeat(2,1fr)}.actions{align-items:stretch;flex-direction:column}.actions button{width:100%}}
+
+.result-panel{margin-top:18px;border:1px solid #c9f36b55;background:#191e29;border-radius:18px;padding:24px}
+.complete{font:11px "DM Mono",monospace;color:#c9f36b;border:1px solid #c9f36b55;border-radius:30px;padding:7px 10px}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.metrics>div{background:#111620;border:1px solid #ffffff12;border-radius:11px;padding:15px;display:flex;flex-direction:column;gap:5px}
+.metrics strong{font:600 25px "DM Mono",monospace;color:#c9f36b}
+.metrics small,.instrument-list small{font-size:10px;color:#8993a6}
+.instrument-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.instrument-list span{display:flex;align-items:center;gap:9px;border:1px solid #ffffff1c;border-radius:30px;padding:7px 11px}
+.instrument-list strong{font-size:11px}.instrument-list small{font-family:"DM Mono",monospace}
+.job-id{display:block;margin-top:16px;color:#69758b;font:10px "DM Mono",monospace;overflow-wrap:anywhere}
+@media(max-width:640px){.result-panel{padding:18px}.metrics strong{font-size:20px}}
