@@ -18,5 +18,5 @@ def test_midi_import_cli_writes_canonical_json(tmp_path, monkeypatch):
     )
     assert main() == 0
     payload = output_path.read_text(encoding="utf-8")
-    assert payload.endswith("\\n")
+    assert payload.endswith("\n")
     assert '"instrument": "kick"' in payload
