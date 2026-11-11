@@ -18,8 +18,14 @@
 - DrumScript engine validation run #52 passed all steps, including upstream
   tests, synthetic/repository MP3 smoke tests, and API-to-engine end-to-end.
   This is engine integration evidence, not a transcription accuracy claim.
-- New quantization-specific backend CI and frontend build are pending; record
-  their outcomes after the run completes.
+- Quantization backend tests run #71 passed all 48 backend tests and Ruff
+  (`ruff check app tests`). Repository CI run #158 passed backend tests and
+  the frontend TypeScript/Vite production build. The initial run #157 exposed
+  a missing frontend action handler; that was added and the next build passed.
+- DrumScript engine validation run #62 passed package/CLI verification and
+  upstream non-slow tests; synthetic/repository MP3 smoke and API E2E were
+  still running when this log entry was prepared. Do not mark engine validation
+  complete until those remaining steps pass.
 
 ## 2026-11-11 — canonical drum-event editor
 
