@@ -1,10 +1,10 @@
 """Tempo-map-aware quantization for canonical drum performances."""
 from __future__ import annotations
 
-from math import isfinite
+from math import floor, isfinite
 from typing import Literal
 
-from .drum_events import DrumPerformance
+from .drum_events import DrumPerformance, TempoChange
 
 Subdivision = Literal["1/4", "1/8", "1/16", "1/32"]
 _GRID_DENOMINATORS = {"1/4": 4, "1/8": 8, "1/16": 16, "1/32": 32}
@@ -31,7 +31,6 @@ def quantize_performance(
 
     changes = list(performance.tempo_map)
     if not changes or changes[0].time_seconds > 0:
-        from .drum_events import TempoChange
         changes.insert(0, TempoChange(time_seconds=0, bpm=120))
 
     denominator = _GRID_DENOMINATORS[subdivision]
@@ -51,10 +50,10 @@ def quantize_performance(
         )
         start, end, step = segment
         offset = max(0.0, event.time_seconds - start)
-        grid_index = round(offset / step)
+        grid_index = floor(offset / step + 0.5)
         snapped = start + grid_index * step
         if end > start:
-            snapped = min(snapped, start + max(0, int((end - start) / step)) * step)
+            snapped = min(snapped, start + max(0, floor((end - start) / step + 1e-9)) * step)
         target = min(performance.duration_seconds, max(0.0, snapped))
         new_time = event.time_seconds + (target - event.time_seconds) * amount
         updated_events.append(event.model_copy(update={"time_seconds": new_time}))
