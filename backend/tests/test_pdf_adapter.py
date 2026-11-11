@@ -4,7 +4,7 @@ from io import BytesIO
 
 from pypdf import PdfReader
 
-import app.pdf_adapter as pdf_adapter
+from app import pdf_adapter
 from app.drum_events import DrumEvent, DrumInstrument, DrumPerformance, TempoChange
 from app.pdf_adapter import _render_fallback_pdf
 
