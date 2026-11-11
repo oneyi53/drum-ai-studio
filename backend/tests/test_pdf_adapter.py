@@ -5,6 +5,7 @@ from io import BytesIO
 from pypdf import PdfReader
 
 from app.drum_events import DrumEvent, DrumInstrument, DrumPerformance, TempoChange
+import app.pdf_adapter as pdf_adapter
 from app.pdf_adapter import _render_fallback_pdf
 
 
@@ -47,4 +48,16 @@ def test_fallback_pdf_starts_new_system_with_its_own_label_and_meter():
 
     assert "System 1" in text
     assert "System 2" in text
-    assert text.count("4/4") == text.count("System ") + len(reader.pages)
+    assert text.count("4/4") == text.count("System ") + 1
+
+
+def test_pdf_export_falls_back_when_verovio_font_resources_are_unavailable(monkeypatch):
+    performance = DrumPerformance(duration_seconds=1, events=[])
+
+    def unavailable_engraving(*args, **kwargs):
+        raise ValueError("Verovio font resources are unavailable")
+
+    monkeypatch.setattr(pdf_adapter, "_render_with_verovio", unavailable_engraving)
+    monkeypatch.setattr(pdf_adapter, "_render_fallback_pdf", lambda *args: b"%PDF-fallback")
+
+    assert pdf_adapter.performance_to_pdf(performance) == b"%PDF-fallback"
