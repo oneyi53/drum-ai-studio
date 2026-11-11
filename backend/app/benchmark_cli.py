@@ -18,6 +18,8 @@ class BenchmarkCase(BaseModel):
     source_recording_id: str = Field(min_length=1)
     split: Literal["development", "evaluation"]
     audio_path: str = Field(min_length=1)
+    audio_duration_seconds: float = Field(gt=0)
+    audio_sample_rate_hz: int = Field(gt=0)
     reference_path: str = Field(min_length=1)
     predicted_path: str = Field(min_length=1)
     permission_basis: Literal["public_domain", "licensed", "written_permission"]
@@ -98,7 +100,7 @@ def evaluate_manifest(manifest_path: Path, tolerance_ms: float = 50.0) -> dict:
             event.model_copy(update={"time_seconds": event.time_seconds + timeline_offset})
             for event in predicted.events
         )
-        timeline_offset += max(reference.duration_seconds, predicted.duration_seconds) + 1.0
+        timeline_offset += max(reference.duration_seconds, predicted.duration_seconds) + max(1.0, tolerance_ms / 1000 + 0.001)
 
     aggregate = evaluate_performance(
         all_reference, all_predicted, tolerance_ms=tolerance_ms
