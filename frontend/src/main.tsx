@@ -114,6 +114,8 @@ function App() {
     () => summary ? buildTimelineBeats(summary.durationSeconds, summary.tempoMap) : [],
     [summary],
   );
+  const activeLoopEnd = loopEnd || audioDuration || summary?.durationSeconds || 0;
+  const loopRangeValid = activeLoopEnd > loopStart;
   React.useEffect(() => {
     if (!metronomeEnabled || !audioPlaying) return;
     let frame = 0;
@@ -464,6 +466,7 @@ function App() {
               {["kick", "snare", "closed_hihat", "open_hihat", "ride", "crash", "high_tom", "mid_tom", "low_tom", "pedal_hihat", "other"].map((lane) => {
                 const laneEvents = summary.events.filter((event) => event.instrument === lane);
                 return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replace(/_/g, " ")}</span><div className="timeline-track">
+                  {loopEnabled && loopRangeValid && <span className="timeline-loop-range" style={{ left: (loopStart / summary.durationSeconds) * 100 + "%", width: ((activeLoopEnd - loopStart) / summary.durationSeconds) * 100 + "%" }} />}
                   {timelineBeats.map((beat, index) => <span key={beat.time + "-" + index} className={"timeline-beat " + (beat.isBar ? "bar" : "")} style={{ left: (beat.time / summary.durationSeconds) * 100 + "%" }} />)}
                   {summary.tempoMap.filter((change) => change.time_seconds > 0).map((change) => <span key={"tempo-" + change.time_seconds} className="timeline-tempo-change" style={{ left: (change.time_seconds / summary.durationSeconds) * 100 + "%" }} />)}
                   <span className="timeline-playhead" style={{ left: `${(audioTime / summary.durationSeconds) * 100}%` }} />
