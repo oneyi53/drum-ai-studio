@@ -208,8 +208,8 @@ function App() {
   async function restoreProject(projectId: string) {
     if (!projectId) return;
     const project = projects.find((item) => item.id === projectId);
-    if (!project || project.latest_job_status !== "completed" || !project.latest_job_id) {
-      setMessage("该项目还没有完成的鼓谱分析结果。");
+    if (!project || !project.latest_job_id || project.latest_job_status === "failed") {
+      setMessage("该项目没有可恢复的分析任务；请重新启动分析。");
       return;
     }
     setSaving(true);
@@ -219,7 +219,19 @@ function App() {
     setMetronomeEnabled(false);
     setAudioTime(0);
     try {
+      let completed = project.latest_job_status === "completed";
+      for (let attempt = 0; attempt < 180 && !completed; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        const response = await fetch(`${API_BASE}/api/analysis-jobs/${project.latest_job_id}`);
+        const job = await response.json() as { status?: string; error_message?: string | null };
+        if (!response.ok) throw new Error("无法恢复分析任务状态。");
+        if (job.status === "failed") throw new Error(job.error_message ?? "该项目的分析任务失败。");
+        completed = job.status === "completed";
+        setMessage(completed ? "分析完成，正在恢复鼓谱…" : "已恢复后台分析任务，等待引擎完成…");
+      }
+      if (!completed) throw new Error("分析仍在后台运行；请稍后刷新项目列表并重试。");
       await refreshPerformance(projectId, project.latest_job_id);
+      await loadProjects();
       setMessage(`已恢复项目：${project.original_filename}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "恢复项目失败");
@@ -424,7 +436,7 @@ function App() {
         {projects.length > 0 && <div className="saved-projects">
           <label>恢复已保存项目<select value={summary?.projectId ?? ""} onChange={(event) => void restoreProject(event.target.value)}>
             <option value="">选择已完成的项目</option>
-            {projects.map((project) => <option key={project.id} value={project.id} disabled={project.latest_job_status !== "completed"}>
+            {projects.map((project) => <option key={project.id} value={project.id} disabled={!project.latest_job_id || project.latest_job_status === "failed"}>
               {project.original_filename} · {project.latest_job_status ?? project.status}
             </option>)}
           </select></label>
