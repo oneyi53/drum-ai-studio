@@ -12,8 +12,10 @@
 - That same run then exposed six Ruff findings in the API module (import order,
   modern typing/time APIs, environment default typing, and intentional FastAPI
   dependency/catch patterns). These were corrected in follow-up commits.
-- Latest lint-fix commit is awaiting its fresh CI result. Do not mark the
-  backend workflow green until the follow-up run completes.
+- Follow-up backend tests run #42 passed, including all unit tests and Ruff.
+  Repository CI run #128 also passed both frontend build and backend tests.
+  Engine validation run #33 was still running at the time of this update; its
+  synthetic/MP3 and API-to-engine E2E steps are not yet verified.
 
 This log records repository milestones and verified boundaries. Update it when
 code or validation state changes; do not infer completion from plans.
