@@ -119,3 +119,10 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .saved-projects button{border:1px solid #c9f36b55;border-radius:7px;background:#202a26;color:#c9f36b;padding:9px 12px;font-size:10px;cursor:pointer;white-space:nowrap}
 .saved-projects button:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:640px){.saved-projects{align-items:stretch;flex-direction:column}.saved-projects button{width:100%}}
+
+.timeline-lane-filters{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:10px 0 12px;padding:10px;background:#151b26;border:1px solid #ffffff14;border-radius:8px}
+.timeline-lane-filters>span{font-size:10px;color:#aeb6c5;margin-right:4px}
+.timeline-lane-filters label{display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:5px;background:#202735;color:#d8deea;font:10px "DM Mono",monospace}
+.timeline-lane-filters input{accent-color:#c9f36b;margin:0}
+.timeline-lane-filters button{border:1px solid #ffffff24;border-radius:5px;background:#222b39;color:#c9f36b;padding:5px 7px;font-size:9px;cursor:pointer}
+.timeline-lane-filters button:disabled{opacity:.4;cursor:default}
