@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -310,3 +311,30 @@ def get_project_performance(project_id: str) -> dict[str, Any]:
         "performance": json.loads(row["performance_json"]),
         "midi_filename": row["midi_filename"],
     }
+
+
+@app.get("/api/projects/{project_id}/midi")
+def download_project_midi(project_id: str) -> FileResponse:
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            SELECT id, midi_filename
+            FROM analysis_jobs
+            WHERE project_id=? AND status='completed'
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+    if row is None or not row["midi_filename"]:
+        raise HTTPException(status_code=404, detail="No completed MIDI export is available.")
+    filename = row["midi_filename"]
+    if Path(filename).name != filename:
+        raise HTTPException(status_code=500, detail="Stored MIDI filename is invalid.")
+    midi_path = ANALYSIS_DIR / row["id"] / filename
+    if not midi_path.is_file():
+        raise HTTPException(status_code=404, detail="Generated MIDI file is missing.")
+    return FileResponse(
+        path=midi_path,
+        media_type="audio/midi",
+        filename=f"{project_id}-drums.mid",
+    )
