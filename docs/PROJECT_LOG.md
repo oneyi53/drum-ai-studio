@@ -3,8 +3,8 @@
 
 - Added a MusicXML 4.0 partwise exporter for canonical drum events, with a
   percussion staff, instrument-specific voices/noteheads, GM percussion
-  metadata, velocity playback hints, tempo directions, and time-signature-aware
-  measure boundaries.
+  metadata, velocity playback hints, tempo directions, time-signature-aware
+  measure boundaries, and note values inferred from successive hit spacing.
 - Added `GET /api/projects/{project_id}/musicxml` and a frontend download link
   beside MIDI export. The endpoint exports the latest canonical state, so
   manual edits, quantization, undo, and redo are reflected.
@@ -13,10 +13,11 @@
   parse a populated MusicXML score from an actual inferred performance.
   Import into notation software is supported; final engraving remains the
   notation application's responsibility.
-- Backend tests run #113 passed all 54 tests and Ruff. Repository CI run #202
-  passed frontend build and backend tests. DrumScript engine validation run
-  #104 remains in progress; this is integration validation, not an accuracy
-  claim.
+- Backend tests run #119 passed and Ruff; repository CI run #208 passed both
+  frontend build and backend tests on the current export and practice-tool
+  implementation. DrumScript engine validation run #110 is in progress,
+  including the expanded real-inference MusicXML export check. This is
+  integration validation, not an accuracy claim.
 
 
 ## 2026-11-11 — tempo-synchronized practice metronome (implementation, CI pending)
