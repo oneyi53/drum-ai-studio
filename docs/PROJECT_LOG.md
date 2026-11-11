@@ -1,4 +1,14 @@
 
+## 2026-11-11 — tempo-synchronized practice metronome (implementation, CI pending)
+
+- Added a browser metronome that follows the rendered tempo-map beat positions,
+  including bar accents, so BPM changes use the same timeline as the drum events.
+- Metronome clicks are generated locally with Web Audio and do not upload or
+  persist audio. Seeking backward and A–B loop restarts reset beat tracking.
+- The metronome is opt-in and can be toggled independently of A–B looping.
+  Latest frontend build and engine validation are pending for this increment.
+
+
 ## 2026-11-11 — A–B loop practice playback (implementation, CI pending)
 
 - Added A/B loop markers to the synchronized audio player. Users can set the
