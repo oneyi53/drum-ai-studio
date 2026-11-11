@@ -463,6 +463,80 @@ def test_batch_event_shift_and_delete_are_atomic_single_history_edits(client, mo
     assert len(midi_to_performance(midi_path).events) == 1
 
 
+def test_duplicate_events_create_repeated_manual_hits_in_one_history_revision(client, monkeypatch, tmp_path):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("repeat.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=4,
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, velocity=110),
+            DrumEvent(time_seconds=1.0, instrument=DrumInstrument.SNARE, velocity=80),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    before = client.get(f"/api/projects/{project_id}/performance").json()["performance"]
+    source = before["events"][0]
+    response = client.post(
+        f"/api/projects/{project_id}/events/duplicate",
+        json={"event_ids": [source["id"]], "interval_seconds": 1.0, "repeat_count": 2},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["duplicated_count"] == 2
+    clones = result["events"]
+    assert [event["time_seconds"] for event in clones] == [1.5, 2.5]
+    assert len({event["id"] for event in clones + [source]}) == 3
+    assert all(event["instrument"] == "kick" and event["velocity"] == 110 for event in clones)
+    assert all(event["manually_corrected"] for event in clones)
+    assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 1
+
+    midi_path = tmp_path / "repeated.mid"
+    midi_path.write_bytes(client.get(f"/api/projects/{project_id}/midi").content)
+    exported = midi_to_performance(midi_path)
+    assert len(exported.events) == 4
+
+
+def test_duplicate_events_reject_out_of_duration_atomically(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("repeat.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=2,
+        events=[DrumEvent(time_seconds=1.5, instrument=DrumInstrument.KICK)],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    event_id = client.get(f"/api/projects/{project_id}/performance").json()["performance"]["events"][0]["id"]
+    response = client.post(
+        f"/api/projects/{project_id}/events/duplicate",
+        json={"event_ids": [event_id], "interval_seconds": 1.0, "repeat_count": 1},
+    )
+    assert response.status_code == 422
+    saved = client.get(f"/api/projects/{project_id}/performance").json()["performance"]
+    assert len(saved["events"]) == 1
+    assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 0
+
+
 def test_batch_event_edit_rejects_invalid_shift_without_persisting(client, monkeypatch):
     uploaded = client.post(
         "/api/projects", files={"audio": ("batch.wav", b"audio-bytes", "audio/wav")}
