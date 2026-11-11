@@ -24,7 +24,7 @@ code or validation state changes; do not infer completion from plans.
 - Added `drumai-benchmark`, a manifest-driven batch evaluator that requires
   declared permission basis, audio metadata, and reviewed annotations, checks
   file existence and unique case IDs, prevents source-recording leakage across
-  development/evaluation splits, and emits per-case plus pooled micro-aggregate
+  development/evaluation splits, and emits per-case, pooled, and split-specific micro-aggregate
   metrics. These declarations are not independent rights verification.
 - Added benchmark manifest starter and batch-evaluation documentation.
 
