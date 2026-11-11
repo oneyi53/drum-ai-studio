@@ -93,3 +93,9 @@ def test_aggregate_never_matches_events_across_recordings(tmp_path):
     assert overall["true_positives"] == 0
     assert overall["false_positives"] == 1
     assert overall["false_negatives"] == 1
+
+def test_manifest_rejects_paths_outside_manifest_directory():
+    case = _case()
+    case["reference_path"] = "../outside.json"
+    with pytest.raises(ValueError, match="relative"):
+        BenchmarkManifest(cases=[case])
