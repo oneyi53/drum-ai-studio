@@ -22,9 +22,10 @@ code or validation state changes; do not infer completion from plans.
 - Extended the DrumScript engine smoke so each generated MIDI must convert to
   non-empty canonical events.
 - Added `drumai-benchmark`, a manifest-driven batch evaluator that requires
-  permission basis and reviewed annotations, checks file existence and unique
-  case IDs, prevents source-recording leakage across development/evaluation
-  splits, and emits per-case plus pooled micro-aggregate metrics.
+  declared permission basis, audio metadata, and reviewed annotations, checks
+  file existence and unique case IDs, prevents source-recording leakage across
+  development/evaluation splits, and emits per-case plus pooled micro-aggregate
+  metrics. These declarations are not independent rights verification.
 - Added benchmark manifest starter and batch-evaluation documentation.
 
 ### Verified validation
