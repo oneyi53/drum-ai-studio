@@ -136,7 +136,7 @@ def test_manual_event_create_update_and_delete(client, monkeypatch):
             return performance, midi_path
 
     monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
-    job = client.post(f"/api/projects/{uploaded['id']}/analyze").json()
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
 
     created = client.post(
         f"/api/projects/{uploaded['id']}/events",
