@@ -1,3 +1,14 @@
+
+## 2026-11-11 — A–B loop practice playback (implementation, CI pending)
+
+- Added A/B loop markers to the synchronized audio player. Users can set the
+  loop start and end from the current playback position, enable/disable looping,
+  and reset the range to the full track.
+- Looping is evaluated against the audio element's playback clock; drum-event
+  positions and the timeline remain anchored to absolute seconds.
+- Invalid or zero-length ranges do not trigger a loop. Latest branch CI is
+  required before this increment is considered validated.
+
 ## 2026-11-11 — interactive drum arrangement timeline (implementation, CI pending)
 
 - Added a full-song, instrument-lane timeline to the editor with a time ruler,
