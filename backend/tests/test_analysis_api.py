@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 from fastapi.testclient import TestClient
 
 from app import main
@@ -675,8 +677,6 @@ def test_pdf_export_returns_printable_pdf_from_latest_performance(client, monkey
     assert response.headers["content-type"] == "application/pdf"
     assert response.headers["content-disposition"].endswith(f'{project_id}-drums.pdf"')
     assert response.content.startswith(b"%PDF-")
-    from io import BytesIO
-    from pypdf import PdfReader
     assert len(PdfReader(BytesIO(response.content)).pages) >= 1
     assert b"%%EOF" in response.content[-32:]
 
