@@ -644,3 +644,43 @@ def test_batch_event_edit_rejects_invalid_shift_without_persisting(client, monke
     )
     assert response.status_code == 422
     assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 0
+
+
+
+def test_pdf_export_returns_printable_pdf_from_latest_performance(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("pdf.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=8,
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, velocity=110),
+            DrumEvent(time_seconds=1.0, instrument=DrumInstrument.SNARE, velocity=88),
+            DrumEvent(time_seconds=1.5, instrument=DrumInstrument.CLOSED_HIHAT, velocity=72),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    response = client.get(f"/api/projects/{project_id}/pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"].endswith(f'{project_id}-drums.pdf"')
+    assert response.content.startswith(b"%PDF-")
+    assert b"%%EOF" in response.content[-32:]
+
+
+def test_pdf_export_requires_completed_performance(client):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("pdf.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    response = client.get(f"/api/projects/{uploaded['id']}/pdf")
+    assert response.status_code == 404
