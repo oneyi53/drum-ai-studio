@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -687,3 +688,45 @@ def test_pdf_export_requires_completed_performance(client):
     ).json()
     response = client.get(f"/api/projects/{uploaded['id']}/pdf")
     assert response.status_code == 404
+
+
+def test_project_bundle_contains_source_and_latest_editable_exports(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("bundle.wav", b"original-audio", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=2,
+        events=[DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, velocity=105)],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    response = client.get(f"/api/projects/{project_id}/bundle")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    with ZipFile(BytesIO(response.content)) as bundle:
+        assert set(bundle.namelist()) == {
+            "performance.json", "score.musicxml", "score.pdf", "performance.mid",
+            "source/bundle.wav", "README.txt",
+        }
+        assert b"fake-midi" == bundle.read("performance.mid")
+        assert b"original-audio" == bundle.read("source/bundle.wav")
+        assert b"<score-partwise" in bundle.read("score.musicxml")
+        assert bundle.read("score.pdf").startswith(b"%PDF-")
+        assert b"duration_seconds" in bundle.read("performance.json")
+
+
+def test_project_bundle_requires_completed_analysis(client):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("bundle.wav", b"original-audio", "audio/wav")}
+    ).json()
+    assert client.get(f"/api/projects/{uploaded['id']}/bundle").status_code == 404
