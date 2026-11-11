@@ -5,7 +5,7 @@
   latest analysis-job state. The API clamps the requested list size to 1–100.
 - Added a workspace project picker that loads saved projects on startup,
   restores completed canonical performances and edit history after reload,
-  and supports manual list refresh.
+  can resume polling queued/running jobs, and supports manual list refresh.
 - Added API integration coverage for project metadata and latest completed job
   state. Backend tests run #128 passed all 56 tests and Ruff; repository CI
   run #217 passed frontend build and backend tests. DrumScript engine validation
