@@ -1,5 +1,20 @@
 # DrumAI Studio project log
 
+## 2026-11-11 — CI regression fixes
+
+- The first fresh backend run for the asynchronous API changes exposed two stale
+  health-test assumptions: the tests still expected the removed HTTP 501 route,
+  and they instantiated TestClient without entering its lifespan, so SQLite
+  storage initialization never ran.
+- Updated the health tests to use TestClient as a context manager, accept the
+  actual engine installation states, and assert that an unknown project returns
+  HTTP 404. The next backend run passed all 32 tests.
+- That same run then exposed six Ruff findings in the API module (import order,
+  modern typing/time APIs, environment default typing, and intentional FastAPI
+  dependency/catch patterns). These were corrected in follow-up commits.
+- Latest lint-fix commit is awaiting its fresh CI result. Do not mark the
+  backend workflow green until the follow-up run completes.
+
 This log records repository milestones and verified boundaries. Update it when
 code or validation state changes; do not infer completion from plans.
 
