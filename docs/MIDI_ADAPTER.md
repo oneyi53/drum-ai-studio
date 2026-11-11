@@ -28,10 +28,12 @@ performance = midi_to_performance("transcription.mid")
 payload = performance.model_dump_json(indent=2)
 ```
 
-The adapter intentionally does not guess DrumScript-specific pitch semantics.
-It uses General MIDI percussion note numbers. Before using it on engine output,
-inspect the generated MIDI's channel and note numbers. If DrumScript uses a
-non-GM mapping, add an explicit, versioned mapping profile rather than silently
+The adapter intentionally follows the General MIDI Level 1 Percussion Key Map.
+DrumScript's published MIDI exporter documents that it writes this GM map and
+uses a drum track that pretty_midi marks as percussion (MIDI channel 10). The
+engine smoke job now verifies that its actual output can be normalized into
+non-empty canonical events. If a future engine revision changes its output
+mapping, add an explicit, versioned mapping profile rather than silently
 changing the GM interpretation.
 
 ## Limitations
