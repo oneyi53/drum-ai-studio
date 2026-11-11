@@ -60,6 +60,7 @@ def test_evaluate_manifest_scores_reviewed_case_and_aggregate(tmp_path):
     result = evaluate_manifest(manifest_path)
     assert result["case_count"] == 1
     assert result["cases"][0]["metrics"]["overall"]["f1"] == 1.0
+    assert result["aggregate_by_split"]["evaluation"]["overall"]["f1"] == 1.0
     assert result["aggregate"]["overall"]["mean_absolute_timing_error_ms"] == pytest.approx(20)
 
 
