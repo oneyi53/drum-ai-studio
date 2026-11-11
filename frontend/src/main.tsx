@@ -134,6 +134,8 @@ function App() {
   const [batchTimeOffset, setBatchTimeOffset] = React.useState("0.010");
   const [duplicateInterval, setDuplicateInterval] = React.useState("1.000");
   const [duplicateRepeatCount, setDuplicateRepeatCount] = React.useState("1");
+  const [sourceBarNumber, setSourceBarNumber] = React.useState("1");
+  const [targetBarNumber, setTargetBarNumber] = React.useState("2");
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const lastMetronomeBeatRef = React.useRef(-1);
@@ -458,6 +460,42 @@ function App() {
     finally { setSaving(false); }
   }
 
+  async function copyBarToTarget() {
+    if (!summary) return;
+    const starts = timelineBeats.filter((beat) => beat.isBar).map((beat) => beat.time);
+    if (!starts.length || starts[0] > 0.000001) starts.unshift(0);
+    const boundaries = [...starts, summary.durationSeconds];
+    const sourceIndex = Number(sourceBarNumber) - 1;
+    const targetIndex = Number(targetBarNumber) - 1;
+    if (!Number.isInteger(sourceIndex) || !Number.isInteger(targetIndex)
+      || sourceIndex < 0 || targetIndex < 0
+      || sourceIndex >= boundaries.length - 1 || targetIndex >= boundaries.length - 1) {
+      setMessage("请选择有效的源小节和目标小节。"); return;
+    }
+    const sourceStart = boundaries[sourceIndex];
+    const sourceEnd = boundaries[sourceIndex + 1];
+    const targetStart = boundaries[targetIndex];
+    if (sourceEnd <= sourceStart) { setMessage("源小节长度无效。"); return; }
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/events/copy-bar`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_start_seconds: sourceStart,
+          source_end_seconds: sourceEnd,
+          target_start_seconds: targetStart,
+        }),
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "小节复制失败"));
+      const count = Number(result.pasted_count ?? 0);
+      await refreshPerformance(summary.projectId, summary.jobId);
+      setSelectedEventIds([]);
+      setMessage(`第 ${sourceIndex + 1} 小节已复制到第 ${targetIndex + 1} 小节，粘贴 ${count} 个鼓点；原段落保留，MIDI 已同步。`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "小节复制失败"); }
+    finally { setSaving(false); }
+  }
+
   async function duplicateSelectedEvents() {
     if (!summary || !selectedEventIds.length) return;
     const interval = Number(duplicateInterval);
@@ -712,6 +750,13 @@ function App() {
             <label>重复间隔（秒）<input type="number" min="0.001" step="0.001" value={duplicateInterval} onChange={(event) => setDuplicateInterval(event.target.value)} /></label>
             <label>重复次数<input type="number" min="1" max="16" step="1" value={duplicateRepeatCount} onChange={(event) => setDuplicateRepeatCount(event.target.value)} /></label>
             <button type="button" disabled={saving || selectedEventIds.length === 0 || Number(duplicateInterval) <= 0 || !Number.isInteger(Number(duplicateRepeatCount)) || Number(duplicateRepeatCount) < 1 || Number(duplicateRepeatCount) > 16} onClick={() => void duplicateSelectedEvents()}>复制/重复所选</button>
+          </div>
+          <div className="event-batch-controls bar-copy-controls">
+            <strong>小节段落复制</strong>
+            <label>源小节<input type="number" min="1" max={Math.max(1, timelineBeats.filter((beat) => beat.isBar).length)} step="1" value={sourceBarNumber} onChange={(event) => setSourceBarNumber(event.target.value)} /></label>
+            <label>目标小节<input type="number" min="1" max={Math.max(1, timelineBeats.filter((beat) => beat.isBar).length)} step="1" value={targetBarNumber} onChange={(event) => setTargetBarNumber(event.target.value)} /></label>
+            <button type="button" disabled={saving || !Number.isInteger(Number(sourceBarNumber)) || !Number.isInteger(Number(targetBarNumber)) || Number(sourceBarNumber) < 1 || Number(targetBarNumber) < 1 || Number(sourceBarNumber) > timelineBeats.filter((beat) => beat.isBar).length || Number(targetBarNumber) > timelineBeats.filter((beat) => beat.isBar).length} onClick={() => void copyBarToTarget()}>复制小节到目标位置</button>
+            <small>按当前速度与拍号网格定位小节；保留鼓点相对位置、鼓件和力度。</small>
           </div>
           <div className="event-table-wrap">
             <table className="event-table">
