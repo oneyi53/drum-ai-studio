@@ -530,3 +530,12 @@ code or validation state changes; do not infer completion from plans.
 - Interpretation: kick recall is the major quality blocker; the score is an initial 10-item baseline, not a production-accuracy claim. Expand the held-out sample before making broad claims.
 - The same workflow passed synthetic full-mix separation/transcription and canonical MIDI normalization. Repository MP3 processing then failed during Demucs MP3 decoding because its loader could not locate/use FFmpeg in that subprocess, despite the workflow's FFmpeg verification step.
 - Updated `scripts/engine_smoke.py` to explicitly decode repository MP3 samples to PCM WAV with the imageio-ffmpeg executable (or system FFmpeg fallback) before passing the audio into Demucs. This preserves real repository MP3 coverage while avoiding Demucs' optional MP3 decoder lookup path. CI must validate this correction.
+
+
+## 2026-11-11 — kick recall research and cross-domain benchmark expansion
+
+- Investigated public ADT research and open implementations: IDMT-SMT-Drums, MDB Drums, ADTOF, a Librosa-onset + CNN baseline, adaptive onset detection with spectral/tail templates, and the 2026 Separate-and-Detect five-stem approach.
+- Added `docs/KICK_RECALL_RESEARCH.md` with cited sources, testable failure hypotheses, dataset/license notes, and a staged diagnostic plan. The causes are explicitly hypotheses, not asserted facts.
+- Expanded IDMT CI evaluation from the first 10 RealDrum mixes to 15 examples each from RealDrum, WaveDrum, and TechnoDrum, with distinct run names and archived per-track metrics. This checks whether the low kick recall is domain-specific instead of extrapolating from one subset.
+- Disabled cancellation of an in-progress engine-validation run when a new commit arrives; this long-running CPU benchmark should finish rather than repeatedly being cancelled by rapid pushes.
+- The expanded benchmark and MP3-to-WAV smoke correction are awaiting CI execution. No accuracy improvement is claimed yet.
