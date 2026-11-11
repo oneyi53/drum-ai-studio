@@ -6,7 +6,9 @@
 - Changing the grid or strength invalidates the previous preview. Only the
   confirmed apply action creates a revision and synchronizes MIDI.
 - This exposes the existing backend preview mode in the workspace and avoids
-  accidental destructive quantization.
+  accidental destructive quantization. Backend tests run #149 passed all 56
+  tests plus Ruff; repository CI run #238 passed frontend build and backend
+  tests. The later layout-only CSS update is being checked by runs #150/#239.
 
 
 ## 2026-11-11 — A–B loop range guard
