@@ -6,6 +6,7 @@
 2. Start analysis with `POST /api/projects/{project_id}/analyze`. The response contains a job ID and HTTP 202.
 3. Poll `GET /api/analysis-jobs/{job_id}` until status is `completed` or `failed`.
 4. Fetch the canonical result with `GET /api/projects/{project_id}/performance`.
+5. Stream the original uploaded audio with `GET /api/projects/{project_id}/audio`; the endpoint supports browser media playback and byte-range seeking through FastAPI's file response.
 
 Job statuses: `queued`, `running`, `completed`, `failed`. A project moves through
 `uploaded`, `queued`, `processing`, `analyzed`, or `failed`.
@@ -78,3 +79,13 @@ discards the redo branch.
 - Missing or empty MIDI, or no channel-10 percussion events: job fails closed.
 - Duplicate active job for a project: HTTP 409.
 - Unknown project/job: HTTP 404.
+
+
+### Original audio playback
+
+`GET /api/projects/{project_id}/audio` streams the project's original upload
+using its server-generated storage filename and the original media type. The
+route resolves the stored path under the upload directory and returns 404 for
+unknown projects or missing artifacts. The frontend uses the browser audio
+element for playback, seeking, and timeline playhead synchronization; selecting
+a drum event seeks the player to that event's absolute timestamp.
