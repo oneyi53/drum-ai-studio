@@ -398,3 +398,10 @@ code or validation state changes; do not infer completion from plans.
 - Added API tests for relative timing, metadata preservation, one-revision
   semantics, MIDI synchronization, empty-source rejection, and overflow
   atomicity. CI validation is pending for this increment.
+
+
+### Measure-copy validation update
+
+- Backend tests run #171 passed: 62 tests; Ruff passed.
+- DrumScript engine validation run #162 is queued/pending. This editor-only API change does not modify the inference engine; engine workflow completion is still tracked.
+- A fresh repository frontend build result has not yet been confirmed for this head.
