@@ -14,12 +14,13 @@ from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from .drum_events import DrumEvent, DrumInstrument, DrumPerformance
 from .engine_adapter import DrumScriptEngine
 from .midi_adapter import performance_to_midi
+from .musicxml_adapter import performance_to_musicxml
 from .quantization_api import router as quantization_router
 
 APP_DIR = Path(__file__).resolve().parent
@@ -644,6 +645,31 @@ def undo_project_edit(project_id: str) -> dict[str, Any]:
 @app.post("/api/projects/{project_id}/redo")
 def redo_project_edit(project_id: str) -> dict[str, Any]:
     return _move_history(project_id, 1)
+
+
+@app.get("/api/projects/{project_id}/musicxml")
+def download_project_musicxml(project_id: str) -> Response:
+    """Export the latest canonical performance as an editable MusicXML drum score."""
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            SELECT performance_json
+            FROM analysis_jobs
+            WHERE project_id=? AND status='completed' AND performance_json IS NOT NULL
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No completed performance is available.")
+    performance = DrumPerformance.model_validate_json(row["performance_json"])
+    return Response(
+        content=performance_to_musicxml(performance),
+        media_type="application/vnd.recordare.musicxml+xml",
+        headers={
+            "Content-Disposition": f'attachment; filename="{project_id}-drums.musicxml"'
+        },
+    )
 
 
 @app.get("/api/projects/{project_id}/midi")
