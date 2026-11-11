@@ -52,6 +52,28 @@ jobs:
       - name: Run upstream non-slow tests
         working-directory: /tmp/DrumScript
         run: pytest -m "not slow"
+      - name: Download IDMT-SMT-Drums annotated evaluation subset
+        run: |
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
+            "https://zenodo.org/records/7544164/files/IDMT-SMT-DRUMS-V2.zip?download=1" \
+            --output /tmp/IDMT-SMT-DRUMS-V2.zip
+          mkdir -p /tmp/idmt-dataset
+          unzip -q /tmp/IDMT-SMT-DRUMS-V2.zip -d /tmp/idmt-dataset
+          IDMT_ROOT="$(find /tmp/idmt-dataset -type d -name annotation_xml -print -quit | xargs dirname)"
+          test -d "$IDMT_ROOT/audio"
+          echo "IDMT_ROOT=$IDMT_ROOT" >> "$GITHUB_ENV"
+      - name: Score first 10 annotated RealDrum mixes
+        working-directory: /tmp/DrumScript
+        run: >-
+          python benchmarks/run.py --limit 10 IDMT-SMT-DRUMS-V2
+          --root "$IDMT_ROOT" --subset RealDrum
+      - name: Upload IDMT benchmark metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idmt-drum-transcription-benchmark
+          path: /tmp/DrumScript/outputs/benchmarks/
+          if-no-files-found: ignore
       - name: Run synthetic and repository MP3 smoke tests
         run: python scripts/engine_smoke.py
       - name: Run API-to-engine end-to-end smoke
