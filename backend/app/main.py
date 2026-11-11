@@ -21,6 +21,7 @@ from .drum_events import DrumEvent, DrumInstrument, DrumPerformance
 from .engine_adapter import DrumScriptEngine
 from .midi_adapter import performance_to_midi
 from .musicxml_adapter import performance_to_musicxml
+from .pdf_adapter import performance_to_pdf
 from .quantization_api import router as quantization_router
 
 APP_DIR = Path(__file__).resolve().parent
@@ -866,6 +867,29 @@ def download_project_musicxml(project_id: str) -> Response:
         headers={
             "Content-Disposition": f'attachment; filename="{project_id}-drums.musicxml"'
         },
+    )
+
+
+@app.get("/api/projects/{project_id}/pdf")
+def download_project_pdf(project_id: str) -> Response:
+    """Export the latest canonical drum performance as a printable PDF score."""
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            SELECT performance_json
+            FROM analysis_jobs
+            WHERE project_id=? AND status='completed' AND performance_json IS NOT NULL
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No completed performance is available.")
+    performance = DrumPerformance.model_validate_json(row["performance_json"])
+    return Response(
+        content=performance_to_pdf(performance, title=f"{project_id} — Drum Score"),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{project_id}-drums.pdf"'},
     )
 
 
