@@ -565,6 +565,8 @@ def copy_event_bar(project_id: str, payload: EventBarCopyRequest) -> dict[str, A
         row, performance = _load_editable_performance(connection, project_id)
         if payload.source_end_seconds > performance.duration_seconds:
             raise HTTPException(status_code=422, detail="Source bar must be within the song duration.")
+        if payload.target_end_seconds > performance.duration_seconds:
+            raise HTTPException(status_code=422, detail="Target bar must be within the song duration.")
         originals = [
             event for event in performance.events
             if payload.source_start_seconds <= event.time_seconds < payload.source_end_seconds
