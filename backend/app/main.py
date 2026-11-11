@@ -4,16 +4,17 @@ import importlib.util
 import json
 import os
 import sqlite3
-from threading import Lock
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from threading import Lock
+from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .engine_adapter import DrumScriptEngine
@@ -23,13 +24,13 @@ DATA_DIR = Path(os.getenv("DRUMAI_DATA_DIR", APP_DIR.parent.parent / "data"))
 UPLOAD_DIR = DATA_DIR / "uploads"
 ANALYSIS_DIR = DATA_DIR / "analysis"
 DB_PATH = DATA_DIR / "drumai.sqlite3"
-MAX_UPLOAD_BYTES = int(os.getenv("DRUMAI_MAX_UPLOAD_BYTES", 100 * 1024 * 1024))
+MAX_UPLOAD_BYTES = int(os.getenv("DRUMAI_MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
 ALLOWED_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"}
 ENGINE_LOCK = Lock()
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @contextmanager
@@ -144,7 +145,7 @@ def health() -> HealthResponse:
 
 
 @app.post("/api/projects", status_code=status.HTTP_201_CREATED)
-async def create_project(audio: UploadFile = File(...)) -> dict[str, str | int]:
+async def create_project(audio: UploadFile = File(...))  # noqa: B008 -> dict[str, str | int]:
     suffix = Path(audio.filename or "").suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -232,7 +233,7 @@ def run_analysis_job(job_id: str) -> None:
                 "UPDATE projects SET status='analyzed' WHERE id=?",
                 (job["project_id"],),
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         message = f"{type(exc).__name__}: {str(exc)[:500]}"
         with connect_db() as connection:
             connection.execute(
