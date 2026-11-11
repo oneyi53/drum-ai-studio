@@ -450,3 +450,18 @@ code or validation state changes; do not infer completion from plans.
   MIDI; click-to-seek behavior is preserved for non-drag clicks.
 - Added visual marquee styling and updated the user guide. Frontend production
   build is pending for this increment.
+
+
+### 2026-11-11 validation checkpoint — Verovio + timeline drag
+
+- Verovio PDF path is exercised by the API test: backend test suite reports
+  64 passed, including parsing the returned PDF with pypdf (workflow run
+  #180 / CI backend test job).
+- Frontend production build passed on the commit containing marquee selection
+  and drag-move (CI run #269).
+- Ruff caught import-order-only issues in the PDF test imports on two workflow
+  attempts. Both were corrected; latest fix commit
+  `0953ebbf036ce47ea623ff363fa29db20b74a6ee` is awaiting its own lint result.
+- DrumScript upstream test and repository MP3 end-to-end workflow is still
+  running; do not treat the engine smoke test as passed until its final status
+  is recorded.
