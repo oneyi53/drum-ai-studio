@@ -486,3 +486,14 @@ code or validation state changes; do not infer completion from plans.
 - The bundle reads the latest completed canonical performance so edits and
   history restores are reflected in the exported files. Added API coverage for
   archive contents and the not-yet-analyzed response. CI pending.
+
+
+## 2026-11-11 — graceful PDF engraving fallback
+
+- CI exposed that the Verovio Python package can be installed while its SMuFL
+  font resources are unavailable, causing score loading to raise a ValueError.
+- PDF export now falls back to the ReportLab renderer for that specific
+  unusable-engraving condition, rather than failing the entire export and
+  project backup. Added a regression test for this path.
+- Full-project backup export is now covered by archive-content API tests;
+  CI rerun pending.
