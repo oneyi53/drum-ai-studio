@@ -146,10 +146,10 @@ target ranges outside the performance duration are rejected atomically.
 
 - `GET /api/projects/{project_id}/pdf` downloads a printable landscape PDF
   rendered directly from the latest completed canonical drum performance.
-- The PDF contains a percussion staff, measure boundaries/numbers, drum-hit
-  noteheads, tempo/meter metadata, and a legend for the instruments present.
-  It is suitable for printing and quick reading; MusicXML remains the editable
-  notation interchange format for detailed engraving in notation software.
+- The PDF is engraved from the same MusicXML score using Verovio (LGPL-3.0),
+  then converted from vector SVG pages to PDF. This provides real notation
+  engraving, automatic spacing, measure layout, and multi-page output. MusicXML
+  remains the editable notation interchange format for detailed score editing.
 - The endpoint always reads the latest canonical state, including edits,
   quantization, undo, and redo. A project without a completed performance
   returns HTTP 404.
