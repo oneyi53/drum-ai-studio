@@ -91,7 +91,7 @@ with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
             rendered_image.save(png_path, format="PNG")
             if not png_path.is_file() or png_path.stat().st_size < 1024:
                 raise RuntimeError("PDF rasterization produced an empty or implausibly small PNG")
-            if png_path.read_bytes()[:8] != b"\\x89PNG\\r\\n\\x1a\\n":
+            if png_path.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
                 raise RuntimeError("PDF rasterization output is not a valid PNG")
         finally:
             pdf_document.close()
