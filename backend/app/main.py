@@ -348,6 +348,8 @@ def _load_editable_performance(connection: sqlite3.Connection, project_id: str):
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="No completed performance is available.")
+    if not row["midi_filename"]:
+        raise HTTPException(status_code=404, detail="Generated MIDI file is missing.")
     return row, DrumPerformance.model_validate_json(row["performance_json"])
 
 
@@ -426,9 +428,11 @@ def update_manual_event(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        _save_edited_performance(connection, row["id"], updated)
-    return {"event": next(event.model_dump() for event in updated.events if event.id == event_id),
-            "performance": updated.model_dump()}
+        _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
+    return {
+        "event": next(event.model_dump() for event in updated.events if event.id == event_id),
+        "performance": updated.model_dump(),
+    }
 
 
 @app.delete("/api/projects/{project_id}/events/{event_id}")
