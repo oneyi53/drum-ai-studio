@@ -19,13 +19,17 @@ code or validation state changes; do not infer completion from plans.
   concise failure reporting.
 - Added API and engine-adapter unit tests; backend CI now runs Ruff across the
   application and test tree.
+- Connected the frontend upload flow to job creation, status polling, canonical
+  event summary display, and generated MIDI download.
+- Added a guarded MIDI download endpoint that serves only the latest completed
+  job artifact for the requested project.
 - Added `docs/ANALYSIS_API.md` with endpoint contracts, runtime requirements,
   and the single-worker deployment limitation.
 
 ### Validation boundary
 
-- The new API/adapter code and tests are committed, but the fresh CI run for
-  these changes is still pending. Do not report the new tests as passing yet.
+- The new API/adapter/frontend code and tests are committed, but fresh backend
+  and frontend CI results for these changes are still pending. Do not report the new tests as passing yet.
 - Existing Engine validation run #27 proves the underlying DrumScript-to-MIDI
   and MIDI-to-canonical conversion path on synthetic and repository audio. It
   does not by itself prove this new API worker has run successfully in a
