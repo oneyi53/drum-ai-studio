@@ -24,6 +24,7 @@ type AnalysisSummary = {
   instruments: Record<string, number>;
   events: DrumEvent[];
   bpm: number;
+  tempoMap: NonNullable<Performance["tempo_map"]>;
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -55,7 +56,34 @@ function summarizePerformance(
     instruments,
     events: [...performance.events].sort((a, b) => a.time_seconds - b.time_seconds),
     bpm: performance.tempo_map?.[0]?.bpm ?? 120,
+    tempoMap: performance.tempo_map ?? [],
   };
+}
+
+type TimelineBeat = { time: number; isBar: boolean };
+
+function buildTimelineBeats(duration: number, tempoMap: AnalysisSummary["tempoMap"]): TimelineBeat[] {
+  const changes = [...tempoMap].sort((a, b) => a.time_seconds - b.time_seconds);
+  const boundaries = [0, ...changes.filter((change) => change.time_seconds > 0).map((change) => change.time_seconds)];
+  const beats: TimelineBeat[] = [];
+  for (let segment = 0; segment < boundaries.length; segment += 1) {
+    const start = boundaries[segment];
+    const end = boundaries[segment + 1] ?? duration;
+    const active = [...changes].reverse().find((change) => change.time_seconds <= start);
+    const bpm = active?.bpm ?? 120;
+    const numerator = active?.numerator ?? 4;
+    const denominator = active?.denominator ?? 4;
+    const beatSeconds = 60 / bpm;
+    const beatsPerBar = numerator * 4 / denominator;
+    const segmentBeatCount = Math.max(0, Math.ceil((end - start) / beatSeconds));
+    for (let beat = 0; beat < segmentBeatCount; beat += 1) {
+      const time = start + beat * beatSeconds;
+      if (time >= end - 0.000001 || time > duration) break;
+      beats.push({ time, isBar: beat % beatsPerBar === 0 });
+    }
+  }
+  if (beats.length === 0 || beats[0].time > 0.000001) beats.unshift({ time: 0, isBar: true });
+  return beats;
 }
 
 function App() {
@@ -75,6 +103,10 @@ function App() {
   const [audioDuration, setAudioDuration] = React.useState(0);
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const timelineBeats = React.useMemo(
+    () => summary ? buildTimelineBeats(summary.durationSeconds, summary.tempoMap) : [],
+    [summary],
+  );
 
   async function uploadAndAnalyze() {
     if (!file) return;
@@ -349,11 +381,19 @@ function App() {
               <div><p className="eyebrow">ARRANGEMENT VIEW</p><h3>鼓点时间轴</h3></div>
               <span>{summary.bpm.toFixed(1)} BPM · {summary.durationSeconds.toFixed(1)} 秒</span>
             </div>
+            <div className="tempo-map-labels">
+              {(summary.tempoMap.length ? summary.tempoMap : [{ time_seconds: 0, bpm: 120, numerator: 4, denominator: 4 }]).map((change, index) => (
+                <span key={change.time_seconds + "-" + index} style={{ left: (change.time_seconds / summary.durationSeconds) * 100 + "%" }}>
+                  {change.bpm.toFixed(1)} BPM
+                </span>
+              ))}
+            </div>
             <div className="timeline-ruler"><span>0:00</span><span>{(summary.durationSeconds * 0.25).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.5).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.75).toFixed(1)}s</span><span>{summary.durationSeconds.toFixed(1)}s</span></div>
             <div className="timeline-scroll"><div className="timeline-grid">
               {["kick", "snare", "closed_hihat", "open_hihat", "ride", "crash", "high_tom", "mid_tom", "low_tom", "pedal_hihat", "other"].map((lane) => {
                 const laneEvents = summary.events.filter((event) => event.instrument === lane);
-                return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replace(/_/g, " ")}</span><div className="timeline-track" style={{ backgroundSize: `${(60 / summary.bpm / summary.durationSeconds) * 100}% 100%` }}>
+                return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replace(/_/g, " ")}</span><div className="timeline-track">
+                  {timelineBeats.map((beat, index) => <span key={beat.time + "-" + index} className={"timeline-beat " + (beat.isBar ? "bar" : "")} style={{ left: (beat.time / summary.durationSeconds) * 100 + "%" }} />)}
                   <span className="timeline-playhead" style={{ left: `${(audioTime / summary.durationSeconds) * 100}%` }} />
                   {laneEvents.map((event) => <button key={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id ? "selected" : ""} ${activeEventId === event.id ? "active" : ""}`} style={{ left: `${(event.time_seconds / summary.durationSeconds) * 100}%`, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { setSelectedEventId(event.id); if (audioRef.current) audioRef.current.currentTime = event.time_seconds; setAudioTime(event.time_seconds); document.getElementById(`event-${event.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }} />)}
                 </div></div>;
