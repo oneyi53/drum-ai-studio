@@ -24,6 +24,7 @@ code or validation state changes; do not infer completion from plans.
 - Added `backend/app/midi_adapter.py` to normalize General MIDI percussion note-ons into canonical events, preserving velocity, tempo, time signatures, and absolute seconds.
 - Added `drumai-midi-import` CLI, MIDI fixtures/tests, and `docs/MIDI_ADAPTER.md` documenting the channel-10 and GM pitch assumptions.
 - Added a dedicated backend GitHub Actions workflow to install backend dev dependencies, run the complete backend test suite, and lint the touched pipeline modules.
+- Extended the DrumScript smoke workflow to install this adapter and require each generated MIDI to normalize into non-empty canonical events; the next PR run will validate this end-to-end.
 - This is a generic GM adapter only: DrumScript-specific channel/pitch semantics remain unverified until its generated MIDI can be inspected.
 - Overall metrics aggregate per-instrument matches so an instrument substitution cannot be counted as a correct hit.
 - Updated README and architecture documentation.
@@ -57,8 +58,10 @@ code or validation state changes; do not infer completion from plans.
 - Added isolated Python 3.12 GitHub Actions validation for CPU PyTorch,
   DrumScript import/CLI, upstream non-slow tests, synthetic full-mix smoke,
   and repository-root MP3 smoke.
-- The latest recorded engine run at the time of this log is still running its
-  synthetic/repository audio smoke step. Its result must be checked before
-  calling the engine validation complete.
+- Engine validation run #6 completed successfully: synthetic full-mix MIDI and
+  both repository MP3 files produced non-empty MIDI outputs. The logs show
+  765 classified events for `Creep (Album Version)_Radiohead.mp3` and 755 for
+  `Psycho_Muse(1).mp3`. This verifies pipeline execution only, not event-level
+  accuracy.
 - A non-empty MIDI artifact is only an integration smoke result; it is not an
   accuracy benchmark.
