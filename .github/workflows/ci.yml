@@ -118,7 +118,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y musescore3 xvfb poppler-utils
-          musescore3 --version
+          xvfb-run -a env SKIP_LIBJACK=1 musescore3 --version
           xvfb-run -a env SKIP_LIBJACK=1 musescore3 -o /tmp/drumai-musescore-render.pdf frontend/test-results/drumai-transcription.musicxml
           test -s /tmp/drumai-musescore-render.pdf
           pdfinfo /tmp/drumai-musescore-render.pdf | tee /tmp/drumai-musescore-pdfinfo.txt
