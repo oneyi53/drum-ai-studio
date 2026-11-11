@@ -317,7 +317,7 @@ function App() {
             <div className="timeline-scroll"><div className="timeline-grid">
               {["kick", "snare", "closed_hihat", "open_hihat", "ride", "crash", "high_tom", "mid_tom", "low_tom", "pedal_hihat", "other"].map((lane) => {
                 const laneEvents = summary.events.filter((event) => event.instrument === lane);
-                return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replaceAll("_", " ")}</span><div className="timeline-track">
+                return <div className="timeline-lane" key={lane}><span className="timeline-lane-name">{lane.replaceAll("_", " ")}</span><div className="timeline-track" style={{ backgroundSize: `${(60 / summary.bpm / summary.durationSeconds) * 100}% 100%` }}>
                   {laneEvents.map((event) => <button key={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id ? "selected" : ""}`} style={{ left: `${(event.time_seconds / summary.durationSeconds) * 100}%`, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { setSelectedEventId(event.id); document.getElementById(`event-${event.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }} />)}
                 </div></div>;
               })}
