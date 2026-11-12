@@ -134,7 +134,12 @@ def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
             "inputFrom": "xml",
             "pageWidth": 2970,
             "pageHeight": 2100,
-            "scale": 100,
+            # Short drum arrangements often contain only one percussion staff.
+            # The default 100% scale leaves that single system very small on A4.
+            # A larger engraving scale and the largest supported staff unit make
+            # noteheads, stems, and staff spacing readable without stretching SVG.
+            "scale": 140,
+            "unit": 12,
             "justifyVertically": True,
             "justificationMaxVertical": 0.8,
             "breaks": "auto",
