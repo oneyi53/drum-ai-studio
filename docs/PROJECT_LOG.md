@@ -1,3 +1,20 @@
+## 2026-11-12 — kick feature diagnostics split by classifier outcome
+
+- Reviewed the upstream DrumScript classifier implementation used by the
+  engine workflow. For full-song IDMT mixes, each detected onset is retained
+  with debug features; kick assignment is primarily the joint LFER and
+  40–140 Hz peak-frequency rule (the special amplitude/debounce gate applies
+  only to a single-loud-hit clip shorter than 30 seconds).
+- The existing IDMT diagnostic already aligned detected onset events to
+  annotated kick times, but it summarized all aligned features together.
+  Extended it to label each reference-aligned candidate as predicted or missed
+  and report LFER/peak-frequency quartiles separately for both outcomes.
+  This is diagnostic-only: no classifier thresholds or production inference
+  behavior were changed.
+- The latest PDF experiment uses scale 180 with vertical justification off;
+  the next engine run must validate its output dimensions and be manually
+  inspected before acceptance.
+
 ## 2026-11-12 — PDF layout follow-up after visual-gate failure
 
 - Engine run 43159750781 passed upstream tests, all three IDMT subset diagnostics,
