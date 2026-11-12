@@ -259,3 +259,117 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
         root, encoding="unicode"
     ) + "\n"
+
+
+def reconstruct_and_validate_measure(
+    measure_elem: ET.Element,
+    time_sig: tuple[int, int] | None = None,
+    divisions: int = DIVISIONS,
+) -> dict[str, object]:
+    """Reconstruct absolute note intervals using MusicXML shared-cursor semantics."""
+    if divisions <= 0:
+        raise ValueError("divisions must be a positive integer")
+    effective_divisions = divisions
+    effective_time = time_sig
+    for child in measure_elem:
+        if child.tag != "attributes":
+            continue
+        div_elem = child.find("divisions")
+        if div_elem is not None:
+            if not div_elem.text:
+                raise ValueError("attributes/divisions must contain an integer")
+            effective_divisions = int(div_elem.text)
+            if effective_divisions <= 0:
+                raise ValueError("attributes/divisions must be positive")
+        time_elem = child.find("time")
+        if time_elem is not None:
+            beats_elem, beat_type_elem = time_elem.find("beats"), time_elem.find("beat-type")
+            if beats_elem is None or not beats_elem.text or beat_type_elem is None or not beat_type_elem.text:
+                raise ValueError("time signature requires beats and beat-type")
+            effective_time = (int(beats_elem.text), int(beat_type_elem.text))
+    if effective_time is None:
+        effective_time = (4, 4)
+    beats, beat_type = effective_time
+    if beats <= 0 or beat_type <= 0:
+        raise ValueError(f"invalid time signature: {effective_time}")
+    numerator = effective_divisions * 4
+    if numerator % beat_type:
+        raise ValueError(f"non-integral beat unit at divisions={effective_divisions}, beat-type={beat_type}")
+    expected_capacity = beats * (numerator // beat_type)
+
+    cursor = 0
+    max_cursor = 0
+    records: list[dict[str, object]] = []
+    last_non_chord: dict[str, object] | None = None
+    for child in measure_elem:
+        if child.tag in {"backup", "forward"}:
+            duration_elem = child.find("duration")
+            if duration_elem is None or not duration_elem.text:
+                raise ValueError(f"{child.tag} element missing duration")
+            duration = int(duration_elem.text)
+            if duration <= 0:
+                raise ValueError(f"{child.tag} duration must be positive")
+            if child.tag == "backup":
+                cursor -= duration
+                if cursor < 0:
+                    raise ValueError(f"backup underflow: shared cursor became {cursor}")
+            else:
+                cursor += duration
+                max_cursor = max(max_cursor, cursor)
+            last_non_chord = None
+            continue
+        if child.tag != "note":
+            continue
+        duration_elem = child.find("duration")
+        if duration_elem is None or not duration_elem.text:
+            raise ValueError("note is missing duration; grace notes are unsupported")
+        duration = int(duration_elem.text)
+        if duration <= 0:
+            raise ValueError(f"note duration must be positive, got {duration}")
+        voice_elem, staff_elem = child.find("voice"), child.find("staff")
+        voice = voice_elem.text.strip() if voice_elem is not None and voice_elem.text else "1"
+        staff = staff_elem.text.strip() if staff_elem is not None and staff_elem.text else "1"
+        is_chord, is_rest = child.find("chord") is not None, child.find("rest") is not None
+        if is_chord:
+            if last_non_chord is None:
+                raise ValueError("chord tone has no preceding non-chord note")
+            if last_non_chord["voice"] != voice or last_non_chord["staff"] != staff:
+                raise ValueError("chord tone voice/staff does not match its parent")
+            onset = int(last_non_chord["onset"])
+        else:
+            onset = cursor
+        record: dict[str, object] = {
+            "element": child, "onset": onset, "duration": duration,
+            "offset_end": onset + duration, "is_chord": is_chord,
+            "is_rest": is_rest, "voice": voice, "staff": staff,
+        }
+        records.append(record)
+        if not is_chord:
+            last_non_chord = record
+            cursor += duration
+            max_cursor = max(max_cursor, cursor)
+
+    voice_events: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for record in records:
+        voice_events[str(record["voice"])].append(record)
+    for voice, events in voice_events.items():
+        ordered = sorted(events, key=lambda event: (int(event["onset"]), bool(event["is_chord"])))
+        previous_end = previous_onset = -1
+        for event in ordered:
+            onset, end = int(event["onset"]), int(event["offset_end"])
+            if not event["is_chord"] and onset < previous_end:
+                raise ValueError(f"overlapping non-chord events in voice {voice} at {onset}")
+            if event["is_chord"] and onset != previous_onset:
+                raise ValueError(f"chord onset mismatch in voice {voice} at {onset}")
+            if not event["is_chord"]:
+                previous_onset, previous_end = onset, end
+        extent = max((int(event["offset_end"]) for event in events), default=0)
+        if extent > expected_capacity:
+            raise ValueError(f"voice {voice} overflow: extent {extent} exceeds capacity {expected_capacity}")
+    if max_cursor > expected_capacity:
+        raise ValueError(f"measure cursor overflow: extent {max_cursor} exceeds capacity {expected_capacity}")
+    return {
+        "expected_capacity": expected_capacity, "divisions": effective_divisions,
+        "time_signature": effective_time, "max_cursor": max_cursor,
+        "voice_events": dict(voice_events),
+    }

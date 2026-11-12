@@ -1008,3 +1008,27 @@ code or validation state changes; do not infer completion from plans.
 - Downloaded and visually inspected CI artifact 13942911556 from run 43212702034. The PNG is 1404x993 and shows the actual defect: the first system is rendered near the top, then a second almost-empty percussion staff appears below it, leaving most of the landscape page blank. This is concrete evidence that the PDF layout is not yet acceptable.
 - Added this artifact reproduction to Issue #6 and asked Gemini to create a regression that fails on the extra near-empty system, then attach before/after PDF and PNG renders with the actual Verovio version/options; comment 6823850692.
 - Artifact run commit is f100c55b6bed2045b8598c7859fe4f51cd69eadc, older than current integration head. No production code changed in this increment. PR #4 remains open and unmerged.
+
+
+## 2026-11-12 — shared-cursor MusicXML timeline reconstruction (Slice 1)
+
+- Added `reconstruct_and_validate_measure()` to the existing shared MusicXML
+  adapter. It walks measure children in document order with one shared cursor:
+  notes advance it, `backup` rewinds it with underflow rejection, and
+  `forward` advances it. Chord tones reuse the preceding non-chord onset and
+  are rejected if they have no matching voice/staff parent.
+- Reads effective `divisions` and time signature from measure attributes,
+  validates positive/integral meter arithmetic, derives 4/4, 3/4 and 6/8
+  capacities, groups absolute intervals by voice, and rejects overlapping
+  non-chord notes and measure overflow.
+- Added deterministic tests for 4/4, 3/4, 6/8, shared-cursor backup,
+  chord-onset reuse, forward advancement, divisions overrides, underflow,
+  orphan chord tones, and overflow.
+- Scope is intentionally limited to timeline reconstruction/validation.
+  It does not yet emit tie-split continuations, dotted/tuplet duration
+  decompositions, rests for gaps, or beaming groups; those must be built on
+  this validated timeline in later slices.
+- Changes are on `feature/shared-cursor-timeline-slice1`, based on
+  `integration/mainline-2026-11-11`. Tests, Ruff, PDF smoke, and CI have not
+  yet been executed in this environment; no pass is claimed. PR #4 remains
+  open and unmerged.
