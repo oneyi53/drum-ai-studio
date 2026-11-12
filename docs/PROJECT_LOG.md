@@ -1073,3 +1073,12 @@ code or validation state changes; do not infer completion from plans.
 - This helper is not yet wired into score export or rest emission, and it does
   not yet account for beat-group boundaries or ties across barlines. Tests and
   Ruff remain unexecuted; no pass is claimed.
+
+
+## 2026-11-12 — Meter-aware silent-span spelling
+
+- Added `decompose_meter_aware_gap` to split silent intervals at rhythmic group boundaries before selecting standard/dotted MusicXML durations.
+- Current grouping covers compound 6/8-style meters (groups of three eighth notes), 4/4 half-bar groups, other simple meters, and a common 7/8 grouping (3+2+2).
+- Added focused regression cases for 6/8 dotted-quarter pulses, 4/4 half-bar grouping, offsets within a group, and invalid intervals.
+- This is a spelling primitive only: the production exporter still uses cursor `<forward>` elements for silent spans. Actual rest-note emission and visual PDF review remain outstanding.
+- Validation has not been run locally; do not interpret added tests as passing.
