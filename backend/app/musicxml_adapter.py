@@ -261,6 +261,56 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     ) + "\n"
 
 
+
+def decompose_rhythmic_duration(
+    duration: int, divisions: int = DIVISIONS
+) -> list[tuple[int, str, int]]:
+    """Decompose a positive duration into standard/dotted MusicXML note values.
+
+    Returns (duration, type, dots) tuples. The dynamic-programming choice
+    minimizes the number of notated values and prefers fewer dots on ties.
+    """
+    if divisions <= 0:
+        raise ValueError("divisions must be a positive integer")
+    if duration <= 0:
+        raise ValueError("duration must be a positive integer")
+
+    base_values = (
+        (divisions * 4, "whole"),
+        (divisions * 2, "half"),
+        (divisions, "quarter"),
+        (divisions // 2, "eighth"),
+        (divisions // 4, "16th"),
+        (divisions // 8, "32nd"),
+        (divisions // 16, "64th"),
+        (divisions // 32, "128th"),
+    )
+    candidates: list[tuple[int, str, int]] = []
+    for base, note_type in base_values:
+        if base <= 0:
+            continue
+        for dots in range(3):
+            dotted_duration = base * (2 ** (dots + 1) - 1) // (2**dots)
+            if dotted_duration > 0:
+                candidates.append((dotted_duration, note_type, dots))
+    # Dynamic programming avoids greedy failures for uncommon durations.
+    best: list[list[tuple[int, str, int]] | None] = [None] * (duration + 1)
+    best[0] = []
+    candidates.sort(key=lambda item: (item[0], -item[2]), reverse=True)
+    for amount in range(1, duration + 1):
+        options = [
+            best[amount - value[0]] + [value]
+            for value in candidates
+            if value[0] <= amount and best[amount - value[0]] is not None
+        ]
+        if options:
+            best[amount] = min(options, key=lambda option: (len(option), sum(v[2] for v in option)))
+    if best[duration] is None:
+        raise ValueError(
+            f"duration {duration} cannot be represented at divisions={divisions}"
+        )
+    return best[duration]
+
 def reconstruct_and_validate_measure(
     measure_elem: ET.Element,
     time_sig: tuple[int, int] | None = None,
