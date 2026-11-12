@@ -1,3 +1,17 @@
+## 2026-11-12 — PDF engraving readability correction
+
+- Visual inspection of the API-generated PDF confirmed two concrete defects:
+  the Verovio metronome-note glyph rendered as a missing-font square, and the
+  notation scale left the score unusually small on landscape A4.
+- Updated the PDF-only Verovio input to render tempo as explicit readable text
+  (for example, "Tempo: 120 BPM") while preserving the semantic metronome
+  markings in the downloadable MusicXML. Increased Verovio notation scale from
+  40 to 52 to use more of the printable page area.
+- This is a targeted layout correction, not yet visually accepted. The next
+  engine-validation run must regenerate the PDF and PNG; inspect the rendered
+  page for clipped notes, collisions, tempo readability, and balanced margins
+  before treating the PDF export as ready.
+
 ## 2026-11-12 — portable engine CI passes; kick and PDF visual blockers measured
 
 - Replaced the Ubuntu apt-installed media tools with a Python-managed static
