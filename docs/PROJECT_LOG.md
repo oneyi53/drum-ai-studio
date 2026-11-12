@@ -833,3 +833,25 @@ code or validation state changes; do not infer completion from plans.
   https://github.com/oneyi53/drum-ai-studio/issues/5#issuecomment-6823552165.
 - No classifier code, threshold, workflow, or production behavior changed.
   PR #4 remains unmerged and awaits explicit user approval.
+
+
+## 2026-11-12 — re-review of revised kick metrics and rollback proposal
+
+- Reviewed the revised Gemini delivery claiming paired IDMT baseline/candidate
+  metrics and track-isolated evaluation. The displayed precision, recall, and
+  F1 values are arithmetically consistent with the supplied aggregate counts,
+  but no per-track raw metrics, track IDs, event timestamps, matching
+  tolerance, runtime SHA, command log, or benchmark artifact was supplied.
+  Arithmetic consistency is not evidence that the numbers were measured.
+- The provided evaluation script remains a two-row hand-authored mock example;
+  it does not load IDMT, implement leave-one-track-out, isolate tracks, match
+  timestamps, or compare baseline and candidate on identical held-out tracks.
+- The proposal still assumes nonexistent backend classifier paths and feature
+  fields not emitted by the standard full-song DrumScript classifier.
+- Its rollback example uses LFER 0.65, which does not restore the current
+  upstream baseline (LFER 0.32 plus peak frequency 40–140 Hz); applying it
+  would change behavior rather than roll back to the current rule.
+- Posted the additional evidence requirements and rejection to Issue #5
+  comment https://github.com/oneyi53/drum-ai-studio/issues/5#issuecomment-6823645441.
+- No classifier, threshold, CI workflow, or production behavior was changed.
+  PR #4 remains unmerged pending explicit user approval.
