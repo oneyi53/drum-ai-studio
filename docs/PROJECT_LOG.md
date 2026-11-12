@@ -1,3 +1,20 @@
+## 2026-11-12 — PDF layout follow-up after visual-gate failure
+
+- Engine run 43159750781 passed upstream tests, all three IDMT subset diagnostics,
+  synthetic/repository MP3 smoke, and generated the API PDF/PNG. Its API E2E
+  correctly failed the new whitespace assertion: the assertion was measuring
+  the gap between the score and the page footer, not specifically between
+  notation systems. The rendered page also showed notation occupying only
+  about 70% of available width.
+- Corrected the Verovio layout experiment: increased engraving scale from 140
+  to 180 and disabled vertical justification, which can distribute sparse
+  systems across an unnecessarily tall page. Replaced the false-positive
+  gap assertion with a direct score-width minimum of 72%; the existing 15%
+  score-height minimum remains in place.
+- These are unverified layout changes until the next engine-validation run
+  passes and its generated PNG is manually inspected. Do not treat PDF export
+  as accepted based on CI alone.
+
 ## 2026-11-12 — PDF visual gate hardened; expanded kick benchmark completed
 
 - The latest API-generated landscape-A4 PDF and PNG were inspected from engine
