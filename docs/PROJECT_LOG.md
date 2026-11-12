@@ -935,3 +935,11 @@ code or validation state changes; do not infer completion from plans.
 - Rechecked current PDF implementation and tests: Verovio is configured at scale 180 with vertical justification disabled; tests cover A4 geometry and 4/5-measure break insertion, while API smoke checks first-page ink bounds. These checks do not yet establish visual acceptance for representative multi-system PDFs.
 - Latest available engine-validation run #264 (run ID 43212702034) completed successfully on commit f100c55b6bed2045b8598c7859fe4f51cd69eadc. The integration branch has since advanced to ad6ae9401e25a43d65c15e5e3fc181eae23a8b3a, so this run is not validation of the current branch head. PDF artifact 13942911556 is available but its image has not yet been manually inspected in this environment.
 - No production classifier or renderer code was changed in this documentation-only increment. PR #4 remains open and unmerged.
+
+
+## 2026-11-12 — Issue #6 proposal review and CI PDF artifact inspection
+
+- Reviewed Gemini's Issue #6 response. It supplied a plan/snippet only, not a branch, commit, PR, rendered output, or test logs. The proposed functions are not part of the current adapter API; it introduces a parallel `render_musicxml_to_pdf` path and uses toolkit method casing/API that does not match the existing implementation (`setOptions`, `loadData`, `renderToSVG` + CairoSVG/PyPDF). Its tests assert only non-empty output/options and do not exercise actual rendered multi-system geometry. Requested a real focused implementation and PR in Issue #6; comment 6823839834.
+- Downloaded and visually inspected CI artifact 13942911556 from run 43212702034. The PNG is 1404x993 and shows the actual defect: the first system is rendered near the top, then a second almost-empty percussion staff appears below it, leaving most of the landscape page blank. This is concrete evidence that the PDF layout is not yet acceptable.
+- Added this artifact reproduction to Issue #6 and asked Gemini to create a regression that fails on the extra near-empty system, then attach before/after PDF and PNG renders with the actual Verovio version/options; comment 6823850692.
+- Artifact run commit is f100c55b6bed2045b8598c7859fe4f51cd69eadc, older than current integration head. No production code changed in this increment. PR #4 remains open and unmerged.
