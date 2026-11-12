@@ -390,6 +390,25 @@ function App() {
     }
   }
 
+  React.useEffect(() => {
+    const handleEditorHistoryShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (
+        target.isContentEditable ||
+        target.closest("input, textarea, select, [contenteditable='true']")
+      )) return;
+      const key = event.key.toLowerCase();
+      const undo = key === "z" && !event.shiftKey;
+      const redo = (key === "z" && event.shiftKey) || key === "y";
+      if ((!undo && !redo) || !summary || saving) return;
+      event.preventDefault();
+      void moveHistory(undo ? "undo" : "redo");
+    };
+    window.addEventListener("keydown", handleEditorHistoryShortcut);
+    return () => window.removeEventListener("keydown", handleEditorHistoryShortcut);
+  }, [summary, saving]);
+
   async function editEvent(eventId: string, changes: Partial<Pick<DrumEvent, "time_seconds" | "instrument" | "velocity">>) {
     if (!summary) return;
     setSaving(true);
