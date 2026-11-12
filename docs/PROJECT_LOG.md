@@ -1,3 +1,41 @@
+## 2026-11-12 — review of revised rhythmic-beaming implementation proposal
+
+- Reviewed the newly supplied `process_measure_rhythm_and_beams` patch and
+  its proposed tests against the actual exporter and PDF adapter on the
+  integration branch. The proposal is directionally aligned with the desired
+  features, but is not safe to apply as written.
+- The MusicXML measure cursor is a shared document-order cursor: `backup`
+  rewinds that cursor and `forward` advances it. It is not a command to
+  subtract from a voice-local cursor. Voice identity is recorded on notes;
+  chord tones share the preceding non-chord note's onset and do not advance
+  the cursor. The proposal's `active_voice` bookkeeping conflates these
+  concepts and does not validate voice streams or per-voice totals.
+- The proposed 6/8 beat grouping is arithmetically wrong for divisions=4:
+  each dotted-quarter beat is 6 divisions, not 3. Its generic fallback also
+  does not correctly derive denominator beat units or compound-meter groups.
+- The split helper shortens the original note but never inserts continuation
+  notes, never emits the matching `<tie type="stop"/>` on a continuation,
+  and never preserves the original total duration. The beam helper groups
+  every eligible note in a voice regardless of onset, beat group, intervening
+  rest, or rhythmic discontinuity; skipping rests while collecting notes
+  actually permits beams to bridge them. Chord tones are skipped rather than
+  handled as members of their onset group.
+- The proposed PDF test does not match the repository API: current
+  `_render_with_verovio(performance, title, measures_per_system=...)`
+  accepts a `DrumPerformance` and returns PDF bytes. It does not accept raw
+  MusicXML plus an output path. The test also references `os` without
+  importing it and never constructs the required performance or calls
+  `performance_to_pdf()`.
+- Correct implementation boundary: reconstruct the shared MusicXML document
+  cursor first (including backup/forward and chord onset semantics), validate
+  voice timelines from those absolute positions, and generate duration
+  fragments before serializing voices. Tie splitting must create both
+  continuation segments and paired sound/notation tie markers while
+  conserving duration. Beam groups must be computed from voice + absolute
+  onset + meter beat-group + uninterrupted eligible note runs.
+- No production code changed and no test/CI result is claimed in this review.
+  PR #4 remains open and unmerged.
+
 ## 2026-11-12 — MusicXML rhythmic-timeline implementation plan grounded in current exporter
 
 - Re-read the current integration-branch exporter, canonical event schema, and
