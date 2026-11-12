@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from app.musicxml_adapter import decompose_rhythmic_duration, reconstruct_and_validate_measure
+from app.musicxml_adapter import (\n    decompose_meter_aware_gap,\n    decompose_rhythmic_duration,\n    reconstruct_and_validate_measure,\n)
 
 
 def parse(body: str) -> ET.Element:
@@ -139,3 +139,24 @@ def test_duration_decomposition_preserves_exact_total():
 def test_duration_decomposition_rejects_unrepresentable_remainder():
     with pytest.raises(ValueError, match="cannot be represented"):
         decompose_rhythmic_duration(1, divisions=480)
+
+
+
+def test_meter_aware_gap_splits_6_8_at_dotted_quarter_pulses():
+    parts = decompose_meter_aware_gap(0, 1440, 6, 8, divisions=480)
+    assert parts == [(720, "quarter", 1), (720, "quarter", 1)]
+
+
+def test_meter_aware_gap_splits_4_4_at_half_bar_groups():
+    parts = decompose_meter_aware_gap(0, 1920, 4, 4, divisions=480)
+    assert parts == [(960, "half", 0), (960, "half", 0)]
+
+
+def test_meter_aware_gap_respects_offset_into_group():
+    parts = decompose_meter_aware_gap(720, 1440, 6, 8, divisions=480)
+    assert parts == [(720, "quarter", 1)]
+
+
+def test_meter_aware_gap_rejects_invalid_interval():
+    with pytest.raises(ValueError, match="positive interval"):
+        decompose_meter_aware_gap(10, 10, 4, 4, divisions=480)
