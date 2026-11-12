@@ -737,3 +737,14 @@ code or validation state changes; do not infer completion from plans.
   source of truth.
 - This improves editing speed without introducing a separate client-only
   history stack or changing event persistence semantics.
+
+
+## 2026-11-12 — consistent export bundle layout
+
+- The complete project ZIP now accepts the same `measures_per_system=4|5`
+  option as the standalone PDF endpoint.
+- The editor passes its selected line density to both standalone PDF and ZIP
+  export, so the packaged score no longer silently falls back to four measures
+  when the user selected five.
+- ZIP contents remain canonical performance JSON, MIDI, editable MusicXML,
+  printable PDF, and original uploaded audio.
