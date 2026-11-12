@@ -3,10 +3,13 @@ name: DrumScript engine validation
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, test/real-mp3-engine-smoke]
     paths:
       - ".github/workflows/engine-validation.yml"
       - "scripts/engine_smoke.py"
+      - "scripts/kick_stage_diagnostics.py"
+      - "scripts/api_engine_smoke.py"
+      - "backend/app/pdf_adapter.py"
       - "*.mp3"
   push:
     branches: [main]
@@ -14,6 +17,10 @@ on:
       - ".github/workflows/engine-validation.yml"
       - "scripts/engine_smoke.py"
       - "*.mp3"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   drumscript:
@@ -26,10 +33,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install FFmpeg
+      - name: Install portable FFmpeg and Python PDF renderer
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install ffmpeg-downloader==0.5.3 pypdfium2 pillow
+          mkdir -p "$HOME/.local/bin"
+          ffdl install 7@static
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          command -v ffmpeg
+          command -v ffprobe
+          ffmpeg -version
+          ffprobe -version
       - name: Install CPU PyTorch and DrumScript
         run: |
           python -m pip install --upgrade pip
@@ -38,6 +53,8 @@ jobs:
           git -C /tmp/DrumScript rev-parse HEAD
           python -m pip install -e /tmp/DrumScript
           python -m pip install pytest mir-eval requests
+      - name: Install DrumAI canonical MIDI adapter
+        run: python -m pip install -e "./backend[dev]"
       - name: Verify package and CLI
         run: |
           python -c "import drumscript; print('drumscript import OK')"
@@ -45,5 +62,60 @@ jobs:
       - name: Run upstream non-slow tests
         working-directory: /tmp/DrumScript
         run: pytest -m "not slow"
+      - name: Download IDMT-SMT-Drums annotated evaluation subset
+        run: |
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
+            "https://zenodo.org/records/7544164/files/IDMT-SMT-DRUMS-V2.zip?download=1" \
+            --output /tmp/IDMT-SMT-DRUMS-V2.zip
+          mkdir -p /tmp/idmt-dataset
+          unzip -q /tmp/IDMT-SMT-DRUMS-V2.zip -d /tmp/idmt-dataset
+          IDMT_ROOT="$(find /tmp/idmt-dataset -type d -name annotation_xml -print -quit | xargs dirname)"
+          test -d "$IDMT_ROOT/audio"
+          echo "IDMT_ROOT=$IDMT_ROOT" >> "$GITHUB_ENV"
+      - name: Score annotated RealDrum mixes
+        working-directory: /tmp/DrumScript
+        run: >-
+          python benchmarks/run.py --run-name kick-baseline-realdrum
+          --limit 15 IDMT-SMT-DRUMS-V2 --root "$IDMT_ROOT" --subset RealDrum
+      - name: Score annotated WaveDrum mixes
+        working-directory: /tmp/DrumScript
+        run: >-
+          python benchmarks/run.py --run-name kick-baseline-wavedrum
+          --limit 15 IDMT-SMT-DRUMS-V2 --root "$IDMT_ROOT" --subset WaveDrum
+      - name: Score annotated TechnoDrum mixes
+        working-directory: /tmp/DrumScript
+        run: >-
+          python benchmarks/run.py --run-name kick-baseline-technodrum
+          --limit 15 IDMT-SMT-DRUMS-V2 --root "$IDMT_ROOT" --subset TechnoDrum
+      - name: Diagnose kick misses before and after classification
+        working-directory: /tmp/DrumScript
+        run: |
+          mkdir -p /tmp/kick-diagnostics
+          python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset RealDrum --limit 15 --output /tmp/kick-diagnostics/realdrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset WaveDrum --limit 15 --output /tmp/kick-diagnostics/wavedrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset TechnoDrum --limit 15 --output /tmp/kick-diagnostics/technodrum.json
+      - name: Upload IDMT benchmark metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idmt-drum-transcription-benchmark
+          path: |
+            /tmp/DrumScript/outputs/benchmarks/
+            /tmp/kick-diagnostics/
+          if-no-files-found: ignore
       - name: Run synthetic and repository MP3 smoke tests
         run: python scripts/engine_smoke.py
+      - name: Run API-to-engine end-to-end smoke
+        env:
+          DRUMAI_E2E_OUTPUT_DIR: /tmp/drumai-e2e-artifacts
+        run: |
+          python scripts/api_engine_smoke.py
+          test -s /tmp/drumai-e2e-artifacts/drumai-api-e2e-score.pdf
+          test -s /tmp/drumai-e2e-artifacts/drumai-score-page-1.png
+      - name: Upload API PDF and rendered page
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drumai-api-pdf-visual-smoke
+          path: /tmp/drumai-e2e-artifacts/
+          if-no-files-found: ignore

@@ -1,3 +1,243 @@
+## 2026-11-12 — review of revised rhythmic-beaming implementation proposal
+
+- Reviewed the newly supplied `process_measure_rhythm_and_beams` patch and
+  its proposed tests against the actual exporter and PDF adapter on the
+  integration branch. The proposal is directionally aligned with the desired
+  features, but is not safe to apply as written.
+- The MusicXML measure cursor is a shared document-order cursor: `backup`
+  rewinds that cursor and `forward` advances it. It is not a command to
+  subtract from a voice-local cursor. Voice identity is recorded on notes;
+  chord tones share the preceding non-chord note's onset and do not advance
+  the cursor. The proposal's `active_voice` bookkeeping conflates these
+  concepts and does not validate voice streams or per-voice totals.
+- The proposed 6/8 beat grouping is arithmetically wrong for divisions=4:
+  each dotted-quarter beat is 6 divisions, not 3. Its generic fallback also
+  does not correctly derive denominator beat units or compound-meter groups.
+- The split helper shortens the original note but never inserts continuation
+  notes, never emits the matching `<tie type="stop"/>` on a continuation,
+  and never preserves the original total duration. The beam helper groups
+  every eligible note in a voice regardless of onset, beat group, intervening
+  rest, or rhythmic discontinuity; skipping rests while collecting notes
+  actually permits beams to bridge them. Chord tones are skipped rather than
+  handled as members of their onset group.
+- The proposed PDF test does not match the repository API: current
+  `_render_with_verovio(performance, title, measures_per_system=...)`
+  accepts a `DrumPerformance` and returns PDF bytes. It does not accept raw
+  MusicXML plus an output path. The test also references `os` without
+  importing it and never constructs the required performance or calls
+  `performance_to_pdf()`.
+- Correct implementation boundary: reconstruct the shared MusicXML document
+  cursor first (including backup/forward and chord onset semantics), validate
+  voice timelines from those absolute positions, and generate duration
+  fragments before serializing voices. Tie splitting must create both
+  continuation segments and paired sound/notation tie markers while
+  conserving duration. Beam groups must be computed from voice + absolute
+  onset + meter beat-group + uninterrupted eligible note runs.
+- No production code changed and no test/CI result is claimed in this review.
+  PR #4 remains open and unmerged.
+
+## 2026-11-12 — MusicXML rhythmic-timeline implementation plan grounded in current exporter
+
+- Re-read the current integration-branch exporter, canonical event schema, and
+  PDF rendering path before changing production code. The exporter uses
+  per-instrument voices with `backup`/`forward`, but derives each hit's
+  duration only from the next hit in that instrument voice and selects the
+  largest undotted binary note value that fits the gap.
+- Confirmed the current generator does not emit explicit rests, beams, ties,
+  dotted values, or tuplets. A hit whose spacing is not an exact supported
+  binary value can therefore leave unrepresented time; the current final
+  `min(note_duration, available_gap)` can also create a duration that does
+  not match the emitted `<type>`. These are generator correctness issues,
+  not merely engraving-style options.
+- Confirmed the PDF renderer calls this same MusicXML generator, then inserts
+  system breaks and renders with Verovio. The rhythmic fix must therefore be
+  made in the shared MusicXML path and verified through the real PDF renderer,
+  not a parallel PDF-only notation implementation.
+- Next implementation slice is a measure/voice timeline validator and
+  duration decomposition with exact divisions conservation. It must interpret
+  MusicXML cursor movement (`backup`/`forward`), chord notes, voices, rests,
+  and measure boundaries; validate each voice independently; and reject
+  unsupported/invalid rhythmic constructs rather than silently accepting
+  mismatched `duration` and `type`. Only after this foundation should
+  notation generation add beat-group beaming and tie-preserving splits.
+- No production code was changed in this review. No test or CI result is
+  claimed. PR #4 remains open and unmerged.
+
+## 2026-11-12 — kick feature diagnostics split by classifier outcome
+
+- Reviewed the upstream DrumScript classifier implementation used by the
+  engine workflow. For full-song IDMT mixes, each detected onset is retained
+  with debug features; kick assignment is primarily the joint LFER and
+  40–140 Hz peak-frequency rule (the special amplitude/debounce gate applies
+  only to a single-loud-hit clip shorter than 30 seconds).
+- The existing IDMT diagnostic already aligned detected onset events to
+  annotated kick times, but it summarized all aligned features together.
+  Extended it to label each reference-aligned candidate as predicted or missed
+  and report LFER/peak-frequency quartiles separately for both outcomes.
+  This is diagnostic-only: no classifier thresholds or production inference
+  behavior were changed.
+- The latest PDF experiment uses scale 180 with vertical justification off;
+  the next engine run must validate its output dimensions and be manually
+  inspected before acceptance.
+
+## 2026-11-12 — PDF layout follow-up after visual-gate failure
+
+- Engine run 43159750781 passed upstream tests, all three IDMT subset diagnostics,
+  synthetic/repository MP3 smoke, and generated the API PDF/PNG. Its API E2E
+  correctly failed the new whitespace assertion: the assertion was measuring
+  the gap between the score and the page footer, not specifically between
+  notation systems. The rendered page also showed notation occupying only
+  about 70% of available width.
+- Corrected the Verovio layout experiment: increased engraving scale from 140
+  to 180 and disabled vertical justification, which can distribute sparse
+  systems across an unnecessarily tall page. Replaced the false-positive
+  gap assertion with a direct score-width minimum of 72%; the existing 15%
+  score-height minimum remains in place.
+- These are unverified layout changes until the next engine-validation run
+  passes and its generated PNG is manually inspected. Do not treat PDF export
+  as accepted based on CI alone.
+
+## 2026-11-12 — PDF visual gate hardened; expanded kick benchmark completed
+
+- The latest API-generated landscape-A4 PDF and PNG were inspected from engine
+  validation run 43147002409 (commit 13cd7f8). Tempo and notation glyphs render,
+  but the page still has an isolated, nearly empty second percussion system and
+  a large vertical whitespace gap. The PDF is not visually accepted.
+- The previous 15% ink-height gate could be fooled by that empty system because
+  it enlarged the page-wide ink bounding box. Added a second visual assertion
+  that measures the largest gap between rows containing substantial ink and
+  rejects gaps above 20% of page height. This intentionally makes the next
+  engine run fail until the layout itself is corrected; do not weaken the gate.
+- The completed IDMT-SMT-Drums run evaluated 14 RealDrum, 15 WaveDrum, and 11
+  TechnoDrum tracks (50 tracks total). Kick candidate recall was 98.3%, 96.3%,
+  and 99.0%, while final kick recall was only 5.3%, 17.2%, and 57.1%;
+  corresponding precision was 100%, 95.6%, and 85.1%. This confirms the main
+  bottleneck remains post-onset kick classification, not onset candidate
+  generation. No kick threshold was changed based on these aggregate results.
+- CI, backend tests, and the engine workflow passed on 13cd7f8, including real
+  MP3 smoke, IDMT diagnostics, and API export generation. The new whitespace
+  assertion is a follow-up regression test and has not yet been validated.
+
+## 2026-11-12 — PDF engraving readability correction
+
+- Visual inspection of the API-generated PDF confirmed two concrete defects:
+  the Verovio metronome-note glyph rendered as a missing-font square, and the
+  notation scale left the score unusually small on landscape A4.
+- Updated the PDF-only Verovio input to render tempo as explicit readable text
+  (for example, "Tempo: 120 BPM") while preserving the semantic metronome
+  markings in the downloadable MusicXML. Increased Verovio notation scale from
+  40 to 52 to use more of the printable page area.
+- This is a targeted layout correction, not yet visually accepted. The next
+  engine-validation run must regenerate the PDF and PNG; inspect the rendered
+  page for clipped notes, collisions, tempo readability, and balanced margins
+  before treating the PDF export as ready.
+
+## 2026-11-12 — portable engine CI passes; kick and PDF visual blockers measured
+
+- Replaced the Ubuntu apt-installed media tools with a Python-managed static
+  FFmpeg/ffprobe distribution and in-process PDFium rendering. On commit
+  7b9debbb7aebab6e862545e6907053b9667f9b15, the engine-validation workflow,
+  backend test workflow, and repository CI all completed successfully.
+- Engine validation completed upstream non-slow tests, the synthetic mix,
+  both repository MP3 smoke tests, and API-to-engine export smoke. The two
+  repository tracks produced 1,041 and 1,127 normalized drum events and
+  non-empty MIDI files. API E2E produced MIDI, MusicXML, a 40,550-byte PDF,
+  and a rendered 42,185-byte PNG page.
+- The PNG was visually inspected rather than treating file existence as
+  acceptance. The Verovio page has a tempo/metronome glyph rendered as a
+  missing-font box and places a very short two-bar score in a small area at
+  the top of a mostly empty A4 landscape page. PDF geometry and generation
+  pass, but visual acceptance remains blocked. Next: inspect Verovio scale,
+  page layout, and SMuFL font/resource handling; add a visual regression
+  fixture with a multi-system score before marking PDF export production-ready.
+- Expanded IDMT-SMT-Drums stage diagnostics (50 ms tolerance) evaluated 14
+  RealDrum, 15 WaveDrum, and 11 TechnoDrum tracks. Candidate onset recall was
+  98.3%, 96.3%, and 99.0%, while final kick recall was only 5.3%, 17.2%, and
+  57.1%, respectively. Matched candidate features show the current LFER rule
+  (minimum 0.32) is the dominant filter: only 16/297 RealDrum, 75/364
+  WaveDrum, and 165/286 TechnoDrum matched candidates pass the LFER threshold.
+  Peak-frequency eligibility is much higher (291/297, 312/364, 236/286).
+- Do not lower the LFER threshold globally based on these aggregates. The
+  next classifier task is to inspect per-track and per-instrument feature
+  distributions, compare isolated kick stems where available, and tune or
+  replace the hard gate with a calibrated/adaptive decision while measuring
+  precision and recall on held-out tracks. IDMT use remains evaluation-only
+  under its dataset terms; no audio is committed.
+- PR #4 remains the sole integration path to main. Keep it open until the PDF
+  visual issue and kick-classification regression strategy are reviewed; all
+  three current CI workflows are green, but CI success is not product-quality
+  acceptance.
+
+
+## 2026-11-11 — non-destructive quantization preview
+
+- Added a two-step quantization flow: generate a preview without persisting,
+  inspect how many events will move, then explicitly confirm application.
+- Changing the grid or strength invalidates the previous preview. Only the
+  confirmed apply action creates a revision and synchronizes MIDI.
+- This exposes the existing backend preview mode in the workspace and avoids
+  accidental destructive quantization. Backend tests run #149 passed all 56
+  tests plus Ruff; repository CI run #238 passed frontend build and backend
+  tests. The subsequent CSS layout update also passed backend run #150 and
+  repository CI run #239.
+
+
+## 2026-11-11 — A–B loop range guard
+
+- Prevented enabling A–B practice looping when the selected range is zero or
+  reversed. Setting A after an existing B now restores B to the track end;
+  setting B before A is disabled in the UI.
+- This avoids a silently enabled loop that never wraps playback.
+
+
+## 2026-11-11 — saved-project retry and recovery
+
+- Improved workspace recovery so uploaded projects with no analysis job can be
+  started directly, and projects whose latest analysis failed can be retried
+  without uploading the audio again.
+- Existing completed projects still restore the latest canonical performance;
+  queued/running jobs remain resumable after a browser refresh.
+- Added API coverage for the saved-project listing endpoint and documented the
+  retry flow in the user guide. Frontend/backend CI for this increment pending.
+
+
+## 2026-11-11 — saved project recovery (implementation, CI pending)
+
+- Added `GET /api/projects?limit=...` to list recent local projects with their
+  latest analysis-job state. The API clamps the requested list size to 1–100.
+- Added a workspace project picker that loads saved projects on startup,
+  restores completed canonical performances and edit history after reload,
+  can resume polling queued/running jobs, and supports manual list refresh.
+- Project switching resets playback/selection state; event-row inputs remount
+  when canonical event values change so undo/redo visibly restores the editor.
+- Added API integration coverage for project metadata and latest completed job
+  state. Backend tests run #140 passed all 56 tests and Ruff; repository CI
+  run #227 passed frontend build and backend tests. DrumScript engine validation
+  run #131 remains in progress.
+
+
+## 2026-11-11 — editable MusicXML drum score export (implementation, CI pending)
+
+- Added a MusicXML 4.0 partwise exporter for canonical drum events, with a
+  percussion staff, instrument-specific voices/noteheads, GM percussion
+  metadata, velocity playback hints, tempo directions, time-signature-aware
+  measure boundaries, note values inferred from successive hit spacing, and
+  explicitly marked implicit measures for partial bars or mid-bar time-signature
+  changes.
+- Added `GET /api/projects/{project_id}/musicxml` and a frontend download link
+  beside MIDI export. The endpoint exports the latest canonical state, so
+  manual edits, quantization, undo, and redo are reflected.
+- Added XML structure, tempo/time-signature, velocity, empty-score, and API
+  download tests. Extended the real DrumScript API-to-engine smoke to fetch and
+  parse a populated MusicXML score from an actual inferred performance.
+  Import into notation software is supported; final engraving remains the
+  notation application's responsibility.
+- Backend tests run #140 passed all 56 tests and Ruff; repository CI run #227
+  passed both frontend build and backend tests on the current branch head.
+  DrumScript engine validation run #131 is running the synthetic/repository MP3
+  smoke stage before the expanded real-inference MusicXML export check. This
+  is integration validation, not an accuracy claim.
+
 
 ## 2026-11-11 — tempo-synchronized practice metronome (implementation, CI pending)
 
@@ -6,7 +246,9 @@
 - Metronome clicks are generated locally with Web Audio and do not upload or
   persist audio. Seeking backward and A–B loop restarts reset beat tracking.
 - The metronome is opt-in and can be toggled independently of A–B looping.
-  Latest frontend build and engine validation are pending for this increment.
+  Its animation-frame scheduler follows the audio element clock and stops while
+  playback is paused. Repository CI run #202 passed frontend build and backend
+  tests; DrumScript engine validation run #104 remains in progress.
 
 
 ## 2026-11-11 — A–B loop practice playback (implementation, CI pending)
@@ -16,8 +258,9 @@
   and reset the range to the full track.
 - Looping is evaluated against the audio element's playback clock; drum-event
   positions and the timeline remain anchored to absolute seconds.
-- Invalid or zero-length ranges do not trigger a loop. Latest branch CI is
-  required before this increment is considered validated.
+- Invalid or zero-length ranges do not trigger a loop. A–B range shading is
+  shown across the drum lanes while looping is active. Repository CI run #202
+  passed frontend build and backend tests; engine validation remains pending.
 
 ## 2026-11-11 — interactive drum arrangement timeline (implementation, CI pending)
 
@@ -280,3 +523,488 @@ code or validation state changes; do not infer completion from plans.
 - The later tempo-map-aware timeline commits were added after run #173. They
   still require a fresh frontend build; do not extend the earlier pass claim
   to those commits.
+
+
+## 2026-11-11 — timeline lane visibility filters
+
+- Added per-instrument visibility checkboxes plus show-all/hide-all controls above the arrangement timeline.
+- Filtering is presentation-only: it does not mutate canonical events, history, playback audio, or MIDI/MusicXML exports; the event table remains complete.
+- This is a frontend-only increment. Latest repository CI and engine-validation status are tracked separately from this commit.
+
+
+## 2026-11-11 — atomic bulk event editing
+
+- Added batch event time shifting and batch deletion endpoints with unique-ID and full-selection validation under SQLite `BEGIN IMMEDIATE`.
+- All changes are validated before persistence; invalid negative event times reject the entire batch. Each operation creates exactly one revision and regenerates MIDI from the canonical performance.
+- Added frontend multi-select, select-all, time-offset input, batch move/delete actions, and Chinese user-guide coverage.
+- Added API tests for one-revision semantics, MIDI synchronization, and atomic rejection.
+
+
+## 2026-11-11 — selected drum-event repetition
+
+- Added an atomic duplication endpoint that clones selected canonical drum events
+  at one or more fixed interval offsets. New events receive unique IDs, retain
+  instrument/velocity metadata, and are marked as manually corrected.
+- Repeat count is bounded to 1–16; invalid selections and any clone beyond the
+  track duration reject the entire request before persistence.
+- Added editor controls for interval and repeat count. A successful action
+  creates one undo/redo revision and regenerates MIDI from canonical events.
+- Added API tests for metadata preservation, unique IDs, repeat timing, single
+  history revision, MIDI synchronization, and out-of-duration atomic rejection.
+- CI validation for this increment is pending until the latest branch head runs.
+
+
+## 2026-11-11 — measure-based drum phrase copy and paste
+
+- Added an atomic API that copies all canonical events in a source time range
+  to a target measure, mapping normalized within-bar offsets when source and
+  target measure lengths differ. Instrument, velocity, and confidence are
+  preserved; clones receive new IDs and manual provenance.
+- Added frontend source/target measure controls driven by the tempo-aware
+  timeline beat/bar grid. Original events remain untouched.
+- Empty source ranges, invalid ranges, and pasted events beyond track duration
+  reject the operation before saving. Successful pastes create one history
+  revision and regenerate MIDI from canonical events.
+- Added API tests for relative timing, metadata preservation, one-revision
+  semantics, MIDI synchronization, empty-source rejection, and overflow
+  atomicity. CI validation is pending for this increment.
+
+
+### Measure-copy validation update
+
+- Backend tests run #171 passed: 62 tests; Ruff passed.
+- DrumScript engine validation run #162 is queued/pending. This editor-only API change does not modify the inference engine; engine workflow completion is still tracked.
+- A fresh repository frontend build result has not yet been confirmed for this head.
+
+
+## 2026-11-11 — built-in printable PDF drum score export (implementation, CI pending)
+
+- Added a ReportLab-based PDF renderer that lays canonical drum events onto a
+  landscape percussion staff with measure boundaries/numbers, tempo and meter
+  metadata, velocity-scaled noteheads, instrument-specific notehead styles,
+  and a compact instrument legend. Long arrangements paginate by systems.
+- Added `GET /api/projects/{project_id}/pdf`, which always renders the latest
+  completed canonical performance, so manual corrections, quantization,
+  undo, and redo are reflected in the printout.
+- Added a PDF download link next to MIDI and editable MusicXML, declared the
+  ReportLab runtime dependency, and updated the user guide/API/README.
+- Added API tests for PDF signature/content type/download disposition and the
+  missing-performance 404 path. CI is pending; no build or test pass is claimed
+  until the workflow results are observed. MusicXML remains the editable score
+  interchange format; PDF is the printable reading/printing format.
+
+
+## 2026-11-11 — adopt Verovio for professional PDF engraving
+
+- Replaced the hand-drawn PDF as the primary path with Verovio, a mature
+  open-source notation engraving engine that imports MusicXML and renders
+  vector SVG pages. CairoSVG converts each vector page to PDF and pypdf
+  assembles multi-page output. ReportLab remains a minimal-install fallback.
+- Added pinned-compatible runtime ranges for Verovio 6.4, CairoSVG, and pypdf.
+  Verovio is LGPL-3.0; no Verovio source is vendored or modified.
+- Strengthened the PDF API test to parse the returned PDF and require at least
+  one real page. CI will validate MusicXML import, engraving, SVG-to-PDF
+  conversion, and PDF assembly on the next run.
+- OSS references: https://github.com/rism-digital/verovio and
+  https://book.verovio.org/installing-or-building-from-sources/python.html .
+
+
+## 2026-11-11 — timeline marquee selection and drag move
+
+- Added pointer-based marquee selection across visible instrument lanes and a
+  live selection rectangle. Dragging on empty timeline space selects events
+  within both the time and lane range.
+- Dragging a selected hit previews and applies a shared time offset to the
+  whole selected group through the existing atomic batch-edit endpoint. The
+  API still enforces song bounds, creates one history revision, and regenerates
+  MIDI; click-to-seek behavior is preserved for non-drag clicks.
+- Added visual marquee styling and updated the user guide. Frontend production
+  build is pending for this increment.
+
+
+### 2026-11-11 validation checkpoint — Verovio + timeline drag
+
+- Verovio PDF path is exercised by the API test: backend test suite reports
+  64 passed, including parsing the returned PDF with pypdf (workflow run
+  #180 / CI backend test job).
+- Frontend production build passed on the commit containing marquee selection
+  and drag-move (CI run #269).
+- Ruff caught import-order-only issues in the PDF test imports on two workflow
+  attempts. Both were corrected; latest fix commit
+  `0953ebbf036ce47ea623ff363fa29db20b74a6ee` is awaiting its own lint result.
+- DrumScript upstream test and repository MP3 end-to-end workflow is still
+  running; do not treat the engine smoke test as passed until its final status
+  is recorded.
+
+
+## 2026-11-11 — PDF fallback layout correction and regression coverage
+
+- Moved system labels and the initial time signature into a dedicated left
+  gutter, separated bar numbers from the staff, and annotate later meter
+  changes only where they occur instead of repeating the initial meter.
+- Added fallback-renderer regression tests for single- and multi-system
+  scores, PDF page readability, system labels, and time-signature repetition.
+- CI is pending for this increment. Visual review of a freshly rendered PDF
+  remains required before calling the layout fully accepted.
+
+
+## 2026-11-11 — portable full-project backup export
+
+- Added a ZIP endpoint and workspace download link bundling the original uploaded
+  audio, latest canonical performance JSON, MIDI, editable MusicXML, printable
+  PDF, and a short README manifest.
+- The bundle reads the latest completed canonical performance so edits and
+  history restores are reflected in the exported files. Added API coverage for
+  archive contents and the not-yet-analyzed response. CI pending.
+
+
+## 2026-11-11 — graceful PDF engraving fallback
+
+- CI exposed that the Verovio Python package can be installed while its SMuFL
+  font resources are unavailable, causing score loading to raise a ValueError.
+- PDF export now falls back to the ReportLab renderer for that specific
+  unusable-engraving condition, rather than failing the entire export and
+  project backup. Added a regression test for this path.
+- Full-project backup export is now covered by archive-content API tests;
+  CI rerun pending.
+
+
+## 2026-11-11 — PDF page geometry and external benchmark acquisition
+
+- Corrected the Verovio SVG-to-PDF conversion to set an explicit landscape A4 output surface. CairoSVG otherwise interprets SVG pixel dimensions at 96 DPI, which can make the physical PDF page size differ from the intended paper size.
+- Added PDF regression coverage for A4 media-box dimensions on both the Verovio primary renderer and the ReportLab fallback, in addition to existing text/layout checks. CI must confirm the new primary-renderer assertion before this fix is considered verified.
+- Added `docs/TEST_DATASETS.md` with a staged, licence-aware acquisition plan for IDMT-SMT-Drums, GMD, E-GMD, ENST-Drums, and QUASI. Audio remains outside Git; each benchmark case must preserve provenance, licence, checksum, and reviewed annotation metadata.
+- No external dataset has yet been downloaded into the repository or scored. The first practical target is a small IDMT subset plus a fixed GMD held-out subset; real mixed-song evaluation requires separate track-level rights review.
+
+
+## 2026-11-11 — annotated IDMT regression benchmark added to engine CI
+
+- Reused the upstream DrumScript IDMT-SMT-Drums V2 benchmark adapter rather than creating a second annotation parser. The upstream adapter already pairs `#MIX.wav` recordings with XML/SVL labels and scores kick, snare, and hi-hat onset events at a 50 ms tolerance.
+- Added an engine-validation CI step that downloads the 287 MB IDMT archive from Zenodo, runs the first 10 annotated RealDrum mixes, and uploads metrics as a workflow artifact. Raw dataset audio stays outside Git; the run is an evaluation-only use under the dataset's non-commercial/no-derivatives terms.
+- This is the first labelled regression benchmark in our pipeline. It does not measure full-band mixed-song separation; QUASI remains a later candidate pending per-track licence review.
+- Latest PDF resource-path and A4 regression changes are awaiting the current CI run. Previous attempts exposed and corrected a missing `Path` import and an incorrect multi-page test expectation; those failed runs are not counted as passes.
+
+## 2026-11-11 — CI acceleration: FFmpeg provisioning
+
+- The IDMT engine-validation workflow's FFmpeg setup was spending excessive time in the Ubuntu package-manager path (apt-get update / apt-get install).
+- Replaced that fallback with the pip-distributed imageio-ffmpeg binary when the runner does not already provide FFmpeg; the binary directory is added to GITHUB_PATH and verified with ffmpeg -version.
+- This keeps the runner-provided FFmpeg fast path and removes the slow apt repository refresh from the fallback path.
+- The previous benchmark run had not yet reached dataset download or scoring, so no IDMT accuracy result is claimed. The workflow will rerun on this commit.
+
+- Follow-up CI correction: imageio-ffmpeg exposes a versioned executable name rather than a literal ffmpeg command. The workflow now creates a runner-temp ffmpeg symlink and adds that directory to PATH before verifying the binary. The first pip-based attempt failed at the verification command before any benchmark work ran; no accuracy result is available yet.
+
+## 2026-11-11 — First labelled IDMT benchmark completed
+
+- The CI workflow successfully downloaded the IDMT-SMT-DRUMS-V2 evaluation archive, ran the upstream adapter on 10/10 RealDrum mixes, and uploaded the metrics artifact (workflow run #213, artifact `idmt-drum-transcription-benchmark`).
+- Macro-average at the upstream adapter's 50 ms onset tolerance: kick P=0.700 / R=0.070 / F1=0.123; snare P=0.706 / R=0.914 / F1=0.775; hi-hat P=0.907 / R=0.996 / F1=0.949.
+- Interpretation: kick recall is the major quality blocker; the score is an initial 10-item baseline, not a production-accuracy claim. Expand the held-out sample before making broad claims.
+- The same workflow passed synthetic full-mix separation/transcription and canonical MIDI normalization. Repository MP3 processing then failed during Demucs MP3 decoding because its loader could not locate/use FFmpeg in that subprocess, despite the workflow's FFmpeg verification step.
+- Updated `scripts/engine_smoke.py` to explicitly decode repository MP3 samples to PCM WAV with the imageio-ffmpeg executable (or system FFmpeg fallback) before passing the audio into Demucs. This preserves real repository MP3 coverage while avoiding Demucs' optional MP3 decoder lookup path. CI must validate this correction.
+
+
+## 2026-11-11 — kick recall research and cross-domain benchmark expansion
+
+- Investigated public ADT research and open implementations: IDMT-SMT-Drums, MDB Drums, ADTOF, a Librosa-onset + CNN baseline, adaptive onset detection with spectral/tail templates, and the 2026 Separate-and-Detect five-stem approach.
+- Added `docs/KICK_RECALL_RESEARCH.md` with cited sources, testable failure hypotheses, dataset/license notes, and a staged diagnostic plan. The causes are explicitly hypotheses, not asserted facts.
+- Expanded IDMT CI evaluation from the first 10 RealDrum mixes to 15 examples each from RealDrum, WaveDrum, and TechnoDrum, with distinct run names and archived per-track metrics. This checks whether the low kick recall is domain-specific instead of extrapolating from one subset.
+- Disabled cancellation of an in-progress engine-validation run when a new commit arrives; this long-running CPU benchmark should finish rather than repeatedly being cancelled by rapid pushes.
+- The expanded benchmark and MP3-to-WAV smoke correction are awaiting CI execution. No accuracy improvement is claimed yet.
+
+
+## 2026-11-11 — stage-wise kick miss diagnostics
+
+- Added `scripts/kick_stage_diagnostics.py`. It evaluates each IDMT kick reference twice: first against all onset candidates before classification, then against events classified as kick. It reports candidate recall, final kick recall, kick precision, and candidate-to-kick match retention per subset and per track.
+- The engine-validation workflow now runs this diagnostic on 15 tracks from each of RealDrum, WaveDrum, and TechnoDrum and uploads JSON/CSV alongside the upstream per-track benchmark archives.
+- Interpretation rule: low candidate recall indicates the shared onset stage is missing kick opportunities; healthy candidate recall but low final kick recall points to classification/feature rules. This is a diagnostic decomposition, not a claim that either failure mode has already been observed.
+- CI is running/pending for the new diagnostic script and workflow. The first output will determine which algorithm branch to change next.
+
+
+## 2026-11-12 — API runtime dependency and export visual smoke coverage
+
+- The first expanded stage-wise run evaluated 14 RealDrum, 15 WaveDrum, and 11 TechnoDrum tracks (the dataset contains fewer eligible files in two subsets). Candidate-onset recall was 0.983 / 0.963 / 0.990, while final kick recall was 0.053 / 0.172 / 0.571. These are subset-level diagnostic results, not production accuracy claims.
+- The API-to-engine end-to-end smoke exposed a real worker-image dependency gap: the workflow had ffmpeg but not ffprobe, which the API uses to read source duration. Replaced the workflow provisioning step with system FFmpeg installation and explicit checks for both executables. Backend unit tests and frontend/backend CI passed on the dependency-fix commit; the full engine workflow is rerunning.
+- Added feature-level diagnostics for IDMT reference kicks that already match an onset candidate. The archived JSON now includes per-candidate LFER, peak frequency, centroid, HFER, high-frequency energy, decay, and pass/fail against the current kick-rule thresholds. This measures which boundaries reject candidate kick events before any classifier changes are attempted.
+- Extended the API end-to-end smoke to call the PDF endpoint, validate PDF signature/page count/landscape-A4 geometry, preserve the generated PDF, rasterize its first page with Poppler, and upload both PDF and PNG as a CI artifact. This creates a reviewable visual regression artifact rather than relying only on PDF metadata tests.
+- The PDF raster/artifact step and expanded kick-feature diagnostics are pending on the current PR #4 engine-validation run. No PDF visual acceptance or kick-recall improvement is claimed until those artifacts and metrics are reviewed.
+
+
+
+## 2026-11-12 — avoid unnecessary media-tool installation on CI runners
+
+- The latest engine-validation run remained in the media-tool provisioning step
+  even after removing the explicit apt repository refresh. The workflow now
+  checks for ffmpeg, ffprobe, and pdftoppm first and installs FFmpeg/Poppler
+  packages only when one or more tools are missing.
+- This uses the preinstalled GitHub-hosted runner binaries when available and
+  avoids a package-manager round trip on already-provisioned runners. The next
+  run must still prove that all three tools are present and the full engine,
+  benchmark, MP3, and PDF-render stages complete; no pass is inferred from this
+  workflow change alone.
+
+
+## 2026-11-12 — remove Ubuntu apt mirror dependency from engine validation
+
+- Inspected the failed GitHub Actions job log: the runner did not have
+  ffmpeg/ffprobe/pdftoppm preinstalled, and Ubuntu package downloads repeatedly
+  failed DNS resolution against the Azure archive mirror. The install step
+  spent about 33 minutes downloading most packages before apt exited 100.
+- Replaced apt-based media provisioning with the Python ffmpeg-downloader
+  package and its static FFmpeg build, exposing both ffmpeg and ffprobe on PATH.
+  The workflow also installs pypdfium2 from PyPI for PDF rasterization.
+- The API smoke now renders the first PDF page in-process, validates the PNG
+  signature and non-trivial file size, and uploads the PDF plus rendered PNG.
+  Poppler/pdfinfo are no longer required.
+- This removes the failing Ubuntu mirror dependency, but the next CI run must
+  still verify the binary download, full inference, repository MP3s, PDF
+  generation, and raster output. No engine or visual pass is claimed yet.
+
+
+## 2026-11-12 — PDF notation scale follow-up
+- Re-inspected the regenerated API PDF artifact from engine run 43125687384. The tempo label is now readable, but the notation still occupies too little vertical space on landscape A4; visual acceptance remains blocked.
+- The prior Verovio setting used `scale: 52`, although Verovio defines 100 as normal output size. Updated the engraving scale to 100 and enabled vertical justification with an 0.8 maximum vertical justification ratio.
+- This is a targeted layout correction, not yet a visual pass. The next engine run must regenerate and inspect the page image before claiming PDF readability.
+- Official reference: Verovio toolkit options document scale as a percentage with 100 normal size and describe vertical justification as filling page spacing.
+
+
+## 2026-11-12 — PDF visual acceptance gate
+- Re-inspected the PDF/PNG artifact from engine validation run 43134370764 after the Verovio scale/vertical-justification adjustment. Tempo text is readable, but the score remains vertically compressed near the top of the landscape A4 page; the blank lower page area is still unacceptable.
+- Added a visual smoke assertion in `scripts/api_engine_smoke.py`: it measures dark-ink vertical coverage in the upper 80% of the rendered page (excluding the footer mark) and rejects notation occupying less than 15% of page height.
+- This intentionally turns a visually poor export into a failing engine-validation check instead of reporting a misleading green result. The next run is expected to determine whether the current renderer clears this threshold; visual inspection remains required regardless.
+
+
+## 2026-11-12 — sparse-score engraving scale follow-up
+
+- The new API visual gate measured only 8.4% vertical ink coverage on the synthetic short-score PDF. The archived PNG confirmed that a single percussion staff was rendered legibly but too small and confined to the top of the A4 page.
+- Increased Verovio engraving scale from 100 to 140 and the MEI unit from its default to the supported maximum of 12, aiming to enlarge staff spacing, noteheads, and stems while preserving vector output and A4 geometry.
+- This is a measured layout experiment, not an accepted PDF fix. The 15% visual gate remains unchanged; the next engine run and a fresh PNG review must confirm whether the score now occupies the page appropriately without clipping or excessive pagination.
+
+
+## 2026-11-12 — deterministic PDF measures per system
+
+- Replaced reliance on Verovio's automatic horizontal line wrapping with explicit
+  MusicXML `print new-system="yes"` markers at the configured measure interval.
+- PDF export now defaults to four measures per system and accepts five via
+  `GET /api/projects/{project_id}/pdf?measures_per_system=5`. Unsupported
+  values are rejected with HTTP 422; the ReportLab fallback uses the same
+  grouping setting.
+- Added regression coverage for the exact 4-bar and 5-bar system-break
+  positions and invalid settings. Fresh engine PDF artifact review is still
+  required before visual acceptance.
+
+
+## 2026-11-12 — editor keyboard history shortcuts
+
+- Added standard editor shortcuts for persistent project history: Ctrl/Cmd+Z
+  undoes, Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo.
+- Shortcuts are ignored while typing in inputs, textareas, selects, or
+  content-editable regions, and are disabled while a save/history operation is
+  already running. The existing server-backed undo/redo remains the single
+  source of truth.
+- This improves editing speed without introducing a separate client-only
+  history stack or changing event persistence semantics.
+
+
+## 2026-11-12 — consistent export bundle layout
+
+- The complete project ZIP now accepts the same `measures_per_system=4|5`
+  option as the standalone PDF endpoint.
+- The editor passes its selected line density to both standalone PDF and ZIP
+  export, so the packaged score no longer silently falls back to four measures
+  when the user selected five.
+- ZIP contents remain canonical performance JSON, MIDI, editable MusicXML,
+  printable PDF, and original uploaded audio.
+
+
+## 2026-11-12 — project bundle layout regression coverage
+
+- Extended the project archive API test to request five measures per system and
+  assert that the selected value reaches the PDF renderer and is preserved in
+  the ZIP's score PDF.
+- Added a regression check that unsupported project-bundle PDF layouts return
+  HTTP 422.
+
+
+## 2026-11-12 — pipeline readiness copy
+
+- Updated the pipeline summary so the implemented editor/export stage is no
+  longer mislabeled as "in development".
+- Kept the transcription runtime dependency explicit, avoiding the impression
+  that a clean frontend install alone enables model inference.
+
+
+## 2026-11-12 — kick classifier runtime audit and Gemini follow-up
+
+- Confirmed the actual standard full-song classifier is in the external
+  `DrumScript/DrumScript` runtime, not in a FastAPI `app.engine.classifier`
+  module. DrumAI's `backend/app/engine_adapter.py` lazily imports
+  `drumscript` and calls `engine.transcribe(..., full_song=True,
+  midi_only=True)`.
+- The engine-validation workflow currently shallow-clones upstream main
+  without pinning a commit. The upstream source snapshot independently
+  inspected during this audit is
+  `e3c470787a3ec33221fcb18674e01fa5bdfd5de8`; this is not asserted to be the
+  exact SHA used by the completed CI run. Pinning/recording the actual runtime
+  SHA is required for reproducible classifier experiments.
+- In upstream `drumscript/drum_classifier/classify.py`, standard
+  `classify_events` extracts a 200 ms spectral slice plus 1.5 s decay slice.
+  Its kick rule is `lfer >= KICK_LFER_MIN` and peak frequency within
+  `KICK_FREQ_MIN..KICK_FREQ_MAX`. Current upstream constants inspected:
+  LFER 0.32, frequency 40–140 Hz. Actual feature names are
+  `peak_freq`, `centroid`, `decay`, `lfer`, `hfer`, `hfer_5k`.
+  No `transient_strength` or `beater_attack_ratio` exists in this path.
+- Low-tom classification follows the kick rule and requires low HFER plus
+  resonant decay; when the kick condition fails, a low-frequency resonant
+  candidate can be labeled `low_tom`. Standard full-song classification does
+  not use the separate rudiment ADSR/lockout gates.
+- Gemini received a follow-up task on Issue #5 to inspect the actual upstream
+  source, reproduce IDMT results, and return a minimal opt-in candidate only
+  if held-out track-isolated evidence justifies it. No code patch or threshold
+  change is accepted yet.
+- Integration head `f100c55b6bed2045b8598c7859fe4f51cd69eadc` passed backend
+  tests (Actions run 43212702038) and engine validation (run 43212702034).
+  The engine job completed IDMT benchmark/diagnostic steps for all three
+  subsets and uploaded artifact `idmt-drum-transcription-benchmark` (artifact
+  13942855863). These are successful workflow executions, not a claimed
+  classifier accuracy improvement; raw artifact metrics still require review.
+- No integration classifier code or threshold was changed. PR #4 remains
+  unmerged pending review and user approval.
+
+
+## 2026-11-12 — reject ungrounded Gemini kick patch proposal
+
+- Reviewed the latest Issue #5 delivery against the actual integration branch.
+  The claimed `backend/app/api/projects.py`,
+  `backend/app/engine/features.py`, `backend/app/engine/classifier.py`,
+  and `backend/app/engine/patches/kick_classifier_patch.py` paths do not
+  exist. The real API adapter is `backend/app/engine_adapter.py`, which
+  lazily imports DrumScript and calls its full-song `transcribe()` API.
+- The proposal's `transient_strength`, `beater_attack_ratio`, and
+  `decay_duration_ms` fields are not part of the real full-song classifier
+  feature schema. The actual fields are `lfer`, `peak_freq`, `centroid`,
+  `hfer`, `hfer_5k`, and `decay`; the current upstream kick rule uses
+  LFER 0.32 and peak frequency 40–140 Hz. No evidence supports replacing
+  this with a 0.65 threshold or invented millisecond decay gates.
+- Rejected the submitted IDMT table as unauditable: no per-track source
+  records, matching tolerance, raw metrics, runtime SHA, or reproducible
+  command were supplied. Its 30-track/0.70–0.92 recall claims conflict with
+  the project's previously archived stage-wise diagnostic baseline
+  (14/15/11 tracks; final kick recall 0.053/0.172/0.571).
+- The supplied "track-isolated" script only evaluates two hand-written mock
+  samples. It does not load IDMT, isolate tracks, match event timestamps, or
+  compare baseline and candidate on identical held-out tracks. The proposed
+  unit tests exercise only a new synthetic helper, not the real classifier.
+- Posted the complete evidence-based rejection and required resubmission
+  criteria to Issue #5 comment
+  https://github.com/oneyi53/drum-ai-studio/issues/5#issuecomment-6823552165.
+- No classifier code, threshold, workflow, or production behavior changed.
+  PR #4 remains unmerged and awaits explicit user approval.
+
+
+## 2026-11-12 — re-review of revised kick metrics and rollback proposal
+
+- Reviewed the revised Gemini delivery claiming paired IDMT baseline/candidate
+  metrics and track-isolated evaluation. The displayed precision, recall, and
+  F1 values are arithmetically consistent with the supplied aggregate counts,
+  but no per-track raw metrics, track IDs, event timestamps, matching
+  tolerance, runtime SHA, command log, or benchmark artifact was supplied.
+  Arithmetic consistency is not evidence that the numbers were measured.
+- The provided evaluation script remains a two-row hand-authored mock example;
+  it does not load IDMT, implement leave-one-track-out, isolate tracks, match
+  timestamps, or compare baseline and candidate on identical held-out tracks.
+- The proposal still assumes nonexistent backend classifier paths and feature
+  fields not emitted by the standard full-song DrumScript classifier.
+- Its rollback example uses LFER 0.65, which does not restore the current
+  upstream baseline (LFER 0.32 plus peak frequency 40–140 Hz); applying it
+  would change behavior rather than roll back to the current rule.
+- Posted the additional evidence requirements and rejection to Issue #5
+  comment https://github.com/oneyi53/drum-ai-studio/issues/5#issuecomment-6823645441.
+- No classifier, threshold, CI workflow, or production behavior was changed.
+  PR #4 remains unmerged pending explicit user approval.
+
+
+## 2026-11-12 — audit of newly supplied kick event-level metrics
+
+- Reviewed the newly supplied IDMT table and five-row JSON excerpt. The
+  aggregate TP/FP/FN arithmetic and derived precision/recall/F1 values are
+  internally consistent. This validates only the arithmetic, not that the
+  counts came from a real DrumScript execution.
+- The submission labels the sample as 30 tracks (10 per subset), whereas the
+  repository's completed expanded benchmark discovered 14 RealDrum, 15
+  WaveDrum, and 11 TechnoDrum eligible tracks. The submitted cohort therefore
+  needs explicit track IDs and inclusion/exclusion provenance before it can
+  be compared with the archived run. The reported 0.70–0.92 subset recall
+  also differs materially from the archived stage-wise final-kick recall
+  0.053/0.172/0.571; differing cohort or scoring semantics may explain this,
+  but no evidence currently reconciles them.
+- The JSON fields `transient_strength`, `beater_attack_ratio`, and
+  `decay_duration_ms` still do not match the standard full-song DrumScript
+  feature schema (`lfer`, `peak_freq`, `centroid`, `hfer`,
+  `hfer_5k`, `decay`). The stated default LFER threshold 0.65 also does
+  not match the inspected upstream baseline of 0.32 plus the 40–140 Hz
+  peak-frequency gate. No classifier change is justified by these records.
+- The five examples are illustrative snippets, not a raw event-level
+  evaluation artifact: they omit the complete per-track event population,
+  predicted-event IDs/pitches, one-to-one matching assignments, duplicate
+  handling, and the exact scoring command/runtime SHA. In particular, an FN
+  row containing features but no predicted onset needs a documented method
+  explaining how those features were measured at the reference time.
+- The asserted 68% bass-masking and 72% tom/slap-bass attribution rates are
+  not derivable from the five examples or aggregate TP/FP/FN table. They need
+  per-event evidence and a reproducible attribution procedure.
+- No code, threshold, or workflow was changed. Treat this submission as an
+  unverified hypothesis/report, not measured benchmark evidence. Next
+  acceptable evidence is the complete machine-generated JSON/CSV with
+  per-track IDs and event-level assignments, the exact ±50 ms matcher and
+  command, DrumScript runtime commit/package versions, and CI artifact/log
+  proving the run. PR #4 remains unmerged.
+
+
+## 2026-11-12 — review of proposed event matcher and artifact generator
+
+- Reviewed the newly supplied environment declaration, greedy matcher, and
+  machine-artifact generator against the integration branch's real diagnostic
+  and engine adapter code. The environment limitation is appropriately stated;
+  no measured accuracy claim is accepted from this delivery.
+- Rejected the proposed global minimum-delta greedy matcher as the canonical
+  scorer: it can fail to maximize one-to-one match cardinality. Counterexample
+  at a 50 ms window: GT=[0.000, 0.050], Pred=[0.020, -0.040]. Global pair sorting
+  consumes GT 0.050 / Pred 0.020 first and yields only one TP, although the
+  alternative assignment yields two. Use the repository's chronological
+  two-pointer matcher or a formally specified maximum-cardinality assignment,
+  and add this adversarial regression test.
+- The generator is not runnable against the actual DrumScript API. It calls
+  `classify_events(audio_path)`, while the repository diagnostic loads and
+  normalizes audio, calls `detect_onsets(audio, sample_rate)`, then calls
+  `classify_events(audio, sample_rate, onsets)`. It also assumes event keys
+  `time` and `pitch`; the real event shape used by the repository is
+  `time_sec`, `instruments`, and optional `debug_features`.
+- The proposed `idmt_manifest.json` is not the repository's dataset contract.
+  Existing IDMT integration uses `find_mix_files`, `reference_onsets_for_file`,
+  and the upstream XML/SVL annotation adapter. The proposed hard-coded fallback
+  for `drumscript.__commit__` is not provenance: it can silently report a
+  guessed SHA when the attribute is absent. Record the actual Git checkout SHA
+  from the runtime installation and fail closed if it cannot be established.
+- Kick pitch handling is underspecified: the task groups MIDI 35 and 36 as
+  Kick, but the matcher requires exact pitch equality. Normalize both GT and
+  predictions to a documented Kick class before matching, or explicitly score
+  exact MIDI pitches as a separate metric.
+- No evaluation code, classifier, or threshold was changed. The delivery is
+  retained as a specification draft only; it is not an executable/reproducible
+  evaluation artifact. PR #4 remains unmerged.
+
+
+## 2026-11-12 — parallelized PDF engraving work with Gemini
+
+- Created focused task Issue #6 for Gemini to reproduce and correct the Verovio PDF layout, add short-score and multi-system visual regression coverage, and submit a separate PR against the integration branch.
+- The task explicitly forbids classifier/IDMT changes, fabricated artifacts or metrics, weakening visual gates, and merging the mainline integration PR.
+- Rechecked current PDF implementation and tests: Verovio is configured at scale 180 with vertical justification disabled; tests cover A4 geometry and 4/5-measure break insertion, while API smoke checks first-page ink bounds. These checks do not yet establish visual acceptance for representative multi-system PDFs.
+- Latest available engine-validation run #264 (run ID 43212702034) completed successfully on commit f100c55b6bed2045b8598c7859fe4f51cd69eadc. The integration branch has since advanced to ad6ae9401e25a43d65c15e5e3fc181eae23a8b3a, so this run is not validation of the current branch head. PDF artifact 13942911556 is available but its image has not yet been manually inspected in this environment.
+- No production classifier or renderer code was changed in this documentation-only increment. PR #4 remains open and unmerged.
+
+
+## 2026-11-12 — Issue #6 proposal review and CI PDF artifact inspection
+
+- Reviewed Gemini's Issue #6 response. It supplied a plan/snippet only, not a branch, commit, PR, rendered output, or test logs. The proposed functions are not part of the current adapter API; it introduces a parallel `render_musicxml_to_pdf` path and uses toolkit method casing/API that does not match the existing implementation (`setOptions`, `loadData`, `renderToSVG` + CairoSVG/PyPDF). Its tests assert only non-empty output/options and do not exercise actual rendered multi-system geometry. Requested a real focused implementation and PR in Issue #6; comment 6823839834.
+- Downloaded and visually inspected CI artifact 13942911556 from run 43212702034. The PNG is 1404x993 and shows the actual defect: the first system is rendered near the top, then a second almost-empty percussion staff appears below it, leaving most of the landscape page blank. This is concrete evidence that the PDF layout is not yet acceptable.
+- Added this artifact reproduction to Issue #6 and asked Gemini to create a regression that fails on the extra near-empty system, then attach before/after PDF and PNG renders with the actual Verovio version/options; comment 6823850692.
+- Artifact run commit is f100c55b6bed2045b8598c7859fe4f51cd69eadc, older than current integration head. No production code changed in this increment. PR #4 remains open and unmerged.
