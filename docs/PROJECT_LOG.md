@@ -644,3 +644,9 @@ code or validation state changes; do not infer completion from plans.
 - The prior Verovio setting used `scale: 52`, although Verovio defines 100 as normal output size. Updated the engraving scale to 100 and enabled vertical justification with an 0.8 maximum vertical justification ratio.
 - This is a targeted layout correction, not yet a visual pass. The next engine run must regenerate and inspect the page image before claiming PDF readability.
 - Official reference: Verovio toolkit options document scale as a percentage with 100 normal size and describe vertical justification as filling page spacing.
+
+
+## 2026-11-12 — PDF visual acceptance gate
+- Re-inspected the PDF/PNG artifact from engine validation run 43134370764 after the Verovio scale/vertical-justification adjustment. Tempo text is readable, but the score remains vertically compressed near the top of the landscape A4 page; the blank lower page area is still unacceptable.
+- Added a visual smoke assertion in `scripts/api_engine_smoke.py`: it measures dark-ink vertical coverage in the upper 80% of the rendered page (excluding the footer mark) and rejects notation occupying less than 15% of page height.
+- This intentionally turns a visually poor export into a failing engine-validation check instead of reporting a misleading green result. The next run is expected to determine whether the current renderer clears this threshold; visual inspection remains required regardless.
