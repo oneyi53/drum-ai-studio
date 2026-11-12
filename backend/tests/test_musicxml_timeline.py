@@ -124,3 +124,21 @@ def test_leading_and_internal_voice_gaps_are_preserved():
     </measure>""")
     result = reconstruct_and_validate_measure(measure, divisions=4)
     assert result["voice_gaps"][("1", "1")] == [(0, 2), (4, 8), (12, 16)]
+
+
+from app.musicxml_adapter import decompose_rhythmic_duration
+
+
+def test_duration_decomposition_prefers_dotted_quarter():
+    assert decompose_rhythmic_duration(6, divisions=4) == [(6, "quarter", 1)]
+
+
+def test_duration_decomposition_preserves_exact_total():
+    parts = decompose_rhythmic_duration(11, divisions=4)
+    assert sum(duration for duration, _, _ in parts) == 11
+    assert all(note_type and dots in (0, 1, 2) for _, note_type, dots in parts)
+
+
+def test_duration_decomposition_rejects_unrepresentable_remainder():
+    with pytest.raises(ValueError, match="cannot be represented"):
+        decompose_rhythmic_duration(1, divisions=4)
