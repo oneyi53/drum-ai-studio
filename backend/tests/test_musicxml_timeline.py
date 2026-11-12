@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from app.musicxml_adapter import reconstruct_and_validate_measure
+from app.musicxml_adapter import decompose_rhythmic_duration, reconstruct_and_validate_measure
 
 
 def parse(body: str) -> ET.Element:
@@ -124,9 +124,6 @@ def test_leading_and_internal_voice_gaps_are_preserved():
     </measure>""")
     result = reconstruct_and_validate_measure(measure, divisions=4)
     assert result["voice_gaps"][("1", "1")] == [(0, 2), (4, 8), (12, 16)]
-
-
-from app.musicxml_adapter import decompose_rhythmic_duration
 
 
 def test_duration_decomposition_prefers_dotted_quarter():
