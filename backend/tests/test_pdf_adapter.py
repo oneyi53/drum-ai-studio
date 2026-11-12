@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from xml.etree import ElementTree as ET
 
 from pypdf import PdfReader
 
@@ -76,3 +77,34 @@ def test_pdf_export_falls_back_when_verovio_font_resources_are_unavailable(monke
     monkeypatch.setattr(pdf_adapter, '_render_with_verovio', unavailable_engraving)
     monkeypatch.setattr(pdf_adapter, '_render_fallback_pdf', lambda *args: b'%PDF-fallback')
     assert pdf_adapter.performance_to_pdf(performance) == b'%PDF-fallback'
+
+
+
+def test_verovio_pdf_system_breaks_group_four_or_five_measures():
+    score = ET.fromstring(
+        '<score-partwise><part id="P1">'
+        + ''.join(f'<measure number="{n}"/>' for n in range(1, 13))
+        + '</part></score-partwise>'
+    )
+    pdf_adapter._apply_system_breaks(score, 4)
+    measures = score.findall("./part/measure")
+    assert [i + 1 for i, measure in enumerate(measures) if measure.find("print") is not None] == [5, 9]
+
+    score = ET.fromstring(
+        '<score-partwise><part id="P1">'
+        + ''.join(f'<measure number="{n}"/>' for n in range(1, 13))
+        + '</part></score-partwise>'
+    )
+    pdf_adapter._apply_system_breaks(score, 5)
+    measures = score.findall("./part/measure")
+    assert [i + 1 for i, measure in enumerate(measures) if measure.find("print") is not None] == [6, 11]
+
+
+def test_pdf_rejects_unsupported_measures_per_system():
+    score = ET.fromstring('<score-partwise><part id="P1"><measure number="1"/></part></score-partwise>')
+    try:
+        pdf_adapter._apply_system_breaks(score, 3)
+    except ValueError as exc:
+        assert "4 or 5" in str(exc)
+    else:
+        raise AssertionError("unsupported measure grouping should be rejected")
