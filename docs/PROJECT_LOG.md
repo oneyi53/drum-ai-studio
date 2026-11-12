@@ -892,3 +892,37 @@ code or validation state changes; do not infer completion from plans.
   per-track IDs and event-level assignments, the exact ±50 ms matcher and
   command, DrumScript runtime commit/package versions, and CI artifact/log
   proving the run. PR #4 remains unmerged.
+
+
+## 2026-11-12 — review of proposed event matcher and artifact generator
+
+- Reviewed the newly supplied environment declaration, greedy matcher, and
+  machine-artifact generator against the integration branch's real diagnostic
+  and engine adapter code. The environment limitation is appropriately stated;
+  no measured accuracy claim is accepted from this delivery.
+- Rejected the proposed global minimum-delta greedy matcher as the canonical
+  scorer: it can fail to maximize one-to-one match cardinality. Counterexample
+  at a 50 ms window: GT=[0.000, 0.050], Pred=[0.020, -0.040]. Global pair sorting
+  consumes GT 0.050 / Pred 0.020 first and yields only one TP, although the
+  alternative assignment yields two. Use the repository's chronological
+  two-pointer matcher or a formally specified maximum-cardinality assignment,
+  and add this adversarial regression test.
+- The generator is not runnable against the actual DrumScript API. It calls
+  `classify_events(audio_path)`, while the repository diagnostic loads and
+  normalizes audio, calls `detect_onsets(audio, sample_rate)`, then calls
+  `classify_events(audio, sample_rate, onsets)`. It also assumes event keys
+  `time` and `pitch`; the real event shape used by the repository is
+  `time_sec`, `instruments`, and optional `debug_features`.
+- The proposed `idmt_manifest.json` is not the repository's dataset contract.
+  Existing IDMT integration uses `find_mix_files`, `reference_onsets_for_file`,
+  and the upstream XML/SVL annotation adapter. The proposed hard-coded fallback
+  for `drumscript.__commit__` is not provenance: it can silently report a
+  guessed SHA when the attribute is absent. Record the actual Git checkout SHA
+  from the runtime installation and fail closed if it cannot be established.
+- Kick pitch handling is underspecified: the task groups MIDI 35 and 36 as
+  Kick, but the matcher requires exact pitch equality. Normalize both GT and
+  predictions to a documented Kick class before matching, or explicitly score
+  exact MIDI pitches as a separate metric.
+- No evaluation code, classifier, or threshold was changed. The delivery is
+  retained as a specification draft only; it is not an executable/reproducible
+  evaluation artifact. PR #4 remains unmerged.
