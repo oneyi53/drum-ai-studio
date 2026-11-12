@@ -102,3 +102,25 @@ def test_same_voice_number_on_different_staves_is_validated_independently():
     </measure>""")
     result = reconstruct_and_validate_measure(measure, divisions=4)
     assert len(result["voice_events"]["1"]) == 2
+
+
+def test_uncovered_voice_spans_are_returned_as_rest_candidates():
+    measure = parse("""<measure>
+      <attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><duration>4</duration><voice>1</voice></note>
+      <note><duration>4</duration><voice>1</voice></note>
+    </measure>""")
+    result = reconstruct_and_validate_measure(measure, divisions=4)
+    assert result["voice_gaps"][("1", "1")] == [(8, 16)]
+
+
+def test_leading_and_internal_voice_gaps_are_preserved():
+    measure = parse("""<measure>
+      <attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <forward><duration>2</duration></forward>
+      <note><duration>2</duration><voice>1</voice></note>
+      <forward><duration>4</duration></forward>
+      <note><duration>4</duration><voice>1</voice></note>
+    </measure>""")
+    result = reconstruct_and_validate_measure(measure, divisions=4)
+    assert result["voice_gaps"][("1", "1")] == [(0, 2), (4, 8), (12, 16)]
