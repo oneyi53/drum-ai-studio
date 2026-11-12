@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
@@ -133,11 +134,26 @@ def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
             "inputFrom": "xml",
             "pageWidth": 2970,
             "pageHeight": 2100,
-            "scale": 40,
+            "scale": 52,
             "breaks": "auto",
         }
     )
-    if not toolkit.loadData(performance_to_musicxml(performance)):
+    # Verovio's SMuFL metronome-note glyph is missing in some packaged font
+    # sets. Preserve the exact tempo in PDF as readable text while keeping the
+    # MusicXML download's semantic metronome marking untouched.
+    score_root = ET.fromstring(performance_to_musicxml(performance))
+    for metronome in score_root.findall(".//metronome"):
+        direction_type = next(
+            (parent for parent in score_root.iter() if metronome in list(parent)),
+            None,
+        )
+        if direction_type is None:
+            continue
+        per_minute = metronome.findtext("per-minute", "120")
+        direction_type.remove(metronome)
+        ET.SubElement(direction_type, "words").text = f"Tempo: {per_minute} BPM"
+    score_xml = ET.tostring(score_root, encoding="unicode")
+    if not toolkit.loadData(score_xml):
         raise ValueError("Verovio could not load the generated drum MusicXML.")
     page_count = toolkit.getPageCount()
     if page_count < 1:
