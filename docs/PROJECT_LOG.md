@@ -650,3 +650,10 @@ code or validation state changes; do not infer completion from plans.
 - Re-inspected the PDF/PNG artifact from engine validation run 43134370764 after the Verovio scale/vertical-justification adjustment. Tempo text is readable, but the score remains vertically compressed near the top of the landscape A4 page; the blank lower page area is still unacceptable.
 - Added a visual smoke assertion in `scripts/api_engine_smoke.py`: it measures dark-ink vertical coverage in the upper 80% of the rendered page (excluding the footer mark) and rejects notation occupying less than 15% of page height.
 - This intentionally turns a visually poor export into a failing engine-validation check instead of reporting a misleading green result. The next run is expected to determine whether the current renderer clears this threshold; visual inspection remains required regardless.
+
+
+## 2026-11-12 — sparse-score engraving scale follow-up
+
+- The new API visual gate measured only 8.4% vertical ink coverage on the synthetic short-score PDF. The archived PNG confirmed that a single percussion staff was rendered legibly but too small and confined to the top of the A4 page.
+- Increased Verovio engraving scale from 100 to 140 and the MEI unit from its default to the supported maximum of 12, aiming to enlarge staff spacing, noteheads, and stems while preserving vector output and A4 geometry.
+- This is a measured layout experiment, not an accepted PDF fix. The 15% visual gate remains unchanged; the next engine run and a fresh PNG review must confirm whether the score now occupies the page appropriately without clipping or excessive pagination.
