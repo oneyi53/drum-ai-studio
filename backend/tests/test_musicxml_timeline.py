@@ -141,4 +141,4 @@ def test_duration_decomposition_preserves_exact_total():
 
 def test_duration_decomposition_rejects_unrepresentable_remainder():
     with pytest.raises(ValueError, match="cannot be represented"):
-        decompose_rhythmic_duration(1, divisions=4)
+        decompose_rhythmic_duration(1, divisions=480)
