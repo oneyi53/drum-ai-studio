@@ -1049,3 +1049,15 @@ code or validation state changes; do not infer completion from plans.
   explained by workflow branch filters, not by a passing or failing test.
   Validation must be run manually or by an explicitly authorized workflow
   dispatch after the branch/PR targeting strategy is resolved.
+
+
+## 2026-11-12 — Preserve uncovered MusicXML voice spans
+
+- Extended timeline reconstruction to return `voice_gaps`, keyed by
+  `(staff, voice)`, as half-open `(start, end)` intervals across the full
+  measure. These spans identify silence not represented by explicit notes;
+  downstream engraving can convert them into correctly grouped rests.
+- Added regressions for trailing silence and for leading, internal, and
+  trailing gaps, including `<forward>` cursor movement.
+- This is gap discovery, not yet automatic rest-note emission or rhythmic
+  duration decomposition. No test run is claimed in this environment.
