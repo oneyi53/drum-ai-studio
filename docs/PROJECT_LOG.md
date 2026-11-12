@@ -712,3 +712,16 @@ code or validation state changes; do not infer completion from plans.
 - The new API visual gate measured only 8.4% vertical ink coverage on the synthetic short-score PDF. The archived PNG confirmed that a single percussion staff was rendered legibly but too small and confined to the top of the A4 page.
 - Increased Verovio engraving scale from 100 to 140 and the MEI unit from its default to the supported maximum of 12, aiming to enlarge staff spacing, noteheads, and stems while preserving vector output and A4 geometry.
 - This is a measured layout experiment, not an accepted PDF fix. The 15% visual gate remains unchanged; the next engine run and a fresh PNG review must confirm whether the score now occupies the page appropriately without clipping or excessive pagination.
+
+
+## 2026-11-12 — deterministic PDF measures per system
+
+- Replaced reliance on Verovio's automatic horizontal line wrapping with explicit
+  MusicXML `print new-system="yes"` markers at the configured measure interval.
+- PDF export now defaults to four measures per system and accepts five via
+  `GET /api/projects/{project_id}/pdf?measures_per_system=5`. Unsupported
+  values are rejected with HTTP 422; the ReportLab fallback uses the same
+  grouping setting.
+- Added regression coverage for the exact 4-bar and 5-bar system-break
+  positions and invalid settings. Fresh engine PDF artifact review is still
+  required before visual acceptance.
