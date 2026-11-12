@@ -956,7 +956,7 @@ function App() {
       )}
       <section className="pipeline">
         {["音频导入", "鼓轨分离 / 转录", "标准鼓事件", "编辑与导出"].map((item, index) => (
-          <div className="pipeline-item" key={item}><span>0{index + 1}</span><strong>{item}</strong><small>{index === 0 || index === 2 ? "已接入" : index === 1 ? "引擎运行时依赖" : "编辑器开发中"}</small></div>
+          <div className="pipeline-item" key={item}><span>0{index + 1}</span><strong>{item}</strong><small>{index === 0 || index === 2 || index === 3 ? "已接入" : "需要配置引擎运行时"}</small></div>
         ))}
       </section>
       <footer>提示：分析服务需要在后端安装 DrumScript、CPU PyTorch 与 FFmpeg。模型输出未经人工校对；手动编辑会同步更新标准事件和 MIDI 文件。</footer>
