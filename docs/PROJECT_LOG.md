@@ -748,3 +748,12 @@ code or validation state changes; do not infer completion from plans.
   when the user selected five.
 - ZIP contents remain canonical performance JSON, MIDI, editable MusicXML,
   printable PDF, and original uploaded audio.
+
+
+## 2026-11-12 — project bundle layout regression coverage
+
+- Extended the project archive API test to request five measures per system and
+  assert that the selected value reaches the PDF renderer and is preserved in
+  the ZIP's score PDF.
+- Added a regression check that unsupported project-bundle PDF layouts return
+  HTTP 422.
