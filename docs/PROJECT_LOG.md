@@ -1,3 +1,39 @@
+## 2026-11-12 — portable engine CI passes; kick and PDF visual blockers measured
+
+- Replaced the Ubuntu apt-installed media tools with a Python-managed static
+  FFmpeg/ffprobe distribution and in-process PDFium rendering. On commit
+  7b9debbb7aebab6e862545e6907053b9667f9b15, the engine-validation workflow,
+  backend test workflow, and repository CI all completed successfully.
+- Engine validation completed upstream non-slow tests, the synthetic mix,
+  both repository MP3 smoke tests, and API-to-engine export smoke. The two
+  repository tracks produced 1,041 and 1,127 normalized drum events and
+  non-empty MIDI files. API E2E produced MIDI, MusicXML, a 40,550-byte PDF,
+  and a rendered 42,185-byte PNG page.
+- The PNG was visually inspected rather than treating file existence as
+  acceptance. The Verovio page has a tempo/metronome glyph rendered as a
+  missing-font box and places a very short two-bar score in a small area at
+  the top of a mostly empty A4 landscape page. PDF geometry and generation
+  pass, but visual acceptance remains blocked. Next: inspect Verovio scale,
+  page layout, and SMuFL font/resource handling; add a visual regression
+  fixture with a multi-system score before marking PDF export production-ready.
+- Expanded IDMT-SMT-Drums stage diagnostics (50 ms tolerance) evaluated 14
+  RealDrum, 15 WaveDrum, and 11 TechnoDrum tracks. Candidate onset recall was
+  98.3%, 96.3%, and 99.0%, while final kick recall was only 5.3%, 17.2%, and
+  57.1%, respectively. Matched candidate features show the current LFER rule
+  (minimum 0.32) is the dominant filter: only 16/297 RealDrum, 75/364
+  WaveDrum, and 165/286 TechnoDrum matched candidates pass the LFER threshold.
+  Peak-frequency eligibility is much higher (291/297, 312/364, 236/286).
+- Do not lower the LFER threshold globally based on these aggregates. The
+  next classifier task is to inspect per-track and per-instrument feature
+  distributions, compare isolated kick stems where available, and tune or
+  replace the hard gate with a calibrated/adaptive decision while measuring
+  precision and recall on held-out tracks. IDMT use remains evaluation-only
+  under its dataset terms; no audio is committed.
+- PR #4 remains the sole integration path to main. Keep it open until the PDF
+  visual issue and kick-classification regression strategy are reviewed; all
+  three current CI workflows are green, but CI success is not product-quality
+  acceptance.
+
 
 ## 2026-11-11 — non-destructive quantization preview
 
