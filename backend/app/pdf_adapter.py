@@ -15,7 +15,7 @@ PAGE_W, PAGE_H = landscape(A4)
 LEFT, RIGHT = 38.0, 38.0
 SYSTEM_HEIGHT = 154.0
 MEASURE_GAP = 5.0
-measures_per_system = 4
+MEASURES_PER_SYSTEM = 4
 SYSTEMS_PER_PAGE = 3
 STAFF_SPACING = 8.0
 INSTRUMENT_Y = {
@@ -117,7 +117,7 @@ def _draw_note(pdf: canvas.Canvas, x: float, y: float, instrument: DrumInstrumen
 
 
 def _render_with_verovio(
-    performance: DrumPerformance, title: str, measures_per_system: int = measures_per_system
+    performance: DrumPerformance, title: str, measures_per_system: int = MEASURES_PER_SYSTEM
 ) -> bytes:
     """Engrave MusicXML with Verovio and convert its vector SVG pages to PDF."""
     import cairosvg
@@ -297,4 +297,4 @@ def performance_to_pdf(
     except (ValueError, RuntimeError):
         # Verovio can be installed while its SMuFL font resources are absent
         # from a minimal container. Keep exports usable through the fallback.
-        return _render_fallback_pdf(performance, title)
+        return _render_fallback_pdf(performance, title, measures_per_system)
