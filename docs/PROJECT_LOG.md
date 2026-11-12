@@ -1061,3 +1061,15 @@ code or validation state changes; do not infer completion from plans.
   trailing gaps, including `<forward>` cursor movement.
 - This is gap discovery, not yet automatic rest-note emission or rhythmic
   duration decomposition. No test run is claimed in this environment.
+
+
+## 2026-11-12 — Dotted rhythmic duration vocabulary
+
+- Added `decompose_rhythmic_duration()` to express an exact positive MusicXML
+  duration as standard or dotted note values (up to double-dotted), using a
+  minimum-token dynamic-programming decomposition rather than a greedy split.
+- Added regression coverage for dotted-quarter recognition, exact duration
+  conservation, and durations below the configured notation grid.
+- This helper is not yet wired into score export or rest emission, and it does
+  not yet account for beat-group boundaries or ties across barlines. Tests and
+  Ruff remain unexecuted; no pass is claimed.
