@@ -89,6 +89,22 @@ with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
             rendered_image = bitmap.to_pil()
             png_path = output_dir / "drumai-score-page-1.png"
             rendered_image.save(png_path, format="PNG")
+            # Keep the footer/engraver mark out of the measurement: the score
+            # itself must occupy a meaningful vertical area on landscape A4.
+            from PIL import Image, ImageChops
+
+            grayscale = rendered_image.convert("L")
+            score_region = grayscale.crop((0, 0, grayscale.width, int(grayscale.height * 0.80)))
+            ink_mask = score_region.point(lambda pixel: 255 if pixel < 210 else 0)
+            score_bounds = ink_mask.getbbox()
+            if score_bounds is None:
+                raise RuntimeError("PDF visual check found no score notation")
+            score_height_ratio = (score_bounds[3] - score_bounds[1]) / rendered_image.height
+            if score_height_ratio < 0.15:
+                raise RuntimeError(
+                    "PDF score notation is too vertically compressed: "
+                    f"ink height is {score_height_ratio:.1%} of the page; expected at least 15%"
+                )
             if not png_path.is_file() or png_path.stat().st_size < 1024:
                 raise RuntimeError("PDF rasterization produced an empty or implausibly small PNG")
             if png_path.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
