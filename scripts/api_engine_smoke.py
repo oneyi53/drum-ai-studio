@@ -91,8 +91,6 @@ with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
             rendered_image.save(png_path, format="PNG")
             # Keep the footer/engraver mark out of the measurement: the score
             # itself must occupy a meaningful vertical area on landscape A4.
-            from PIL import Image, ImageChops
-
             grayscale = rendered_image.convert("L")
             score_region = grayscale.crop((0, 0, grayscale.width, int(grayscale.height * 0.80)))
             ink_mask = score_region.point(lambda pixel: 255 if pixel < 210 else 0)
