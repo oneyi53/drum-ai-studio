@@ -134,7 +134,9 @@ def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
             "inputFrom": "xml",
             "pageWidth": 2970,
             "pageHeight": 2100,
-            "scale": 52,
+            "scale": 100,
+            "justifyVertically": True,
+            "justificationMaxVertical": 0.8,
             "breaks": "auto",
         }
     )
