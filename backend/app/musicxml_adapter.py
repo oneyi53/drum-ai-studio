@@ -311,6 +311,59 @@ def decompose_rhythmic_duration(
         )
     return best[duration]
 
+
+def decompose_meter_aware_gap(
+    start: int,
+    end: int,
+    numerator: int,
+    denominator: int,
+    divisions: int = DIVISIONS,
+) -> list[tuple[int, str, int]]:
+    """Split a silent span at metric group boundaries, then spell each group.
+
+    Compound meters with a numerator divisible by three group dotted-quarter
+    beats (three denominator-note units). Simple 4/4 groups by half-bar;
+    other simple meters group by their numerator, preserving the bar's pulse.
+    """
+    if start < 0 or end <= start:
+        raise ValueError("gap must be a positive interval with a non-negative start")
+    if numerator <= 0 or denominator <= 0 or divisions <= 0:
+        raise ValueError("meter values and divisions must be positive")
+    quarter_unit = divisions * 4
+    if quarter_unit % denominator:
+        raise ValueError("meter denominator does not produce an integral duration")
+    denominator_unit = quarter_unit // denominator
+    if denominator == 8 and numerator > 3 and numerator % 3 == 0:
+        group_size = denominator_unit * 3
+    elif denominator == 8 and numerator == 7:
+        # Common asymmetric compound grouping: 3+2+2 eighth notes.
+        pattern = [3, 2, 2]
+        boundaries = [0]
+        for group in pattern:
+            boundaries.append(boundaries[-1] + denominator_unit * group)
+        group_size = 0
+    elif denominator == 4 and numerator == 4:
+        group_size = divisions * 2
+    else:
+        group_size = denominator_unit
+
+    segments: list[tuple[int, str, int]] = []
+    position = start
+    while position < end:
+        if denominator == 8 and numerator == 7:
+            bar_position = position % (denominator_unit * numerator)
+            next_boundary = next(
+                (boundary for boundary in boundaries if boundary > bar_position),
+                denominator_unit * numerator,
+            )
+            chunk_end = min(end, position + next_boundary - bar_position)
+        else:
+            next_boundary = ((position // group_size) + 1) * group_size
+            chunk_end = min(end, next_boundary)
+        segments.extend(decompose_rhythmic_duration(chunk_end - position, divisions))
+        position = chunk_end
+    return segments
+
 def reconstruct_and_validate_measure(
     measure_elem: ET.Element,
     time_sig: tuple[int, int] | None = None,
