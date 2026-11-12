@@ -873,7 +873,7 @@ def download_project_musicxml(project_id: str) -> Response:
 
 
 @app.get("/api/projects/{project_id}/pdf")
-def download_project_pdf(project_id: str) -> Response:
+def download_project_pdf(project_id: str, measures_per_system: int = 4) -> Response:
     """Export the latest canonical drum performance as a printable PDF score."""
     with connect_db() as connection:
         row = connection.execute(
@@ -887,9 +887,14 @@ def download_project_pdf(project_id: str) -> Response:
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="No completed performance is available.")
+    if measures_per_system not in {4, 5}:
+        raise HTTPException(status_code=422, detail="measures_per_system must be 4 or 5.")
     performance = DrumPerformance.model_validate_json(row["performance_json"])
     return Response(
-        content=performance_to_pdf(performance, title=f"{project_id} — Drum Score"),
+        content=performance_to_pdf(
+            performance, title=f"{project_id} — Drum Score",
+            measures_per_system=measures_per_system,
+        ),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{project_id}-drums.pdf"'},
     )
