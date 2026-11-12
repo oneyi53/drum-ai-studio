@@ -377,8 +377,32 @@ def reconstruct_and_validate_measure(
             )
     if max_cursor > expected_capacity:
         raise ValueError(f"measure cursor overflow: extent {max_cursor} exceeds capacity {expected_capacity}")
+
+    # Preserve silent spans explicitly instead of silently treating a sparse
+    # event list as a complete voice. Downstream engraving can turn these
+    # intervals into rests using the active meter's duration vocabulary.
+    voice_gaps: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for stream, events in staff_voice_events.items():
+        sounding = sorted(
+            (
+                (int(event["onset"]), int(event["offset_end"]))
+                for event in events
+                if not event["is_chord"]
+            ),
+            key=lambda interval: interval[0],
+        )
+        gaps: list[tuple[int, int]] = []
+        position = 0
+        for onset, offset_end in sounding:
+            if onset > position:
+                gaps.append((position, onset))
+            position = max(position, offset_end)
+        if position < expected_capacity:
+            gaps.append((position, expected_capacity))
+        voice_gaps[stream] = gaps
+
     return {
         "expected_capacity": expected_capacity, "divisions": effective_divisions,
         "time_signature": effective_time, "max_cursor": max_cursor,
-        "voice_events": dict(voice_events),
+        "voice_events": dict(voice_events), "voice_gaps": voice_gaps,
     }
