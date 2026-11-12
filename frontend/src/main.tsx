@@ -950,7 +950,7 @@ function App() {
           </label>
           <a className="download-link pdf-link" href={`${API_BASE}/api/projects/${summary.projectId}/pdf?measures_per_system=${pdfMeasuresPerSystem}`} download>下载打印版 PDF 鼓谱（每行 {pdfMeasuresPerSystem} 小节）</a>
           <a className="download-link musicxml-link" href={`${API_BASE}/api/projects/${summary.projectId}/musicxml`} download>下载可编辑 MusicXML 乐谱</a>
-          <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/bundle`} download>下载完整项目备份（原音频 + 鼓谱文件）</a>
+          <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/bundle?measures_per_system=${pdfMeasuresPerSystem}`} download>下载完整项目备份（原音频 + 鼓谱文件）</a>
           <small className="job-id">任务 ID：{summary.jobId} · {saving ? "正在保存…" : "编辑自动保存到标准事件和 MIDI"}</small>
         </section>
       )}
