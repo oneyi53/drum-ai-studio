@@ -1032,3 +1032,20 @@ code or validation state changes; do not infer completion from plans.
   `integration/mainline-2026-11-11`. Tests, Ruff, PDF smoke, and CI have not
   yet been executed in this environment; no pass is claimed. PR #4 remains
   open and unmerged.
+
+
+## 2026-11-12 — MusicXML timeline validation hardening
+
+- Follow-up review found two missing invariants in Slice 1: chord tones must
+  preserve their parent note duration, and MusicXML voice numbers are scoped
+  to a staff. Added chord-duration rejection and validate overlap/extent per
+  `(staff, voice)` stream while retaining the public voice-event grouping.
+- Added regressions for mismatched chord duration and identical voice numbers
+  on separate staves. This remains timeline validation only; no tie splitting,
+  beam generation, or PDF visual acceptance is claimed.
+- Workflow trigger audit: the backend and repository CI workflows listen for
+  pull requests targeting `main` or `test/real-mp3-engine-smoke`, but PR #7
+  targets `integration/mainline-2026-11-11`. Therefore absence of a PR run is
+  explained by workflow branch filters, not by a passing or failing test.
+  Validation must be run manually or by an explicitly authorized workflow
+  dispatch after the branch/PR targeting strategy is resolved.

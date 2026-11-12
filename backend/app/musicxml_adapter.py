@@ -335,6 +335,8 @@ def reconstruct_and_validate_measure(
                 raise ValueError("chord tone has no preceding non-chord note")
             if last_non_chord["voice"] != voice or last_non_chord["staff"] != staff:
                 raise ValueError("chord tone voice/staff does not match its parent")
+            if last_non_chord["duration"] != duration:
+                raise ValueError("chord tone duration does not match its parent")
             onset = int(last_non_chord["onset"])
         else:
             onset = cursor
@@ -352,20 +354,27 @@ def reconstruct_and_validate_measure(
     voice_events: dict[str, list[dict[str, object]]] = defaultdict(list)
     for record in records:
         voice_events[str(record["voice"])].append(record)
-    for voice, events in voice_events.items():
+    staff_voice_events: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+    for record in records:
+        staff_voice_events[(str(record["staff"]), str(record["voice"]))].append(record)
+    for (staff, voice), events in staff_voice_events.items():
         ordered = sorted(events, key=lambda event: (int(event["onset"]), bool(event["is_chord"])))
         previous_end = previous_onset = -1
         for event in ordered:
             onset, end = int(event["onset"]), int(event["offset_end"])
             if not event["is_chord"] and onset < previous_end:
-                raise ValueError(f"overlapping non-chord events in voice {voice} at {onset}")
+                raise ValueError(
+                    f"overlapping non-chord events in staff {staff}, voice {voice} at {onset}"
+                )
             if event["is_chord"] and onset != previous_onset:
-                raise ValueError(f"chord onset mismatch in voice {voice} at {onset}")
+                raise ValueError(f"chord onset mismatch in staff {staff}, voice {voice} at {onset}")
             if not event["is_chord"]:
                 previous_onset, previous_end = onset, end
         extent = max((int(event["offset_end"]) for event in events), default=0)
         if extent > expected_capacity:
-            raise ValueError(f"voice {voice} overflow: extent {extent} exceeds capacity {expected_capacity}")
+            raise ValueError(
+                f"staff {staff}, voice {voice} overflow: extent {extent} exceeds capacity {expected_capacity}"
+            )
     if max_cursor > expected_capacity:
         raise ValueError(f"measure cursor overflow: extent {max_cursor} exceeds capacity {expected_capacity}")
     return {

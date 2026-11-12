@@ -84,3 +84,21 @@ def test_forward_advances_shared_cursor():
     result = reconstruct_and_validate_measure(measure, divisions=4)
     assert result["voice_events"]["1"][0]["onset"] == 4
     assert result["voice_events"]["1"][0]["offset_end"] == 16
+
+
+def test_chord_duration_must_match_parent():
+    measure = parse("""<measure><note><duration>4</duration><voice>1</voice></note>
+      <note><chord/><duration>2</duration><voice>1</voice></note></measure>""")
+    with pytest.raises(ValueError, match="duration does not match"):
+        reconstruct_and_validate_measure(measure, divisions=4)
+
+
+def test_same_voice_number_on_different_staves_is_validated_independently():
+    measure = parse("""<measure><attributes><divisions>4</divisions>
+      <time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><duration>8</duration><voice>1</voice><staff>1</staff></note>
+      <backup><duration>8</duration></backup>
+      <note><duration>8</duration><voice>1</voice><staff>2</staff></note>
+    </measure>""")
+    result = reconstruct_and_validate_measure(measure, divisions=4)
+    assert len(result["voice_events"]["1"]) == 2
