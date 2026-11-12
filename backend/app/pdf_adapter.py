@@ -116,6 +116,16 @@ def _draw_note(pdf: canvas.Canvas, x: float, y: float, instrument: DrumInstrumen
     pdf.restoreState()
 
 
+def _apply_system_breaks(score_root: ET.Element, measures_per_system: int) -> None:
+    """Insert explicit MusicXML line breaks after each configured measure group."""
+    if measures_per_system not in {4, 5}:
+        raise ValueError("measures_per_system must be 4 or 5")
+    measures = score_root.findall("./part/measure")
+    for measure_index, measure in enumerate(measures):
+        if measure_index and measure_index % measures_per_system == 0:
+            measure.insert(0, ET.Element("print", {"new-system": "yes"}))
+
+
 def _render_with_verovio(
     performance: DrumPerformance, title: str, measures_per_system: int = MEASURES_PER_SYSTEM
 ) -> bytes:
@@ -155,10 +165,7 @@ def _render_with_verovio(
     # MusicXML download's semantic metronome marking untouched.
     score_root = ET.fromstring(performance_to_musicxml(performance))
     # Explicit MusicXML system breaks keep each printed line to four or five bars.
-    measures = score_root.findall("./part/measure")
-    for measure_index, measure in enumerate(measures):
-        if measure_index and measure_index % measures_per_system == 0:
-            measure.insert(0, ET.Element("print", {"new-system": "yes"}))
+    _apply_system_breaks(score_root, measures_per_system)
     for metronome in score_root.findall(".//metronome"):
         direction_type = next(
             (parent for parent in score_root.iter() if metronome in list(parent)),
