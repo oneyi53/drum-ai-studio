@@ -926,3 +926,12 @@ code or validation state changes; do not infer completion from plans.
 - No evaluation code, classifier, or threshold was changed. The delivery is
   retained as a specification draft only; it is not an executable/reproducible
   evaluation artifact. PR #4 remains unmerged.
+
+
+## 2026-11-12 — parallelized PDF engraving work with Gemini
+
+- Created focused task Issue #6 for Gemini to reproduce and correct the Verovio PDF layout, add short-score and multi-system visual regression coverage, and submit a separate PR against the integration branch.
+- The task explicitly forbids classifier/IDMT changes, fabricated artifacts or metrics, weakening visual gates, and merging the mainline integration PR.
+- Rechecked current PDF implementation and tests: Verovio is configured at scale 180 with vertical justification disabled; tests cover A4 geometry and 4/5-measure break insertion, while API smoke checks first-page ink bounds. These checks do not yet establish visual acceptance for representative multi-system PDFs.
+- Latest available engine-validation run #264 (run ID 43212702034) completed successfully on commit f100c55b6bed2045b8598c7859fe4f51cd69eadc. The integration branch has since advanced to ad6ae9401e25a43d65c15e5e3fc181eae23a8b3a, so this run is not validation of the current branch head. PDF artifact 13942911556 is available but its image has not yet been manually inspected in this environment.
+- No production classifier or renderer code was changed in this documentation-only increment. PR #4 remains open and unmerged.
