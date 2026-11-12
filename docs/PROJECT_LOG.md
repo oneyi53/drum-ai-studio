@@ -757,3 +757,11 @@ code or validation state changes; do not infer completion from plans.
   the ZIP's score PDF.
 - Added a regression check that unsupported project-bundle PDF layouts return
   HTTP 422.
+
+
+## 2026-11-12 — pipeline readiness copy
+
+- Updated the pipeline summary so the implemented editor/export stage is no
+  longer mislabeled as "in development".
+- Kept the transcription runtime dependency explicit, avoiding the impression
+  that a clean frontend install alone enables model inference.
