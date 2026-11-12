@@ -9,6 +9,7 @@ on:
       - "scripts/engine_smoke.py"
       - "scripts/kick_stage_diagnostics.py"
       - "scripts/api_engine_smoke.py"
+      - "backend/app/pdf_adapter.py"
       - "*.mp3"
   push:
     branches: [main]
