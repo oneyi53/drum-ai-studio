@@ -1,3 +1,24 @@
+## 2026-11-12 — PDF visual gate hardened; expanded kick benchmark completed
+
+- The latest API-generated landscape-A4 PDF and PNG were inspected from engine
+  validation run 43147002409 (commit 13cd7f8). Tempo and notation glyphs render,
+  but the page still has an isolated, nearly empty second percussion system and
+  a large vertical whitespace gap. The PDF is not visually accepted.
+- The previous 15% ink-height gate could be fooled by that empty system because
+  it enlarged the page-wide ink bounding box. Added a second visual assertion
+  that measures the largest gap between rows containing substantial ink and
+  rejects gaps above 20% of page height. This intentionally makes the next
+  engine run fail until the layout itself is corrected; do not weaken the gate.
+- The completed IDMT-SMT-Drums run evaluated 14 RealDrum, 15 WaveDrum, and 11
+  TechnoDrum tracks (50 tracks total). Kick candidate recall was 98.3%, 96.3%,
+  and 99.0%, while final kick recall was only 5.3%, 17.2%, and 57.1%;
+  corresponding precision was 100%, 95.6%, and 85.1%. This confirms the main
+  bottleneck remains post-onset kick classification, not onset candidate
+  generation. No kick threshold was changed based on these aggregate results.
+- CI, backend tests, and the engine workflow passed on 13cd7f8, including real
+  MP3 smoke, IDMT diagnostics, and API export generation. The new whitespace
+  assertion is a follow-up regression test and has not yet been validated.
+
 ## 2026-11-12 — PDF engraving readability correction
 
 - Visual inspection of the API-generated PDF confirmed two concrete defects:
