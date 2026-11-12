@@ -103,6 +103,27 @@ with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
                     "PDF score notation is too vertically compressed: "
                     f"ink height is {score_height_ratio:.1%} of the page; expected at least 15%"
                 )
+            # A stray empty system can inflate the overall ink bounding box and
+            # make a badly spaced page appear to pass the height check. Detect
+            # large vertical gaps between rows containing substantial notation.
+            row_ink = [
+                sum(1 for pixel in grayscale.crop((0, y, grayscale.width, y + 1)).getdata() if pixel < 210)
+                for y in range(int(rendered_image.height * 0.80))
+            ]
+            active_rows = [
+                y for y, count in enumerate(row_ink)
+                if count >= rendered_image.width * 0.02
+            ]
+            largest_gap = max(
+                (right - left - 1 for left, right in zip(active_rows, active_rows[1:])),
+                default=0,
+            )
+            gap_ratio = largest_gap / rendered_image.height
+            if gap_ratio > 0.20:
+                raise RuntimeError(
+                    "PDF score systems are vertically separated by excessive whitespace: "
+                    f"largest active-ink gap is {gap_ratio:.1%} of the page; expected at most 20%"
+                )
             if not png_path.is_file() or png_path.stat().st_size < 1024:
                 raise RuntimeError("PDF rasterization produced an empty or implausibly small PNG")
             if png_path.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
