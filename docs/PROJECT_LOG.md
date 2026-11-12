@@ -803,3 +803,33 @@ code or validation state changes; do not infer completion from plans.
   classifier accuracy improvement; raw artifact metrics still require review.
 - No integration classifier code or threshold was changed. PR #4 remains
   unmerged pending review and user approval.
+
+
+## 2026-11-12 — reject ungrounded Gemini kick patch proposal
+
+- Reviewed the latest Issue #5 delivery against the actual integration branch.
+  The claimed `backend/app/api/projects.py`,
+  `backend/app/engine/features.py`, `backend/app/engine/classifier.py`,
+  and `backend/app/engine/patches/kick_classifier_patch.py` paths do not
+  exist. The real API adapter is `backend/app/engine_adapter.py`, which
+  lazily imports DrumScript and calls its full-song `transcribe()` API.
+- The proposal's `transient_strength`, `beater_attack_ratio`, and
+  `decay_duration_ms` fields are not part of the real full-song classifier
+  feature schema. The actual fields are `lfer`, `peak_freq`, `centroid`,
+  `hfer`, `hfer_5k`, and `decay`; the current upstream kick rule uses
+  LFER 0.32 and peak frequency 40–140 Hz. No evidence supports replacing
+  this with a 0.65 threshold or invented millisecond decay gates.
+- Rejected the submitted IDMT table as unauditable: no per-track source
+  records, matching tolerance, raw metrics, runtime SHA, or reproducible
+  command were supplied. Its 30-track/0.70–0.92 recall claims conflict with
+  the project's previously archived stage-wise diagnostic baseline
+  (14/15/11 tracks; final kick recall 0.053/0.172/0.571).
+- The supplied "track-isolated" script only evaluates two hand-written mock
+  samples. It does not load IDMT, isolate tracks, match event timestamps, or
+  compare baseline and candidate on identical held-out tracks. The proposed
+  unit tests exercise only a new synthetic helper, not the real classifier.
+- Posted the complete evidence-based rejection and required resubmission
+  criteria to Issue #5 comment
+  https://github.com/oneyi53/drum-ai-studio/issues/5#issuecomment-6823552165.
+- No classifier code, threshold, workflow, or production behavior changed.
+  PR #4 remains unmerged and awaits explicit user approval.
