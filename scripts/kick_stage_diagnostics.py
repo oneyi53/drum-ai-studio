@@ -78,6 +78,7 @@ def evaluate_file(audio_path: Path, tolerance: float) -> dict[str, int | float |
             "passes_lfer": lfer >= KICK_LFER_MIN,
             "passes_peak_frequency": KICK_FREQ_MIN <= peak_freq <= KICK_FREQ_MAX,
             "passes_kick_rule": lfer >= KICK_LFER_MIN and KICK_FREQ_MIN <= peak_freq <= KICK_FREQ_MAX,
+            "predicted_kick": "kick" in event.get("instruments", []),
         })
     return {
         "track": audio_path.name,
@@ -91,6 +92,19 @@ def evaluate_file(audio_path: Path, tolerance: float) -> dict[str, int | float |
         "kick_recall": kick_tp / len(reference_times) if reference_times else 0.0,
         "kick_precision": kick_tp / len(kick_times) if kick_times else 0.0,
         "matched_candidate_kick_features": matched_features,
+    }
+
+
+def feature_distribution(items: list[dict], key: str) -> dict[str, float | int | None]:
+    """Summarize reference-aligned onset features by classifier outcome."""
+    values = sorted(float(item[key]) for item in items if item.get(key) is not None)
+    if not values:
+        return {"count": 0, "p25": None, "median": None, "p75": None}
+    return {
+        "count": len(values),
+        "p25": values[int((len(values) - 1) * 0.25)],
+        "median": values[len(values) // 2],
+        "p75": values[int((len(values) - 1) * 0.75)],
     }
 
 
@@ -123,6 +137,24 @@ def main() -> None:
     feature_count = len(matched_features)
     feature_diagnostics = {
         "matched_candidate_count": feature_count,
+        "reference_aligned_predicted_kick": sum(bool(item["predicted_kick"]) for item in matched_features),
+        "reference_aligned_missed_kick": sum(not bool(item["predicted_kick"]) for item in matched_features),
+        "lfer_by_classifier_outcome": {
+            "predicted_kick": feature_distribution(
+                [item for item in matched_features if item["predicted_kick"]], "lfer"
+            ),
+            "missed_kick": feature_distribution(
+                [item for item in matched_features if not item["predicted_kick"]], "lfer"
+            ),
+        },
+        "peak_frequency_by_classifier_outcome": {
+            "predicted_kick": feature_distribution(
+                [item for item in matched_features if item["predicted_kick"]], "peak_freq"
+            ),
+            "missed_kick": feature_distribution(
+                [item for item in matched_features if not item["predicted_kick"]], "peak_freq"
+            ),
+        },
         "passes_lfer_count": sum(bool(item["passes_lfer"]) for item in matched_features),
         "passes_peak_frequency_count": sum(bool(item["passes_peak_frequency"]) for item in matched_features),
         "passes_kick_rule_count": sum(bool(item["passes_kick_rule"]) for item in matched_features),
