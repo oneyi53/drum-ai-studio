@@ -15,7 +15,7 @@ PAGE_W, PAGE_H = landscape(A4)
 LEFT, RIGHT = 38.0, 38.0
 SYSTEM_HEIGHT = 154.0
 MEASURE_GAP = 5.0
-MEASURES_PER_SYSTEM = 4
+measures_per_system = 4
 SYSTEMS_PER_PAGE = 3
 STAFF_SPACING = 8.0
 INSTRUMENT_Y = {
@@ -116,7 +116,9 @@ def _draw_note(pdf: canvas.Canvas, x: float, y: float, instrument: DrumInstrumen
     pdf.restoreState()
 
 
-def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
+def _render_with_verovio(
+    performance: DrumPerformance, title: str, measures_per_system: int = measures_per_system
+) -> bytes:
     """Engrave MusicXML with Verovio and convert its vector SVG pages to PDF."""
     import cairosvg
     import verovio
@@ -145,10 +147,18 @@ def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
             "breaks": "auto",
         }
     )
+    if measures_per_system not in {4, 5}:
+        raise ValueError("measures_per_system must be 4 or 5")
+
     # Verovio's SMuFL metronome-note glyph is missing in some packaged font
     # sets. Preserve the exact tempo in PDF as readable text while keeping the
     # MusicXML download's semantic metronome marking untouched.
     score_root = ET.fromstring(performance_to_musicxml(performance))
+    # Explicit MusicXML system breaks keep each printed line to four or five bars.
+    measures = score_root.findall("./part/measure")
+    for measure_index, measure in enumerate(measures):
+        if measure_index and measure_index % measures_per_system == 0:
+            measure.insert(0, ET.Element("print", {"new-system": "yes"}))
     for metronome in score_root.findall(".//metronome"):
         direction_type = next(
             (parent for parent in score_root.iter() if metronome in list(parent)),
@@ -185,13 +195,16 @@ def _render_with_verovio(performance: DrumPerformance, title: str) -> bytes:
 
 
 def _render_fallback_pdf(
-    performance: DrumPerformance, title: str = "DrumAI Studio — Drum Score"
+    performance: DrumPerformance, title: str = "DrumAI Studio — Drum Score",
+    measures_per_system: int = measures_per_system,
 ) -> bytes:
     """Render a dependency-light emergency score if the engraving stack is absent."""
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=landscape(A4), pageCompression=1)
     pdf.setTitle(title)
     pdf.setAuthor("DrumAI Studio")
+    if measures_per_system not in {4, 5}:
+        raise ValueError("measures_per_system must be 4 or 5")
     changes = _tempo_changes(performance)
     bars = _measure_boundaries(performance, changes)
     event_beats = [
@@ -203,10 +216,10 @@ def _render_fallback_pdf(
     # "System", "Drums", bar numbers and the time signature on top of staff lines.
     x0 = LEFT + 58
     usable_width = PAGE_W - RIGHT - x0
-    measure_width = (usable_width - (MEASURES_PER_SYSTEM - 1) * MEASURE_GAP) / MEASURES_PER_SYSTEM
+    measure_width = (usable_width - (measures_per_system - 1) * MEASURE_GAP) / measures_per_system
     page_system = 0
 
-    for system_index in range(0, len(bars), MEASURES_PER_SYSTEM):
+    for system_index in range(0, len(bars), measures_per_system):
         if page_system == 0:
             pdf.setFont("Helvetica-Bold", 16)
             pdf.drawString(LEFT, PAGE_H - 32, title[:90])
@@ -217,7 +230,7 @@ def _render_fallback_pdf(
         top = PAGE_H - 76 - page_system * SYSTEM_HEIGHT
         staff_mid = top - 48
         pdf.setFont("Helvetica-Bold", 8)
-        pdf.drawString(LEFT, staff_mid + 39, f"System {system_index // MEASURES_PER_SYSTEM + 1}")
+        pdf.drawString(LEFT, staff_mid + 39, f"System {system_index // measures_per_system + 1}")
         # Keep the time signature in the left gutter, not over the first bar.
         first_bar = bars[system_index]
         pdf.setFont("Helvetica", 8)
@@ -227,7 +240,7 @@ def _render_fallback_pdf(
             y = staff_mid + (line - 2) * STAFF_SPACING
             pdf.setLineWidth(0.55)
             pdf.line(x0, y, PAGE_W - RIGHT, y)
-        system_bars = bars[system_index:system_index + MEASURES_PER_SYSTEM]
+        system_bars = bars[system_index:system_index + measures_per_system]
         for local_index, (bar_start, bar_end, numerator, denominator) in enumerate(system_bars):
             bx = x0 + local_index * (measure_width + MEASURE_GAP)
             pdf.setFont("Helvetica", 8)
@@ -248,14 +261,14 @@ def _render_fallback_pdf(
                     y = staff_mid + INSTRUMENT_Y[event.instrument] * (STAFF_SPACING / 2)
                     _draw_note(pdf, x, y, event.instrument, event.velocity)
         # Footer legend uses all instrument types actually present.
-        if system_index + MEASURES_PER_SYSTEM >= len(bars) or page_system == SYSTEMS_PER_PAGE - 1:
+        if system_index + measures_per_system >= len(bars) or page_system == SYSTEMS_PER_PAGE - 1:
             present = sorted({event.instrument for event in performance.events}, key=lambda item: item.value)
             legend = "   •   ".join(LABELS[item] for item in present) or "No detected drum events"
             pdf.setFont("Helvetica", 7)
             pdf.drawString(LEFT, 22, f"Legend: {legend[:150]}")
             pdf.drawRightString(PAGE_W - RIGHT, 22, "Generated from the latest editable drum events")
         page_system += 1
-        if page_system >= SYSTEMS_PER_PAGE and system_index + MEASURES_PER_SYSTEM < len(bars):
+        if page_system >= SYSTEMS_PER_PAGE and system_index + measures_per_system < len(bars):
             pdf.showPage()
             page_system = 0
     if not bars:
@@ -266,7 +279,8 @@ def _render_fallback_pdf(
 
 
 def performance_to_pdf(
-    performance: DrumPerformance, title: str = "DrumAI Studio — Drum Score"
+    performance: DrumPerformance, title: str = "DrumAI Studio — Drum Score",
+    measures_per_system: int = 4,
 ) -> bytes:
     """Return a professionally engraved, printable PDF from canonical drum events.
 
@@ -274,12 +288,12 @@ def performance_to_pdf(
     minimal installations usable, but production installs include Verovio.
     """
     try:
-        return _render_with_verovio(performance, title)
+        return _render_with_verovio(performance, title, measures_per_system)
     except ImportError as exc:
         missing = exc.name or "engraving dependency"
         if missing not in {"verovio", "cairosvg", "pypdf"}:
             raise
-        return _render_fallback_pdf(performance, title)
+        return _render_fallback_pdf(performance, title, measures_per_system)
     except (ValueError, RuntimeError):
         # Verovio can be installed while its SMuFL font resources are absent
         # from a minimal container. Keep exports usable through the fallback.
