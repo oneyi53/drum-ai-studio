@@ -707,11 +707,25 @@ def test_project_bundle_contains_source_and_latest_editable_exports(client, monk
             return performance, midi_path
 
     monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    pdf_calls: list[int] = []
+
+    def fake_pdf_export(
+        saved_performance: DrumPerformance,
+        *,
+        title: str,
+        measures_per_system: int = 4,
+    ) -> bytes:
+        assert saved_performance.duration_seconds == performance.duration_seconds
+        pdf_calls.append(measures_per_system)
+        return f"%PDF-test-layout-{measures_per_system}".encode()
+
+    monkeypatch.setattr(main, "performance_to_pdf", fake_pdf_export)
     project_id = uploaded["id"]
     client.post(f"/api/projects/{project_id}/analyze")
-    response = client.get(f"/api/projects/{project_id}/bundle")
+    response = client.get(f"/api/projects/{project_id}/bundle?measures_per_system=5")
 
     assert response.status_code == 200
+    assert pdf_calls == [5]
     assert response.headers["content-type"] == "application/zip"
     with ZipFile(BytesIO(response.content)) as bundle:
         assert set(bundle.namelist()) == {
@@ -721,7 +735,7 @@ def test_project_bundle_contains_source_and_latest_editable_exports(client, monk
         assert b"fake-midi" == bundle.read("performance.mid")
         assert b"original-audio" == bundle.read("source/bundle.wav")
         assert b"<score-partwise" in bundle.read("score.musicxml")
-        assert bundle.read("score.pdf").startswith(b"%PDF-")
+        assert bundle.read("score.pdf") == b"%PDF-test-layout-5"
         assert b"duration_seconds" in bundle.read("performance.json")
 
 
@@ -730,3 +744,14 @@ def test_project_bundle_requires_completed_analysis(client):
         "/api/projects", files={"audio": ("bundle.wav", b"original-audio", "audio/wav")}
     ).json()
     assert client.get(f"/api/projects/{uploaded['id']}/bundle").status_code == 404
+
+
+
+def test_project_bundle_rejects_unsupported_pdf_layout(client):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("bundle.wav", b"original-audio", "audio/wav")}
+    ).json()
+    response = client.get(
+        f"/api/projects/{uploaded['id']}/bundle?measures_per_system=6"
+    )
+    assert response.status_code == 422
