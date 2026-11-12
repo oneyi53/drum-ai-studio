@@ -203,7 +203,7 @@ def _render_with_verovio(
 
 def _render_fallback_pdf(
     performance: DrumPerformance, title: str = "DrumAI Studio — Drum Score",
-    measures_per_system: int = measures_per_system,
+    measures_per_system: int = MEASURES_PER_SYSTEM,
 ) -> bytes:
     """Render a dependency-light emergency score if the engraving stack is absent."""
     buffer = BytesIO()
