@@ -725,3 +725,15 @@ code or validation state changes; do not infer completion from plans.
 - Added regression coverage for the exact 4-bar and 5-bar system-break
   positions and invalid settings. Fresh engine PDF artifact review is still
   required before visual acceptance.
+
+
+## 2026-11-12 — editor keyboard history shortcuts
+
+- Added standard editor shortcuts for persistent project history: Ctrl/Cmd+Z
+  undoes, Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo.
+- Shortcuts are ignored while typing in inputs, textareas, selects, or
+  content-editable regions, and are disabled while a save/history operation is
+  already running. The existing server-backed undo/redo remains the single
+  source of truth.
+- This improves editing speed without introducing a separate client-only
+  history stack or changing event persistence semantics.
