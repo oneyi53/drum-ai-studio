@@ -765,3 +765,41 @@ code or validation state changes; do not infer completion from plans.
   longer mislabeled as "in development".
 - Kept the transcription runtime dependency explicit, avoiding the impression
   that a clean frontend install alone enables model inference.
+
+
+## 2026-11-12 — kick classifier runtime audit and Gemini follow-up
+
+- Confirmed the actual standard full-song classifier is in the external
+  `DrumScript/DrumScript` runtime, not in a FastAPI `app.engine.classifier`
+  module. DrumAI's `backend/app/engine_adapter.py` lazily imports
+  `drumscript` and calls `engine.transcribe(..., full_song=True,
+  midi_only=True)`.
+- The engine-validation workflow currently shallow-clones upstream main
+  without pinning a commit. The upstream source snapshot independently
+  inspected during this audit is
+  `e3c470787a3ec33221fcb18674e01fa5bdfd5de8`; this is not asserted to be the
+  exact SHA used by the completed CI run. Pinning/recording the actual runtime
+  SHA is required for reproducible classifier experiments.
+- In upstream `drumscript/drum_classifier/classify.py`, standard
+  `classify_events` extracts a 200 ms spectral slice plus 1.5 s decay slice.
+  Its kick rule is `lfer >= KICK_LFER_MIN` and peak frequency within
+  `KICK_FREQ_MIN..KICK_FREQ_MAX`. Current upstream constants inspected:
+  LFER 0.32, frequency 40–140 Hz. Actual feature names are
+  `peak_freq`, `centroid`, `decay`, `lfer`, `hfer`, `hfer_5k`.
+  No `transient_strength` or `beater_attack_ratio` exists in this path.
+- Low-tom classification follows the kick rule and requires low HFER plus
+  resonant decay; when the kick condition fails, a low-frequency resonant
+  candidate can be labeled `low_tom`. Standard full-song classification does
+  not use the separate rudiment ADSR/lockout gates.
+- Gemini received a follow-up task on Issue #5 to inspect the actual upstream
+  source, reproduce IDMT results, and return a minimal opt-in candidate only
+  if held-out track-isolated evidence justifies it. No code patch or threshold
+  change is accepted yet.
+- Integration head `f100c55b6bed2045b8598c7859fe4f51cd69eadc` passed backend
+  tests (Actions run 43212702038) and engine validation (run 43212702034).
+  The engine job completed IDMT benchmark/diagnostic steps for all three
+  subsets and uploaded artifact `idmt-drum-transcription-benchmark` (artifact
+  13942855863). These are successful workflow executions, not a claimed
+  classifier accuracy improvement; raw artifact metrics still require review.
+- No integration classifier code or threshold was changed. PR #4 remains
+  unmerged pending review and user approval.
