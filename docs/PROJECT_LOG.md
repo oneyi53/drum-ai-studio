@@ -1,3 +1,30 @@
+## 2026-11-12 — MusicXML rhythmic-timeline implementation plan grounded in current exporter
+
+- Re-read the current integration-branch exporter, canonical event schema, and
+  PDF rendering path before changing production code. The exporter uses
+  per-instrument voices with `backup`/`forward`, but derives each hit's
+  duration only from the next hit in that instrument voice and selects the
+  largest undotted binary note value that fits the gap.
+- Confirmed the current generator does not emit explicit rests, beams, ties,
+  dotted values, or tuplets. A hit whose spacing is not an exact supported
+  binary value can therefore leave unrepresented time; the current final
+  `min(note_duration, available_gap)` can also create a duration that does
+  not match the emitted `<type>`. These are generator correctness issues,
+  not merely engraving-style options.
+- Confirmed the PDF renderer calls this same MusicXML generator, then inserts
+  system breaks and renders with Verovio. The rhythmic fix must therefore be
+  made in the shared MusicXML path and verified through the real PDF renderer,
+  not a parallel PDF-only notation implementation.
+- Next implementation slice is a measure/voice timeline validator and
+  duration decomposition with exact divisions conservation. It must interpret
+  MusicXML cursor movement (`backup`/`forward`), chord notes, voices, rests,
+  and measure boundaries; validate each voice independently; and reject
+  unsupported/invalid rhythmic constructs rather than silently accepting
+  mismatched `duration` and `type`. Only after this foundation should
+  notation generation add beat-group beaming and tie-preserving splits.
+- No production code was changed in this review. No test or CI result is
+  claimed. PR #4 remains open and unmerged.
+
 ## 2026-11-12 — kick feature diagnostics split by classifier outcome
 
 - Reviewed the upstream DrumScript classifier implementation used by the
