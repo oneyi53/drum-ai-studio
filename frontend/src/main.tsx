@@ -116,6 +116,7 @@ function App() {
   const [newTime, setNewTime] = React.useState("0");
   const [newInstrument, setNewInstrument] = React.useState("kick");
   const [newVelocity, setNewVelocity] = React.useState("96");
+  const [pdfMeasuresPerSystem, setPdfMeasuresPerSystem] = React.useState<"4" | "5">("4");
   const [quantizeSubdivision, setQuantizeSubdivision] = React.useState("1/16");
   const [quantizeStrength, setQuantizeStrength] = React.useState(100);
   const [quantizePreview, setQuantizePreview] = React.useState<Performance | null>(null);
@@ -922,7 +923,13 @@ function App() {
             </table>
           </div>
           <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/midi`} download>下载最新鼓谱 MIDI</a>
-          <a className="download-link pdf-link" href={`${API_BASE}/api/projects/${summary.projectId}/pdf`} download>下载打印版 PDF 鼓谱</a>
+          <label className="pdf-layout-control">每行小节数
+            <select value={pdfMeasuresPerSystem} onChange={(event) => setPdfMeasuresPerSystem(event.target.value as "4" | "5")}>
+              <option value="4">4 小节</option>
+              <option value="5">5 小节</option>
+            </select>
+          </label>
+          <a className="download-link pdf-link" href={`${API_BASE}/api/projects/${summary.projectId}/pdf?measures_per_system=${pdfMeasuresPerSystem}`} download>下载打印版 PDF 鼓谱（每行 {pdfMeasuresPerSystem} 小节）</a>
           <a className="download-link musicxml-link" href={`${API_BASE}/api/projects/${summary.projectId}/musicxml`} download>下载可编辑 MusicXML 乐谱</a>
           <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/bundle`} download>下载完整项目备份（原音频 + 鼓谱文件）</a>
           <small className="job-id">任务 ID：{summary.jobId} · {saving ? "正在保存…" : "编辑自动保存到标准事件和 MIDI"}</small>
