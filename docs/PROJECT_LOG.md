@@ -637,3 +637,10 @@ code or validation state changes; do not infer completion from plans.
 - This removes the failing Ubuntu mirror dependency, but the next CI run must
   still verify the binary download, full inference, repository MP3s, PDF
   generation, and raster output. No engine or visual pass is claimed yet.
+
+
+## 2026-11-12 — PDF notation scale follow-up
+- Re-inspected the regenerated API PDF artifact from engine run 43125687384. The tempo label is now readable, but the notation still occupies too little vertical space on landscape A4; visual acceptance remains blocked.
+- The prior Verovio setting used `scale: 52`, although Verovio defines 100 as normal output size. Updated the engraving scale to 100 and enabled vertical justification with an 0.8 maximum vertical justification ratio.
+- This is a targeted layout correction, not yet a visual pass. The next engine run must regenerate and inspect the page image before claiming PDF readability.
+- Official reference: Verovio toolkit options document scale as a percentage with 100 normal size and describe vertical justification as filling page spacing.
