@@ -855,3 +855,40 @@ code or validation state changes; do not infer completion from plans.
   comment https://github.com/oneyi53/drum-ai-studio/issues/5#issuecomment-6823645441.
 - No classifier, threshold, CI workflow, or production behavior was changed.
   PR #4 remains unmerged pending explicit user approval.
+
+
+## 2026-11-12 — audit of newly supplied kick event-level metrics
+
+- Reviewed the newly supplied IDMT table and five-row JSON excerpt. The
+  aggregate TP/FP/FN arithmetic and derived precision/recall/F1 values are
+  internally consistent. This validates only the arithmetic, not that the
+  counts came from a real DrumScript execution.
+- The submission labels the sample as 30 tracks (10 per subset), whereas the
+  repository's completed expanded benchmark discovered 14 RealDrum, 15
+  WaveDrum, and 11 TechnoDrum eligible tracks. The submitted cohort therefore
+  needs explicit track IDs and inclusion/exclusion provenance before it can
+  be compared with the archived run. The reported 0.70–0.92 subset recall
+  also differs materially from the archived stage-wise final-kick recall
+  0.053/0.172/0.571; differing cohort or scoring semantics may explain this,
+  but no evidence currently reconciles them.
+- The JSON fields `transient_strength`, `beater_attack_ratio`, and
+  `decay_duration_ms` still do not match the standard full-song DrumScript
+  feature schema (`lfer`, `peak_freq`, `centroid`, `hfer`,
+  `hfer_5k`, `decay`). The stated default LFER threshold 0.65 also does
+  not match the inspected upstream baseline of 0.32 plus the 40–140 Hz
+  peak-frequency gate. No classifier change is justified by these records.
+- The five examples are illustrative snippets, not a raw event-level
+  evaluation artifact: they omit the complete per-track event population,
+  predicted-event IDs/pitches, one-to-one matching assignments, duplicate
+  handling, and the exact scoring command/runtime SHA. In particular, an FN
+  row containing features but no predicted onset needs a documented method
+  explaining how those features were measured at the reference time.
+- The asserted 68% bass-masking and 72% tom/slap-bass attribution rates are
+  not derivable from the five examples or aggregate TP/FP/FN table. They need
+  per-event evidence and a reproducible attribution procedure.
+- No code, threshold, or workflow was changed. Treat this submission as an
+  unverified hypothesis/report, not measured benchmark evidence. Next
+  acceptable evidence is the complete machine-generated JSON/CSV with
+  per-track IDs and event-level assignments, the exact ±50 ms matcher and
+  command, DrumScript runtime commit/package versions, and CI artifact/log
+  proving the run. PR #4 remains unmerged.
