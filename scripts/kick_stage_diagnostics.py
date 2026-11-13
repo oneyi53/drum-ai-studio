@@ -262,8 +262,14 @@ def score_dc_rule(rows: list[dict], lfer_threshold: float, hfer_max: float) -> t
     return tp, fp, fn
 
 
-def leave_one_track_out_dc_suppressed_sweep(rows: list[dict]) -> dict:
-    """Evaluate DC-suppressed peak/LFER plus HFER with track-isolated tuning."""
+def leave_one_track_out_dc_suppressed_sweep(
+    rows: list[dict], min_train_precision: float | None = None
+) -> dict:
+    """Evaluate DC-suppressed features with track-isolated threshold selection.
+
+    When min_train_precision is set, only training-fold operating points meeting
+    that precision floor are eligible; held-out tracks never influence selection.
+    """
     lfer_thresholds = [round(value / 100, 2) for value in range(5, 61, 2)]
     hfer_limits = [0.55, 0.65, 0.75, 0.85, 0.95]
     tracks = sorted({str(row.get("track_group", row["track"])) for row in rows})
@@ -280,14 +286,25 @@ def leave_one_track_out_dc_suppressed_sweep(rows: list[dict]) -> dict:
                 tp, fp, fn = score_dc_rule(train, lfer_threshold, hfer_max)
                 precision = tp / (tp + fp) if tp + fp else 0.0
                 scored.append((f1_from_counts(tp, fp, fn), precision, lfer_threshold, hfer_max))
-        _, _, selected_lfer, selected_hfer = max(
-            scored, key=lambda item: (item[0], item[1], item[2], -item[3])
+        eligible = [
+            item for item in scored
+            if min_train_precision is None or item[1] >= min_train_precision
+        ]
+        # If a training fold cannot meet the requested floor, fall back to its
+        # unconstrained F1 optimum and make that fallback explicit in the report.
+        used_fallback = not eligible
+        _, selected_precision, selected_lfer, selected_hfer = max(
+            eligible or scored,
+            key=lambda item: (item[0], item[1], item[2], -item[3]),
         )
         tp, fp, fn = score_dc_rule(test, selected_lfer, selected_hfer)
         held_out.append({
             "track": track,
             "selected_lfer_no_dc_threshold": selected_lfer,
             "selected_hfer_max": selected_hfer,
+            "training_precision_floor": min_train_precision,
+            "training_precision": selected_precision,
+            "precision_floor_fallback": used_fallback,
             "tp": tp, "fp": fp, "fn": fn,
             "precision": tp / (tp + fp) if tp + fp else 0.0,
             "recall": tp / (tp + fn) if tp + fn else 0.0,
@@ -309,6 +326,8 @@ def leave_one_track_out_dc_suppressed_sweep(rows: list[dict]) -> dict:
     fn = sum(int(row["fn"]) for row in held_out)
     return {
         "method": "leave-one-track-out; DC-excluded spectrum; tune LFER and HFER; peak 20-180 Hz",
+        "min_train_precision": min_train_precision,
+        "folds_using_precision_fallback": sum(bool(row["precision_floor_fallback"]) for row in held_out),
         "baseline_held_out": {
             "tp": baseline_tp, "fp": baseline_fp, "fn": baseline_fn,
             "precision": baseline_tp / (baseline_tp + baseline_fp) if baseline_tp + baseline_fp else 0.0,
@@ -409,6 +428,9 @@ def main() -> None:
         "kick_rule_feature_diagnostics": feature_diagnostics,
         "track_isolated_lfer_sweep": leave_one_track_out_sweep(all_candidate_rows),
         "dc_suppressed_track_isolated_sweep": leave_one_track_out_dc_suppressed_sweep(all_candidate_rows),
+        "dc_suppressed_precision_guarded_sweep": leave_one_track_out_dc_suppressed_sweep(
+            all_candidate_rows, min_train_precision=0.85
+        ),
         "candidate_feature_rows": all_candidate_rows,
         "tracks": rows,
     }
@@ -444,6 +466,15 @@ def main() -> None:
         f"tuned_f1={dc_sweep['tuned_held_out']['f1']:.3f} "
         f"tuned_recall={dc_sweep['tuned_held_out']['recall']:.3f} "
         f"tuned_precision={dc_sweep['tuned_held_out']['precision']:.3f}"
+    )
+    guarded = summary["dc_suppressed_precision_guarded_sweep"]
+    guarded_metrics = guarded["tuned_held_out"]
+    print(
+        "KICK_DC_PRECISION_GUARDED_SWEEP "
+        f"floor=0.85 f1={guarded_metrics['f1']:.3f} "
+        f"recall={guarded_metrics['recall']:.3f} "
+        f"precision={guarded_metrics['precision']:.3f} "
+        f"fallback_folds={guarded['folds_using_precision_fallback']}"
     )
     print(f"KICK_STAGE_ARTIFACT json={args.output} csv={csv_path}")
 
