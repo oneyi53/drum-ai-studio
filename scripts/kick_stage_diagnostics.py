@@ -215,7 +215,7 @@ def main() -> None:
         description="Measure kick-reference recall before and after DrumScript event classification."
     )
     parser.add_argument("--root", type=Path, required=True)
-    parser.add_argument("--subset", choices=("RealDrum", "WaveDrum", "TechnoDrum", "all"), required=True)
+    parser.add_argument("--subset", choices=("RealDrum", "WaveDrum", "TechnoDrum"), required=True)
     parser.add_argument("--limit", type=int, default=15)
     parser.add_argument("--tolerance-ms", type=float, default=50.0)
     parser.add_argument("--output", type=Path, required=True)
@@ -224,14 +224,7 @@ def main() -> None:
     if args.limit < 1 or args.tolerance_ms < 0:
         parser.error("--limit must be positive and --tolerance-ms non-negative")
 
-    if args.subset == "all":
-        files = [
-            path
-            for subset in ("RealDrum", "WaveDrum", "TechnoDrum")
-            for path in find_mix_files(args.root, subset)[: args.limit]
-        ]
-    else:
-        files = find_mix_files(args.root, args.subset)[: args.limit]
+    files = find_mix_files(args.root, args.subset)[: args.limit]
     if not files:
         parser.error(f"No IDMT mix files found for subset {args.subset}")
 
@@ -300,8 +293,6 @@ def main() -> None:
         "candidate_to_kick_match_retention": kick_tp_total / candidate_tp_total if candidate_tp_total else 0.0,
         "kick_rule_feature_diagnostics": feature_diagnostics,
         "track_isolated_lfer_sweep": leave_one_track_out_sweep(all_candidate_rows),
-        # Also train across the other two IDMT subsets to test cross-drum-kit transfer.
-        "global_track_isolated_lfer_sweep": leave_one_track_out_sweep(all_candidate_rows),
         "candidate_feature_rows": all_candidate_rows,
         "tracks": rows,
     }
@@ -329,14 +320,6 @@ def main() -> None:
         f"tuned_f1={sweep['tuned_held_out']['f1']:.3f} "
         f"tuned_recall={sweep['tuned_held_out']['recall']:.3f} "
         f"tuned_precision={sweep['tuned_held_out']['precision']:.3f}"
-    )
-    global_sweep = summary["global_track_isolated_lfer_sweep"]
-    print(
-        "KICK_GLOBAL_TRACK_ISOLATED_SWEEP "
-        f"baseline_f1={global_sweep['baseline_held_out']['f1']:.3f} "
-        f"tuned_f1={global_sweep['tuned_held_out']['f1']:.3f} "
-        f"tuned_recall={global_sweep['tuned_held_out']['recall']:.3f} "
-        f"tuned_precision={global_sweep['tuned_held_out']['precision']:.3f}"
     )
     print(f"KICK_STAGE_ARTIFACT json={args.output} csv={csv_path}")
 
