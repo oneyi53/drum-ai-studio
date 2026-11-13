@@ -1008,3 +1008,33 @@ code or validation state changes; do not infer completion from plans.
 - Downloaded and visually inspected CI artifact 13942911556 from run 43212702034. The PNG is 1404x993 and shows the actual defect: the first system is rendered near the top, then a second almost-empty percussion staff appears below it, leaving most of the landscape page blank. This is concrete evidence that the PDF layout is not yet acceptable.
 - Added this artifact reproduction to Issue #6 and asked Gemini to create a regression that fails on the extra near-empty system, then attach before/after PDF and PNG renders with the actual Verovio version/options; comment 6823850692.
 - Artifact run commit is f100c55b6bed2045b8598c7859fe4f51cd69eadc, older than current integration head. No production code changed in this increment. PR #4 remains open and unmerged.
+
+
+## 2026-11-13 — inspect latest PDF and stage-wise kick diagnostics
+
+- Reviewed the PDF and rendered PNG from successful engine-validation run
+  43222194461 (artifact 13946229769), generated from integration commit
+  bf0b113e68f76bdc999f3f0797e6f9f2bc6f95bb. The tempo and percussion glyphs
+  are legible and horizontal score coverage is improved, but the page still
+  contains a nearly empty final staff/system and substantial unused lower-page
+  space. The automated ink-bounds gate passed despite this structural defect;
+  PDF visual acceptance remains blocked.
+- Added a PDF-only trailing-silent-measure trim before Verovio engraving. This
+  removes measures after the last measure containing a note, while moving any
+  direction markings from removed tail measures to the last retained measure.
+  The editable MusicXML export is unchanged and retains its original duration.
+  Added a regression test for silent tail removal and direction preservation.
+  Commits: 633b7b41cc7b4e2999c8ec321fc5691deb3e5704 and
+  86d3aedc0d01b882f5b03a912b993796e9c10afe. New engine artifact and manual
+  render review are required before judging this correction.
+- Parsed the newly uploaded kick diagnostics artifact 13947170566. The
+  classifier-outcome feature split is now explicit: RealDrum predicted/missed
+  aligned candidates 16/281 (LFER medians 0.523/0.184); WaveDrum 65/299
+  (0.499/0.186); TechnoDrum 165/121 (0.437/0.209). In all three subsets,
+  peak-frequency distributions overlap substantially, while LFER separates
+  predicted from missed events much more strongly. This supports investigating
+  an adaptive or context-aware LFER decision, but does not justify changing
+  the production threshold without held-out track-level precision/recall
+  evidence. No classifier threshold or production behavior was changed.
+- Latest successful run still belongs to bf0b113; the PDF trim commits above
+  require fresh CI, backend, and engine validation. PR #4 remains unmerged.
