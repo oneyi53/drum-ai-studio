@@ -6,6 +6,7 @@ instrument, tempo directions, time signatures, and absolute event placement.
 from __future__ import annotations
 
 from collections import defaultdict
+from fractions import Fraction
 from xml.etree import ElementTree as ET
 
 from .drum_events import DrumInstrument, DrumPerformance, TempoChange
@@ -259,3 +260,228 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
         root, encoding="unicode"
     ) + "\n"
+
+
+def reconstruct_and_validate_measure(
+    measure_elem: ET.Element,
+    time_sig: tuple[int, int] | None = None,
+    divisions: int = DIVISIONS,
+) -> dict[str, object]:
+    """Reconstruct one MusicXML measure with its document-order shared cursor.
+
+    Returned onset/duration values are Fractions measured in quarter notes,
+    so a divisions change inside a measure cannot corrupt the reconstructed
+    timeline. Voice identity is scoped by both staff and voice.
+    """
+    if divisions <= 0:
+        raise ValueError("divisions must be positive")
+
+    effective_divisions = divisions
+    effective_time = time_sig or (4, 4)
+    cursor = Fraction(0)
+    max_cursor = Fraction(0)
+    records: list[dict[str, object]] = []
+    last_note: dict[str, object] | None = None
+
+    def parse_positive_integer(element: ET.Element | None, label: str) -> int:
+        if element is None or element.text is None:
+            raise ValueError(f"{label} must contain an integer")
+        try:
+            value = int(element.text.strip())
+        except ValueError as exc:
+            raise ValueError(f"{label} must contain an integer") from exc
+        if value <= 0:
+            raise ValueError(f"{label} must be positive")
+        return value
+
+    for child in measure_elem:
+        if child.tag == "attributes":
+            div_elem = child.find("divisions")
+            if div_elem is not None:
+                effective_divisions = parse_positive_integer(
+                    div_elem, "attributes/divisions"
+                )
+            time_elem = child.find("time")
+            if time_elem is not None:
+                beats_elem = time_elem.find("beats")
+                beat_type_elem = time_elem.find("beat-type")
+                beats_text = beats_elem.text.strip() if beats_elem is not None and beats_elem.text else ""
+                try:
+                    numerator = sum(int(part) for part in beats_text.split("+"))
+                    denominator = parse_positive_integer(
+                        beat_type_elem, "time/beat-type"
+                    )
+                except ValueError as exc:
+                    raise ValueError("invalid time signature") from exc
+                if not beats_text or numerator <= 0:
+                    raise ValueError("time/beats must contain positive additive groups")
+                effective_time = (numerator, denominator)
+            continue
+
+        if child.tag in {"backup", "forward"}:
+            raw_duration = parse_positive_integer(
+                child.find("duration"), f"{child.tag}/duration"
+            )
+            movement = Fraction(raw_duration, effective_divisions)
+            if child.tag == "backup":
+                cursor -= movement
+                if cursor < 0:
+                    raise ValueError(
+                        f"backup underflow: shared cursor became {cursor}"
+                    )
+            else:
+                cursor += movement
+                max_cursor = max(max_cursor, cursor)
+            last_note = None
+            continue
+
+        if child.tag != "note":
+            continue
+
+        duration_units = parse_positive_integer(
+            child.find("duration"), "note/duration"
+        )
+        duration = Fraction(duration_units, effective_divisions)
+        voice_elem, staff_elem = child.find("voice"), child.find("staff")
+        voice = (
+            voice_elem.text.strip()
+            if voice_elem is not None and voice_elem.text
+            else "1"
+        )
+        staff = (
+            staff_elem.text.strip()
+            if staff_elem is not None and staff_elem.text
+            else "1"
+        )
+        is_chord = child.find("chord") is not None
+        is_rest = child.find("rest") is not None
+        if is_chord and is_rest:
+            raise ValueError("a chord tone cannot also be a rest")
+
+        if is_chord:
+            if last_note is None:
+                raise ValueError("chord tone has no preceding non-chord note")
+            if last_note["voice"] != voice or last_note["staff"] != staff:
+                raise ValueError("chord tone voice/staff does not match its parent")
+            if last_note["duration"] != duration:
+                raise ValueError("chord tone duration does not match its parent")
+            onset = last_note["onset"]
+        else:
+            onset = cursor
+
+        record: dict[str, object] = {
+            "element": child,
+            "onset": onset,
+            "duration": duration,
+            "offset_end": onset + duration,
+            "is_chord": is_chord,
+            "is_rest": is_rest,
+            "voice": voice,
+            "staff": staff,
+        }
+        records.append(record)
+
+        if not is_chord:
+            last_note = record
+            cursor += duration
+            max_cursor = max(max_cursor, cursor)
+
+    numerator, denominator = effective_time
+    if numerator <= 0 or denominator <= 0:
+        raise ValueError(f"invalid time signature: {effective_time}")
+    capacity = Fraction(numerator * 4, denominator)
+
+    streams: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+    for record in records:
+        streams[(str(record["staff"]), str(record["voice"]))].append(record)
+
+    voice_gaps: dict[tuple[str, str], list[tuple[Fraction, Fraction]]] = {}
+    for (staff, voice), events in streams.items():
+        ordered = sorted(
+            events,
+            key=lambda event: (
+                event["onset"],
+                bool(event["is_chord"]),
+            ),
+        )
+        previous_onset: Fraction | None = None
+        previous_end = Fraction(0)
+        occupied: list[tuple[Fraction, Fraction]] = []
+
+        for event in ordered:
+            onset = event["onset"]
+            end = event["offset_end"]
+            if event["is_chord"]:
+                if onset != previous_onset:
+                    raise ValueError(
+                        f"chord onset mismatch in staff {staff}, voice {voice}"
+                    )
+                continue
+            if onset < previous_end:
+                raise ValueError(
+                    f"overlapping events in staff {staff}, voice {voice} at {onset}"
+                )
+            if end > capacity:
+                raise ValueError(
+                    f"staff {staff}, voice {voice} overflow: "
+                    f"extent {end} exceeds capacity {capacity}"
+                )
+            previous_onset = onset
+            previous_end = end
+            occupied.append((onset, end))
+
+        gaps: list[tuple[Fraction, Fraction]] = []
+        position = Fraction(0)
+        for onset, end in occupied:
+            if onset > position:
+                gaps.append((position, onset))
+            position = max(position, end)
+        if position < capacity:
+            gaps.append((position, capacity))
+        voice_gaps[(staff, voice)] = gaps
+
+    if max_cursor > capacity:
+        raise ValueError(
+            f"measure cursor overflow: extent {max_cursor} exceeds capacity {capacity}"
+        )
+
+    return {
+        "expected_capacity": capacity,
+        "divisions": effective_divisions,
+        "time_signature": effective_time,
+        "max_cursor": max_cursor,
+        "voice_events": dict(streams),
+        "voice_gaps": voice_gaps,
+        "implicit": measure_elem.get("implicit") == "yes",
+    }
+
+
+def reconstruct_and_validate_musicxml(xml_text: str) -> list[dict[str, object]]:
+    """Validate every measure in a score-partwise MusicXML document."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ValueError(f"invalid MusicXML: {exc}") from exc
+    if root.tag != "score-partwise":
+        raise ValueError("MusicXML root must be score-partwise")
+
+    results: list[dict[str, object]] = []
+    for part_index, part in enumerate(root.findall("part"), start=1):
+        effective_divisions = DIVISIONS
+        effective_time: tuple[int, int] | None = None
+        for measure_index, measure in enumerate(part.findall("measure"), start=1):
+            result = reconstruct_and_validate_measure(
+                measure,
+                time_sig=effective_time,
+                divisions=effective_divisions,
+            )
+            effective_divisions = int(result["divisions"])
+            effective_time = result["time_signature"]
+            results.append({
+                "part": part.get("id") or str(part_index),
+                "measure": measure.get("number") or str(measure_index),
+                **result,
+            })
+    if not results:
+        raise ValueError("MusicXML contains no part measures")
+    return results
