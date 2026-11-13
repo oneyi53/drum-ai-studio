@@ -78,7 +78,7 @@ def test_same_voice_number_on_different_staves_is_independent():
 
 def test_divisions_change_mid_measure_preserves_quarter_note_cursor():
     measure = parse("""<measure>
-      <attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></attributes>
+      <attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
       <note><duration>4</duration><voice>1</voice></note>
       <attributes><divisions>8</divisions></attributes>
       <note><duration>8</duration><voice>1</voice></note>
