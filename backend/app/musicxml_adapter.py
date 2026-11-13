@@ -444,9 +444,11 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                 cursor = measure_duration
 
     ET.indent(root, space="  ")
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
+    xml_text = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
         root, encoding="unicode"
     ) + "\n"
+    reconstruct_and_validate_musicxml(xml_text, validate_notation=True)
+    return xml_text
 
 
 def _musicxml_local_name(tag: str) -> str:
