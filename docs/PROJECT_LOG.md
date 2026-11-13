@@ -1017,3 +1017,12 @@ code or validation state changes; do not infer completion from plans.
 - Updated timeline pointer-up handling to persist the destination lane as well as time movement, and to allow a purely vertical move with zero time offset.
 - Added API regression tests for instrument reassignment preserving event timing/velocity and for rejecting empty batch edits.
 - No transcription classifier, benchmark thresholds, or PDF code changed.
+
+
+## 2026-11-13 — MusicXML shared-cursor validation slice
+
+- Started a mainline-based implementation slice after merging the timeline cross-lane editor fix.
+- Added a MusicXML measure reconstructor that interprets `backup` and `forward` against the document-order shared cursor, resolves chord tones to their preceding non-chord onset, and validates non-overlapping events by (staff, voice).
+- Tracks cursor positions as exact quarter-note fractions so a `divisions` change within a measure does not silently rescale earlier offsets; carries divisions and time signatures across measures in score-partwise documents.
+- Adds regression coverage for 4/4, 6/8, additive meters, interleaved voices/staves, chord parent constraints, cursor underflow, overlap, overflow, and invalid durations.
+- This slice validates existing MusicXML structure only. It does not yet change the event-to-MusicXML exporter to generate complete rests, dotted/tied durations, tuplets, or beat-aware beams, and it does not claim PDF visual acceptance. CI validation is pending.
