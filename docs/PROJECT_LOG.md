@@ -1,3 +1,40 @@
+## 2026-11-14 — EQ preprocessing integrated into production adapter; local API e2e passes
+
+- EQ (from the 2026-11-14 experiment, ADOPT): 2nd-order Butterworth
+  high-pass 30 Hz + RBJ low-shelf +6 dB @ 120 Hz, causal sosfilt, applied
+  in `engine_adapter.analyze()` before `transcribe()` (writes
+  `work_dir/source-eq.wav`); `KickClassificationConfig.eq_preprocessing`
+  defaults True (new behaviour), explicit False restores the old path;
+  stock upstream = lfer_min 0.32 + EQ off; fail-closed on missing/changed
+  DrumScript interfaces or missing scipy. `scipy>=1.14,<2.0` added to the
+  backend `dev` extra. `engine-validation.yml` now also triggers on
+  `backend/app/engine_adapter.py` (push + PR paths).
+- Verification: production `_apply_kick_eq` bit-identical to the experiment
+  harness (max abs diff 0.0 on 8 s composite); sine gains 10 Hz 0.215,
+  60 Hz 2.027, 1000 Hz 0.995. Small-sample IDMT check with the production
+  function (6 tracks, lfer 0.10, 50 ms): pooled kick F1 0.790 -> 0.840
+  with EQ (recall 0.743 -> 0.850, precision 0.844 -> 0.830), direction
+  matches the experiment report (pooled 0.792 -> 0.840; held-out WaveDrum
+  0.643 -> 0.783).
+- Backend suite 129 passed (121 + 8 new adapter tests), ruff clean.
+  Frontend `npm run build` passes locally (tsc + vite).
+- Local API e2e (`scripts/api_engine_smoke.py`, offline network namespace,
+  `HF_HUB_OFFLINE=1`, no Hugging Face download, no approval card):
+  `API_ENGINE_E2E_OK` — upload -> analyze -> 39 events over 8.0 s ->
+  MIDI 312 B, MusicXML 22,573 B (parsed + validated), PDF 40,112 B /
+  1 page, PNG 54,668 B; visual gates passed. Demucs separation ran from
+  the locally cached legacy torch-hub checkpoint (`source-eq.wav`
+  confirms the EQ'd file reaches Demucs). The full-song Demucs path in CI
+  engine-validation remains the cloud verification route.
+- Hugging Face: no downloads attempted in this landing; the one needed
+  weight (`955717e8.safetensors`, ~84 MB, `adefossez/HTDemucs`) is
+  inventoried in `~/workspace/.ds-scratch/hf-inventory.md` for a single
+  batched approval / GitHub Actions cloud download, not local direct
+  download.
+- Still open: Issue #5 (CI engine-validation Demucs e2e pending on this
+  push); copyrighted MP3s remain in git history (removed from main only);
+  PR #1 salvage files for later if wanted.
+
 ## 2026-11-14 — merged PR #15 (MusicXML explicit rests + exact rhythm); PR #1 closed
 
 - Merged PR #15 locally (branch `feat/musicxml-explicit-rhythmic-rests`
