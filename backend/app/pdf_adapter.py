@@ -294,6 +294,9 @@ def performance_to_pdf(
     Verovio is the primary engraving engine. The ReportLab fallback keeps
     minimal installations usable, but production installs include Verovio.
     """
+    # Validate rhythmic representability before entering the renderer fallback.
+    # A notation error must not be hidden by the low-fidelity ReportLab fallback.
+    performance_to_musicxml(performance)
     try:
         return _render_with_verovio(performance, title, measures_per_system)
     except ImportError as exc:
