@@ -110,6 +110,7 @@ def evaluate_file(audio_path: Path, tolerance: float) -> dict[str, int | float |
         candidate_rows.append({
             "track": audio_path.name,
             "subset": subset_of(audio_path),
+            "track_group": f"{subset_of(audio_path)}/{audio_path.name}",
             "time_sec": float(event["time_sec"]),
             "lfer": lfer,
             "peak_freq": peak_freq,
@@ -192,12 +193,12 @@ def f1_from_counts(tp: int, fp: int, fn: int) -> float:
 def leave_one_track_out_sweep(rows: list[dict]) -> dict:
     """Tune LFER on other tracks, score the held-out track, and aggregate only held-out predictions."""
     thresholds = [round(value, 3) for value in [i / 100 for i in range(5, 61, 2)]]
-    tracks = sorted({str(row["track"]) for row in rows})
+    tracks = sorted({str(row.get("track_group", row["track"])) for row in rows})
     held_out = []
     baseline_tp = baseline_fp = baseline_fn = 0
     for track in tracks:
-        train = [row for row in rows if row["track"] != track]
-        test = [row for row in rows if row["track"] == track]
+        train = [row for row in rows if str(row.get("track_group", row["track"])) != track]
+        test = [row for row in rows if str(row.get("track_group", row["track"])) == track]
         if not train or not test:
             continue
         scored = []
@@ -265,12 +266,12 @@ def leave_one_track_out_dc_suppressed_sweep(rows: list[dict]) -> dict:
     """Evaluate DC-suppressed peak/LFER plus HFER with track-isolated tuning."""
     lfer_thresholds = [round(value / 100, 2) for value in range(5, 61, 2)]
     hfer_limits = [0.55, 0.65, 0.75, 0.85, 0.95]
-    tracks = sorted({str(row["track"]) for row in rows})
+    tracks = sorted({str(row.get("track_group", row["track"])) for row in rows})
     held_out = []
     baseline_tp = baseline_fp = baseline_fn = 0
     for track in tracks:
-        train = [row for row in rows if row["track"] != track]
-        test = [row for row in rows if row["track"] == track]
+        train = [row for row in rows if str(row.get("track_group", row["track"])) != track]
+        test = [row for row in rows if str(row.get("track_group", row["track"])) == track]
         if not train or not test:
             continue
         scored = []
