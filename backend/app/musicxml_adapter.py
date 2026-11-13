@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from fractions import Fraction
+from math import gcd
 from xml.etree import ElementTree as ET
 
 from .drum_events import DrumInstrument, DrumPerformance, TempoChange
@@ -234,7 +235,7 @@ def _choose_hit_duration(
         raise ValueError(
             f"divisions={divisions} cannot represent a positive sub-128th hit"
         )
-    gcd_value = math.gcd(smallest_ticks.numerator, gap)
+    gcd_value = gcd(smallest_ticks.numerator, gap)
     actual_notes = smallest_ticks.numerator // gcd_value
     normal_notes = gap // gcd_value
     return gap, smallest_type, 0, actual_notes, normal_notes
