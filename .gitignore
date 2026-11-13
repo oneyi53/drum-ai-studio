@@ -23,3 +23,8 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Audio (never commit recordings; see docs/PROJECT_MANAGEMENT.md)
+*.mp3
+*.wav
+*.flac

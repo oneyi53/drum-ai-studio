@@ -290,6 +290,36 @@ function App() {
     void loadProjects();
   }, []);
 
+  async function deleteCurrentProject() {
+    if (!summary || saving || busy) return;
+    const projectId = summary.projectId;
+    if (!window.confirm("确定删除当前项目？原始音频、转写结果和编辑历史都会被永久删除。")) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${projectId}`, { method: "DELETE" });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "删除项目失败"));
+      audioRef.current?.pause();
+      setSummary(null);
+      setAudioPlaying(false);
+      setAudioTime(0);
+      setAudioDuration(0);
+      setLoopEnabled(false);
+      setMetronomeEnabled(false);
+      setSelectedEventId(null);
+      setActiveEventId(null);
+      setSelectedEventIds([]);
+      setQuantizePreview(null);
+      setHistory({ current_revision: 0, can_undo: false, can_redo: false });
+      await loadProjects();
+      setMessage("项目及其音频、分析产物和编辑历史已删除。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "删除项目失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function uploadAndAnalyze() {
     if (!file) return;
     setBusy(true);
@@ -776,7 +806,7 @@ function App() {
       </section>
       {summary && (
         <section className="result-panel">
-          <div className="panel-heading"><div><p className="eyebrow">CANONICAL PERFORMANCE</p><h2>标准鼓事件编辑器</h2></div><span className="complete">可编辑</span></div>
+          <div className="panel-heading"><div><p className="eyebrow">CANONICAL PERFORMANCE</p><h2>标准鼓事件编辑器</h2></div><div className="result-heading-actions"><span className="complete">可编辑</span><button type="button" className="danger-button" onClick={() => void deleteCurrentProject()} disabled={saving || busy}>删除项目</button></div></div>
           <div className="history-controls">
             <button disabled={saving || !history.can_undo} onClick={() => void moveHistory("undo")}>↶ 撤销</button>
             <button disabled={saving || !history.can_redo} onClick={() => void moveHistory("redo")}>↷ 重做</button>

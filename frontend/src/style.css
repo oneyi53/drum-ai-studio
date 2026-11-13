@@ -137,3 +137,5 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 @media(max-width:640px){.event-batch-controls{align-items:stretch;flex-direction:column}.event-batch-controls label{justify-content:space-between}.event-batch-controls button{width:100%}}
 
 .bar-copy-controls{border-color:#c9f36b44}.bar-copy-controls strong{color:#c9f36b;font-size:11px}.bar-copy-controls small{flex-basis:100%;color:#9ca8b9}
+
+.result-heading-actions{display:flex;align-items:center;gap:10px}.danger-button{border:1px solid #f0787855;border-radius:8px;background:#3a2028;color:#ffaaaa;padding:8px 11px;font:600 11px "DM Sans","Noto Sans SC",sans-serif;cursor:pointer}.danger-button:hover:not(:disabled){background:#512832}.danger-button:disabled{opacity:.45;cursor:not-allowed}

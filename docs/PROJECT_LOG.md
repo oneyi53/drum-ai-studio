@@ -1037,3 +1037,55 @@ code or validation state changes; do not infer completion from plans.
 - Added coverage for dotted and double-dotted values, triplet ratios, invalid tuplets, missing note types, and strict validation of actual output from the existing exporter.
 - Kept strict validation opt-in to avoid silently breaking existing exports while the exporter is being upgraded to emit rests and duration fragments in a later slice.
 - CI on the implementation commit: backend 99 tests passed and Ruff clean; frontend checks passed. This slice validates notation consistency but does not yet change exporter output or claim PDF visual acceptance.
+
+
+
+## 2026-11-13 — PDF visual inspection and silent-tail correction
+
+- Manually inspected the PDF/PNG from successful engine run 43222194461
+  (artifact 13946229769). Notation and tempo are legible and horizontal score
+  coverage improved, but the render still contains a nearly empty final
+  staff/system and substantial lower-page whitespace. Automated ink bounds
+  alone were insufficient for visual acceptance.
+- Added a PDF-only trim of measures after the last measure containing a note,
+  preserving direction markings from removed tail measures. Editable MusicXML
+  remains unchanged and retains full duration. Added regression coverage for
+  silent-tail removal and direction preservation. Fresh engine render review
+  is required before accepting the correction.
+- Latest kick diagnostics artifact 13947170566 shows aligned predicted/missed
+  candidate LFER medians: RealDrum 0.523/0.184 (16/281), WaveDrum 0.499/0.186
+  (65/299), TechnoDrum 0.437/0.209 (165/121). Peak-frequency distributions
+  overlap more strongly. No classifier threshold or production behavior was
+  changed; any adaptive LFER proposal still requires held-out track-level
+  precision/recall validation.
+
+## 2026-11-13 — project lifecycle management
+
+- Added `DELETE /api/projects/{project_id}` to remove a saved project and its related analysis-job, revision-history, and history-state records. Original uploads and per-job analysis output directories are cleaned up using server-generated stored names only.
+- Deletion is rejected with HTTP 409 while any analysis job is queued or running, preventing a background worker from racing filesystem cleanup or recreating orphaned output.
+- Added API regression coverage for successful deletion (database rows and files) and the active-job guard, plus a delete action for the currently loaded project in the web editor with explicit destructive-action confirmation and UI state reset.
+- This is a project-workflow increment; no PDF rendering, transcription classifier, or benchmark thresholds were changed.
+
+## 2026-11-13 — takeover: merged PR #10 and PR #11, branch cleanup started
+
+- Merged PR #10 (fix/pdf: trim silent tail measures before engraving) and
+  PR #11 (feat/projects: safe project deletion with 409 guard) into main
+  as one squashed snapshot: the PR branches conflicted with main on
+  append-at-same-anchor spots (PROJECT_LOG, USER_GUIDE, test file), so the
+  merges were resolved locally (keep both sides) instead of through the
+  GitHub merge button. Backend suite on the merged tree: 102 passed
+  (99 main + 1 PDF tail test + 2 delete tests). Frontend changes merged
+  without conflict; frontend CI runs on push.
+- PR #1 stays closed (do-not-merge): its evaluator/library work is already
+  in main in newer form. Salvage-only: scripts/audit_prediction_csv.py and
+  docs/REAL_AUDIO_EVALUATION.md, to cherry-pick later if wanted.
+- Branch state after this push: 8 stale branches remain to delete
+  (merged #2/#12/#13/#14, closed-unmerged #3/#7/#8/#9); they cannot be
+  deleted through the available GitHub tools, so deletion is a manual
+  GitHub step or a later cleanup. PR #15 (MusicXML explicit rests) and
+  Issue #5 (kick detection) are still in review/fix, not in this push.
+- Added docs/PROJECT_MANAGEMENT.md (one-branch-per-workstream, 7-day
+  stale rule, PROJECT_LOG as the single progress record) and
+  docs/TECH_RADAR.md (DrumScript / STRUM / ADTOF / Basic Pitch / Beat
+  This!). Monthly tech-watch cron drum-ai-studio-tech-watch is set
+  (1st of month, ~10:16).

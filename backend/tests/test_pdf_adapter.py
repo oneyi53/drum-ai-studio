@@ -80,6 +80,22 @@ def test_pdf_export_falls_back_when_verovio_font_resources_are_unavailable(monke
 
 
 
+def test_pdf_renderer_trims_silent_tail_measures_only():
+    score = ET.fromstring(
+        '<score-partwise><part id="P1">'
+        '<measure number="1"><note/></measure>'
+        '<measure number="2"><attributes/></measure>'
+        '<measure number="3"><attributes/><direction/></measure>'
+        '</part></score-partwise>'
+    )
+    removed = pdf_adapter._trim_trailing_empty_measures(score)
+    measures = score.findall("./part/measure")
+    assert removed == 2
+    assert len(measures) == 1
+    # Directional markings from the tail are not silently discarded.
+    assert measures[0].find("direction") is not None
+
+
 def test_verovio_pdf_system_breaks_group_four_or_five_measures():
     score = ET.fromstring(
         '<score-partwise><part id="P1">'

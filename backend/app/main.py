@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import sqlite3
 import uuid
 from collections.abc import Iterator
@@ -233,6 +234,53 @@ def list_projects(limit: int = 20) -> dict[str, list[dict[str, Any]]]:
             (bounded_limit,),
         ).fetchall()
     return {"projects": [dict(row) for row in rows]}
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project(project_id: str) -> dict[str, str]:
+    """Delete a local project, its job/history records, and generated files."""
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        project = connection.execute(
+            "SELECT stored_filename FROM projects WHERE id=?", (project_id,)
+        ).fetchone()
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found.")
+        active = connection.execute(
+            "SELECT 1 FROM analysis_jobs WHERE project_id=? "
+            "AND status IN ('queued', 'running') LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        if active:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete a project while its analysis job is active.",
+            )
+        job_ids = [
+            row["id"] for row in connection.execute(
+                "SELECT id FROM analysis_jobs WHERE project_id=?", (project_id,)
+            ).fetchall()
+        ]
+        connection.execute(
+            "DELETE FROM performance_revisions WHERE project_id=?", (project_id,)
+        )
+        connection.execute(
+            "DELETE FROM performance_history_state WHERE project_id=?", (project_id,)
+        )
+        connection.execute("DELETE FROM analysis_jobs WHERE project_id=?", (project_id,))
+        connection.execute("DELETE FROM projects WHERE id=?", (project_id,))
+
+    # Filesystem cleanup happens after the database transaction commits. Only
+    # server-generated names from the database are used to build these paths.
+    upload_path = (UPLOAD_DIR / project["stored_filename"]).resolve()
+    if upload_path.parent == UPLOAD_DIR.resolve():
+        upload_path.unlink(missing_ok=True)
+    analysis_root = ANALYSIS_DIR.resolve()
+    for job_id in job_ids:
+        job_path = (analysis_root / job_id).resolve()
+        if job_path.parent == analysis_root:
+            shutil.rmtree(job_path, ignore_errors=True)
+    return {"project_id": project_id, "status": "deleted"}
 
 
 @app.post("/api/projects", status_code=status.HTTP_201_CREATED)
