@@ -1054,3 +1054,12 @@ code or validation state changes; do not infer completion from plans.
 - Consolidated the previously separate PR #10 PDF-only silent-tail trim into this PR's PDF renderer. It removes measures after the last audible measure from the printable rendering only and preserves direction markings; the MusicXML download remains unchanged. Added the regression test for tail removal and direction preservation.
 - Fixed engine-validation scheduling: docs-only changes no longer trigger the expensive audio workflow, and runs for the same PR/ref share one concurrency group with cancellation of superseded runs. This prevents duplicate full audio evaluations for sequential commits.
 - The engine smoke and artifact-upload checks passed, but automated existence checks are not equivalent to manual visual acceptance of the PDF/PNG. The PDF layout still requires visual review.
+
+
+## 2026-11-13 — kick classifier track-isolated experiment harness
+
+- Audited the actual full-song DrumScript classifier source. Its kick decision is a fixed gate on the 200 ms onset slice: LFER >= 0.32 and peak frequency 40–140 Hz. The separate rudiment classifier has different gates and is not the production full-song path.
+- Extended the IDMT kick diagnostic to retain feature rows for every classified onset candidate, including non-kick candidates, and label candidates with chronological one-to-one matching against annotated kick onsets at the configured tolerance.
+- Added a leave-one-track-out LFER threshold sweep. Each held-out track is scored using a threshold selected only from the other tracks; the frequency band remains fixed. The report includes held-out baseline and tuned TP/FP/FN, precision, recall, F1, and per-track selected thresholds.
+- This is an offline diagnostic experiment only. It does not change DrumScript production classification or claim an accuracy gain. A threshold change requires a consistent held-out improvement across subsets and review of low-tom/bass false positives.
+- The workflow will rerun the IDMT diagnostics on this instrumentation change. This is a targeted reason to run the dataset once: it creates the missing candidate-level evidence needed to choose the next classifier experiment, rather than repeating the old aggregate smoke test.
