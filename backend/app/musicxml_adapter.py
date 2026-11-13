@@ -13,15 +13,6 @@ from .drum_events import DrumInstrument, DrumPerformance, TempoChange
 from .midi_adapter import INSTRUMENT_TO_GM_NOTE
 
 DIVISIONS = 480
-NOTE_VALUES = (
-    (DIVISIONS, "quarter"),
-    (DIVISIONS // 2, "eighth"),
-    (DIVISIONS // 4, "16th"),
-    (DIVISIONS // 8, "32nd"),
-    (DIVISIONS // 16, "64th"),
-    (DIVISIONS // 32, "128th"),
-)
-
 DISPLAY: dict[DrumInstrument, tuple[str, int, str]] = {
     DrumInstrument.KICK: ("F", 4, "normal"),
     DrumInstrument.SNARE: ("C", 5, "normal"),
