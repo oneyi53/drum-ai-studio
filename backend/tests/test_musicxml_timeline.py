@@ -187,3 +187,25 @@ def test_empty_implicit_measure_is_valid():
     result = reconstruct_and_validate_measure(measure)
     assert result["implicit"] is True
     assert result["voice_events"] == {}
+
+
+def test_namespaced_musicxml_is_supported():
+    xml = """<score-partwise xmlns="http://www.musicxml.org/ns/musicxml">
+      <part id="P1"><measure number="1">
+        <attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+        <note><duration>4</duration><voice>1</voice></note>
+      </measure></part>
+    </score-partwise>"""
+    result = reconstruct_and_validate_musicxml(xml)
+    assert result[0]["part"] == "P1"
+    assert result[0]["voice_events"][("1", "1")][0]["duration"] == Fraction(1)
+
+
+def test_rest_cannot_be_used_as_chord_parent():
+    measure = parse("""<measure>
+      <attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><rest/><duration>4</duration><voice>1</voice></note>
+      <note><chord/><duration>4</duration><voice>1</voice></note>
+    </measure>""")
+    with pytest.raises(ValueError, match="rest cannot be the parent"):
+        reconstruct_and_validate_measure(measure, divisions=4)
