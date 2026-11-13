@@ -1,3 +1,11 @@
+## 2026-11-13 — kick spectral-gate failure analysis
+
+- A second offline grouped sweep tested LFER, peak-frequency handling, and HFER together on the same 40-track IDMT candidate artifact. Leave-one-track-out validation selected LFER 0.09 or 0.11, an HFER ceiling of 0.80, and a peak-frequency rule that accepts the DC-dominated zero bin or 20–180 Hz.
+- Held-out candidate-level totals were TP=882, FP=176, FN=65 (precision 0.834, recall 0.931, F1 0.880). By subset, candidate-level precision/recall were RealDrum 92.9%/87.5%, WaveDrum 82.4%/92.3%, and TechnoDrum 77.3%/100%. There were 22 annotated kicks with no matched onset candidate, so the corresponding end-to-end recall ceiling-adjusted figure is 882/969 = 91.0%; these 22 remain onset-stage misses, not classifier misses.
+- The fixed 40–140 Hz gate excludes 50 matched TechnoDrum kicks whose measured peak is 172 Hz. WaveDrum also contains 27 matched kicks with peak_freq=0; inspection of upstream DrumScript shows peak frequency is the argmax of the mean STFT magnitude including the DC bin. A zero peak can therefore indicate DC-bin dominance, not a literal 0 Hz kick fundamental. Among these zero-peak candidates, HFER median was 0.59 for annotated kicks versus 0.90 for negatives.
+- This points to two distinct classifier defects to investigate: a narrow fixed peak-frequency band and a peak-frequency feature that does not suppress DC. The HFER cap is a promising discriminator for the zero-peak cases, but this experiment reuses the same IDMT corpus and is not production validation. Do not deploy the proposed rule yet; next calculate DC-suppressed spectral features from the raw onset slices and test tom/bass false positives on independent audio.
+- These numbers are exploratory grouped cross-validation over the existing candidate artifact, not a new CI run and not a change to DrumScript inference.
+
 ## 2026-11-13 — cross-subset kick threshold validation
 
 - The latest IDMT diagnostic artifacts evaluated 14 RealDrum, 15 WaveDrum,
