@@ -755,3 +755,53 @@ def test_project_bundle_rejects_unsupported_pdf_layout(client):
         f"/api/projects/{uploaded['id']}/bundle?measures_per_system=6"
     )
     assert response.status_code == 422
+
+
+def test_delete_project_removes_database_records_and_files(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=3,
+        events=[DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK)],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "engine-output.bin").write_bytes(b"generated")
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    created = client.post(f"/api/projects/{uploaded['id']}/analyze")
+    assert created.status_code == 202
+    job_id = created.json()["job_id"]
+    upload_path = main.UPLOAD_DIR / f"{uploaded['id']}.wav"
+    analysis_path = main.ANALYSIS_DIR / job_id
+    assert upload_path.is_file()
+    assert analysis_path.is_dir()
+
+    deleted = client.delete(f"/api/projects/{uploaded['id']}")
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "deleted"
+    assert client.get("/api/projects").json()["projects"] == []
+    assert client.get(f"/api/analysis-jobs/{job_id}").status_code == 404
+    assert not upload_path.exists()
+    assert not analysis_path.exists()
+
+
+def test_delete_project_rejects_active_analysis(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    monkeypatch.setattr(main, "run_analysis_job", lambda job_id: None)
+    started = client.post(f"/api/projects/{uploaded['id']}/analyze")
+    assert started.status_code == 202
+
+    deleted = client.delete(f"/api/projects/{uploaded['id']}")
+    assert deleted.status_code == 409
+    assert client.get("/api/projects").json()["projects"][0]["id"] == uploaded["id"]
