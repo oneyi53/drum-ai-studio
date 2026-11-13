@@ -3,8 +3,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import sqlite3
 import shutil
+import sqlite3
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
