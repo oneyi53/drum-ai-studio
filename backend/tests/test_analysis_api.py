@@ -809,7 +809,7 @@ def test_batch_update_requires_time_offset_or_instrument(client):
     assert response.status_code == 422
 
 
-def test_musicxml_and_pdf_exports_report_unrepresentable_rhythm_as_422(client, monkeypatch):
+def test_musicxml_and_pdf_exports_preserve_irregular_rhythm(client, monkeypatch):
     uploaded = client.post(
         "/api/projects",
         files={"audio": ("irregular.wav", b"audio-bytes", "audio/wav")},
