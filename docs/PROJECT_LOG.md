@@ -1010,6 +1010,34 @@ code or validation state changes; do not infer completion from plans.
 - Artifact run commit is f100c55b6bed2045b8598c7859fe4f51cd69eadc, older than current integration head. No production code changed in this increment. PR #4 remains open and unmerged.
 
 
+## 2026-11-13 — timeline cross-lane editing
+
+- Fixed a functional mismatch in the piano-roll-style timeline: vertical pointer drags previously tracked the destination lane visually but only persisted horizontal time offsets, so a drum hit could not actually change instrument by dragging it to another lane.
+- Extended the batch event API to accept an optional target instrument independently of an optional time offset. Selected events can now be reassigned to a drum lane, shifted in time, or both in one atomic history revision; edits retain velocity and are marked manual/corrected.
+- Updated timeline pointer-up handling to persist the destination lane as well as time movement, and to allow a purely vertical move with zero time offset.
+- Added API regression tests for instrument reassignment preserving event timing/velocity and for rejecting empty batch edits.
+- No transcription classifier, benchmark thresholds, or PDF code changed.
+
+
+## 2026-11-13 — MusicXML shared-cursor validation slice
+
+- Started a mainline-based implementation slice after merging the timeline cross-lane editor fix.
+- Added a MusicXML measure reconstructor that interprets `backup` and `forward` against the document-order shared cursor, resolves chord tones to their preceding non-chord onset, and validates non-overlapping events by (staff, voice).
+- Tracks cursor positions as exact quarter-note fractions so a `divisions` change within a measure does not silently rescale earlier offsets; carries divisions and time signatures across measures in score-partwise documents.
+- Adds regression coverage for 4/4, 6/8, additive meters, interleaved voices/staves, chord parent constraints, cursor underflow, overlap, overflow, and invalid durations.
+- This slice validates existing MusicXML structure only. It does not yet change the event-to-MusicXML exporter to generate complete rests, dotted/tied durations, tuplets, or beat-aware beams, and it does not claim PDF visual acceptance. CI validation is pending.
+
+
+- Follow-up validation: the first CI pass exposed two test-fixture/namespace-handling defects; both were corrected. The current backend CI reports 93 passed and Ruff clean, and the paired frontend CI is green. A regression now runs the validator against actual output from `performance_to_musicxml()`, not only hand-authored XML. PR #13 remains a validation-only slice; exporter notation semantics and PDF visual acceptance are still outstanding.
+
+
+## 2026-11-13 — MusicXML note-value semantics validation
+
+- Added an opt-in strict validator for MusicXML note `duration`, `type`, dot count, and `time-modification` ratios. The calculation uses exact fractions in quarter-note units.
+- Added coverage for dotted and double-dotted values, triplet ratios, invalid tuplets, missing note types, and strict validation of actual output from the existing exporter.
+- Kept strict validation opt-in to avoid silently breaking existing exports while the exporter is being upgraded to emit rests and duration fragments in a later slice.
+- CI on the implementation commit: backend 99 tests passed and Ruff clean; frontend checks passed. This slice validates notation consistency but does not yet change exporter output or claim PDF visual acceptance.
+
 ## 2026-11-13 — PDF visual inspection and silent-tail correction
 
 - Manually inspected the PDF/PNG from successful engine run 43222194461
