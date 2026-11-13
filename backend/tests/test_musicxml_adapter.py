@@ -87,7 +87,7 @@ def test_meter_aware_rest_decomposition_preserves_6_8_grouping():
     ]
 
 
-def test_musicxml_export_rejects_unrepresentable_internal_onset_gap():
+def test_musicxml_export_preserves_irregular_internal_gap_with_forward_skip():
     performance = DrumPerformance(
         duration_seconds=1.0,
         tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
@@ -96,10 +96,11 @@ def test_musicxml_export_rejects_unrepresentable_internal_onset_gap():
             DrumEvent(time_seconds=0.15, instrument=DrumInstrument.KICK),
         ],
     )
-    import pytest
-
-    with pytest.raises(ValueError, match="quantize the performance"):
-        performance_to_musicxml(performance)
+    root = ET.fromstring(performance_to_musicxml(performance))
+    assert any(
+        forward.findtext("duration") == "24"
+        for forward in root.findall(".//forward")
+    )
 
 
 def test_sparse_voice_uses_three_four_meter_boundaries():
