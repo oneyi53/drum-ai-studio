@@ -274,10 +274,90 @@ def _musicxml_children(parent: ET.Element, name: str) -> list[ET.Element]:
     return [item for item in parent if _musicxml_local_name(item.tag) == name]
 
 
+_NOTE_TYPE_QUARTERS = {
+    "maxima": Fraction(32),
+    "long": Fraction(16),
+    "breve": Fraction(8),
+    "whole": Fraction(4),
+    "half": Fraction(2),
+    "quarter": Fraction(1),
+    "eighth": Fraction(1, 2),
+    "16th": Fraction(1, 4),
+    "32nd": Fraction(1, 8),
+    "64th": Fraction(1, 16),
+    "128th": Fraction(1, 32),
+    "256th": Fraction(1, 64),
+    "512th": Fraction(1, 128),
+    "1024th": Fraction(1, 256),
+}
+
+
+def validate_note_notation(
+    note_elem: ET.Element, divisions: int = DIVISIONS
+) -> dict[str, object]:
+    """Check that MusicXML duration matches type, dots, and tuplet ratio."""
+    if divisions <= 0:
+        raise ValueError("divisions must be positive")
+
+    duration_elem = _musicxml_child(note_elem, "duration")
+    type_elem = _musicxml_child(note_elem, "type")
+    if duration_elem is None or not duration_elem.text:
+        raise ValueError("note/duration must be present")
+    if type_elem is None or not type_elem.text:
+        raise ValueError("note/type must be present")
+
+    try:
+        duration_units = int(duration_elem.text.strip())
+    except ValueError as exc:
+        raise ValueError("note/duration must be an integer") from exc
+    if duration_units <= 0:
+        raise ValueError("note/duration must be positive")
+
+    note_type = type_elem.text.strip()
+    if note_type not in _NOTE_TYPE_QUARTERS:
+        raise ValueError(f"unsupported MusicXML note type: {note_type}")
+    dots = len(_musicxml_children(note_elem, "dot"))
+    base_duration = _NOTE_TYPE_QUARTERS[note_type]
+    dotted_factor = Fraction(2 ** (dots + 1) - 1, 2**dots)
+    notated_duration = base_duration * dotted_factor
+
+    time_modification = _musicxml_child(note_elem, "time-modification")
+    actual_notes = normal_notes = 1
+    if time_modification is not None:
+        actual_elem = _musicxml_child(time_modification, "actual-notes")
+        normal_elem = _musicxml_child(time_modification, "normal-notes")
+        if actual_elem is None or normal_elem is None:
+            raise ValueError("time-modification requires actual-notes and normal-notes")
+        try:
+            actual_notes = int(actual_elem.text or "")
+            normal_notes = int(normal_elem.text or "")
+        except ValueError as exc:
+            raise ValueError("tuplet note counts must be integers") from exc
+        if actual_notes <= 0 or normal_notes <= 0:
+            raise ValueError("tuplet note counts must be positive")
+
+    expected_duration = notated_duration * Fraction(normal_notes, actual_notes)
+    actual_duration = Fraction(duration_units, divisions)
+    if actual_duration != expected_duration:
+        raise ValueError(
+            f"note duration/type mismatch: duration={actual_duration} quarters, "
+            f"type={note_type}, dots={dots}, tuplet={normal_notes}:{actual_notes} "
+            f"implies {expected_duration} quarters"
+        )
+    return {
+        "duration_quarters": actual_duration,
+        "type": note_type,
+        "dots": dots,
+        "actual_notes": actual_notes,
+        "normal_notes": normal_notes,
+    }
+
+
 def reconstruct_and_validate_measure(
     measure_elem: ET.Element,
     time_sig: tuple[int, int] | None = None,
     divisions: int = DIVISIONS,
+    validate_notation: bool = False,
 ) -> dict[str, object]:
     """Reconstruct one MusicXML measure with its document-order shared cursor.
 
@@ -355,6 +435,8 @@ def reconstruct_and_validate_measure(
             _musicxml_child(child, "duration"), "note/duration"
         )
         duration = Fraction(duration_units, effective_divisions)
+        if validate_notation:
+            validate_note_notation(child, effective_divisions)
         voice_elem, staff_elem = _musicxml_child(child, "voice"), _musicxml_child(child, "staff")
         voice = (
             voice_elem.text.strip()
@@ -471,7 +553,9 @@ def reconstruct_and_validate_measure(
     }
 
 
-def reconstruct_and_validate_musicxml(xml_text: str) -> list[dict[str, object]]:
+def reconstruct_and_validate_musicxml(
+    xml_text: str, *, validate_notation: bool = False
+) -> list[dict[str, object]]:
     """Validate every measure in a score-partwise MusicXML document."""
     try:
         root = ET.fromstring(xml_text)
@@ -489,6 +573,7 @@ def reconstruct_and_validate_musicxml(xml_text: str) -> list[dict[str, object]]:
                 measure,
                 time_sig=effective_time,
                 divisions=effective_divisions,
+                validate_notation=validate_notation,
             )
             effective_divisions = int(result["divisions"])
             effective_time = result["time_signature"]
