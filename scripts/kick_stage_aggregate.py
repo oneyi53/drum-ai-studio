@@ -32,7 +32,7 @@ def main() -> None:
     result = {
         "method": "leave-one-track-out; train on all other tracks across all IDMT subsets",
         "subsets": subset_summaries,
-        "tracks_evaluated": len({row["track"] for row in rows}),
+        "tracks_evaluated": len({row.get("track_group", row["track"]) for row in rows}),
         "candidate_feature_rows": len(rows),
         "global_track_isolated_lfer_sweep": leave_one_track_out_sweep(rows),
         "global_dc_suppressed_track_isolated_sweep": leave_one_track_out_dc_suppressed_sweep(rows),
