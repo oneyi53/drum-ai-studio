@@ -262,6 +262,18 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     ) + "\n"
 
 
+def _musicxml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _musicxml_child(parent: ET.Element, name: str) -> ET.Element | None:
+    return next((item for item in parent if _musicxml_local_name(item.tag) == name), None)
+
+
+def _musicxml_children(parent: ET.Element, name: str) -> list[ET.Element]:
+    return [item for item in parent if _musicxml_local_name(item.tag) == name]
+
+
 def reconstruct_and_validate_measure(
     measure_elem: ET.Element,
     time_sig: tuple[int, int] | None = None,
@@ -296,15 +308,15 @@ def reconstruct_and_validate_measure(
 
     for child in measure_elem:
         if child.tag == "attributes":
-            div_elem = child.find("divisions")
+            div_elem = _musicxml_child(child, "divisions")
             if div_elem is not None:
                 effective_divisions = parse_positive_integer(
                     div_elem, "attributes/divisions"
                 )
-            time_elem = child.find("time")
+            time_elem = _musicxml_child(child, "time")
             if time_elem is not None:
-                beats_elem = time_elem.find("beats")
-                beat_type_elem = time_elem.find("beat-type")
+                beats_elem = _musicxml_child(time_elem, "beats")
+                beat_type_elem = _musicxml_child(time_elem, "beat-type")
                 beats_text = beats_elem.text.strip() if beats_elem is not None and beats_elem.text else ""
                 try:
                     numerator = sum(int(part) for part in beats_text.split("+"))
@@ -320,7 +332,7 @@ def reconstruct_and_validate_measure(
 
         if child.tag in {"backup", "forward"}:
             raw_duration = parse_positive_integer(
-                child.find("duration"), f"{child.tag}/duration"
+                _musicxml_child(child, "duration"), f"{child.tag}/duration"
             )
             movement = Fraction(raw_duration, effective_divisions)
             if child.tag == "backup":
@@ -342,7 +354,7 @@ def reconstruct_and_validate_measure(
             child.find("duration"), "note/duration"
         )
         duration = Fraction(duration_units, effective_divisions)
-        voice_elem, staff_elem = child.find("voice"), child.find("staff")
+        voice_elem, staff_elem = _musicxml_child(child, "voice"), _musicxml_child(child, "staff")
         voice = (
             voice_elem.text.strip()
             if voice_elem is not None and voice_elem.text
@@ -353,14 +365,16 @@ def reconstruct_and_validate_measure(
             if staff_elem is not None and staff_elem.text
             else "1"
         )
-        is_chord = child.find("chord") is not None
-        is_rest = child.find("rest") is not None
+        is_chord = _musicxml_child(child, "chord") is not None
+        is_rest = _musicxml_child(child, "rest") is not None
         if is_chord and is_rest:
             raise ValueError("a chord tone cannot also be a rest")
 
         if is_chord:
             if last_note is None:
                 raise ValueError("chord tone has no preceding non-chord note")
+            if last_note["is_rest"]:
+                raise ValueError("a rest cannot be the parent of a chord tone")
             if last_note["voice"] != voice or last_note["staff"] != staff:
                 raise ValueError("chord tone voice/staff does not match its parent")
             if last_note["duration"] != duration:
@@ -462,14 +476,14 @@ def reconstruct_and_validate_musicxml(xml_text: str) -> list[dict[str, object]]:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
         raise ValueError(f"invalid MusicXML: {exc}") from exc
-    if root.tag != "score-partwise":
+    if _musicxml_local_name(root.tag) != "score-partwise":
         raise ValueError("MusicXML root must be score-partwise")
 
     results: list[dict[str, object]] = []
-    for part_index, part in enumerate(root.findall("part"), start=1):
+    for part_index, part in enumerate(_musicxml_children(root, "part"), start=1):
         effective_divisions = DIVISIONS
         effective_time: tuple[int, int] | None = None
-        for measure_index, measure in enumerate(part.findall("measure"), start=1):
+        for measure_index, measure in enumerate(_musicxml_children(part, "measure"), start=1):
             result = reconstruct_and_validate_measure(
                 measure,
                 time_sig=effective_time,
