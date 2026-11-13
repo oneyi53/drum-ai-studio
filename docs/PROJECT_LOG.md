@@ -1008,3 +1008,23 @@ code or validation state changes; do not infer completion from plans.
 - Downloaded and visually inspected CI artifact 13942911556 from run 43212702034. The PNG is 1404x993 and shows the actual defect: the first system is rendered near the top, then a second almost-empty percussion staff appears below it, leaving most of the landscape page blank. This is concrete evidence that the PDF layout is not yet acceptable.
 - Added this artifact reproduction to Issue #6 and asked Gemini to create a regression that fails on the extra near-empty system, then attach before/after PDF and PNG renders with the actual Verovio version/options; comment 6823850692.
 - Artifact run commit is f100c55b6bed2045b8598c7859fe4f51cd69eadc, older than current integration head. No production code changed in this increment. PR #4 remains open and unmerged.
+
+
+## 2026-11-13 — PDF visual inspection and silent-tail correction
+
+- Manually inspected the PDF/PNG from successful engine run 43222194461
+  (artifact 13946229769). Notation and tempo are legible and horizontal score
+  coverage improved, but the render still contains a nearly empty final
+  staff/system and substantial lower-page whitespace. Automated ink bounds
+  alone were insufficient for visual acceptance.
+- Added a PDF-only trim of measures after the last measure containing a note,
+  preserving direction markings from removed tail measures. Editable MusicXML
+  remains unchanged and retains full duration. Added regression coverage for
+  silent-tail removal and direction preservation. Fresh engine render review
+  is required before accepting the correction.
+- Latest kick diagnostics artifact 13947170566 shows aligned predicted/missed
+  candidate LFER medians: RealDrum 0.523/0.184 (16/281), WaveDrum 0.499/0.186
+  (65/299), TechnoDrum 0.437/0.209 (165/121). Peak-frequency distributions
+  overlap more strongly. No classifier threshold or production behavior was
+  changed; any adaptive LFER proposal still requires held-out track-level
+  precision/recall validation.
