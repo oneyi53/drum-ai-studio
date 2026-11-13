@@ -92,7 +92,7 @@ jobs:
           python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset RealDrum --limit 15 --output /tmp/kick-diagnostics/realdrum.json
           python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset WaveDrum --limit 15 --output /tmp/kick-diagnostics/wavedrum.json
           python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset TechnoDrum --limit 15 --output /tmp/kick-diagnostics/technodrum.json
-          python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset all --limit 15 --output /tmp/kick-diagnostics/all-subsets.json
+          python "$GITHUB_WORKSPACE/scripts/kick_stage_aggregate.py" --input-dir /tmp/kick-diagnostics --output /tmp/kick-diagnostics/all-subsets.json
       - name: Upload IDMT benchmark metrics
         if: always()
         uses: actions/upload-artifact@v4
