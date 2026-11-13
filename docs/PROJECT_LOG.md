@@ -1,3 +1,30 @@
+## 2026-11-13 — cross-subset kick threshold validation
+
+- The latest IDMT diagnostic artifacts evaluated 14 RealDrum, 15 WaveDrum,
+  and 11 TechnoDrum tracks (2,619 feature-bearing candidate events and 959
+  reference-aligned kick candidates). The existing full-song rule (LFER >=
+  0.32 with a 40–140 Hz peak band) achieved pooled candidate-level F1 0.402.
+- An additional offline leave-one-track-out experiment pooled all three
+  subsets and selected the LFER threshold using only the other tracks. Its
+  held-out aggregate was TP=812, FP=177, FN=135 (precision 0.821, recall
+  0.857, F1 0.839). By subset, held-out recall/precision were RealDrum
+  89.2%/90.8%, WaveDrum 85.4%/81.0%, and TechnoDrum 82.5%/75.4%.
+- This is promising evidence that the fixed 0.32 LFER gate is too strict,
+  but it is still an offline feature-rule experiment, not a production
+  classifier change. False positives increased, and some individual tracks
+  remain difficult. Do not deploy a lower threshold until negative-event
+  errors (especially tom/bass overlap) and an independent evaluation split
+  are reviewed.
+- Extended the diagnostics artifact to report a second leave-one-track-out
+  sweep trained across the other IDMT subsets. This explicitly tests whether
+  a threshold transfers between drum-kit domains rather than tuning only
+  within each subset. CI validation is pending for this instrumentation.
+- The engine-validation job's final API-to-engine smoke failed for a separate
+  PDF visual gate: notation ink occupied 13.4% of the page, below the 15%
+  minimum. Earlier engine tests, IDMT diagnostics, and repository MP3 smoke
+  tests completed; backend and frontend CI passed. This PDF issue is not a
+  kick-classification failure.
+ 
 ## 2026-11-12 — review of revised rhythmic-beaming implementation proposal
 
 - Reviewed the newly supplied `process_measure_rhythm_and_beams` patch and
