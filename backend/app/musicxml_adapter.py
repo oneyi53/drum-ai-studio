@@ -699,9 +699,13 @@ def reconstruct_and_validate_measure(
                     f"overlapping events in staff {staff}, voice {voice} at {onset}"
                 )
             if end > capacity:
+                stream_detail = [
+                    (item["onset"], item["duration"], item["is_rest"], item["is_chord"])
+                    for item in ordered
+                ]
                 raise ValueError(
                     f"staff {staff}, voice {voice} overflow: "
-                    f"extent {end} exceeds capacity {capacity}"
+                    f"extent {end} exceeds capacity {capacity}; events={stream_detail}"
                 )
             previous_onset = onset
             previous_end = end
