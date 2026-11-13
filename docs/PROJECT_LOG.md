@@ -1124,3 +1124,9 @@ code or validation state changes; do not infer completion from plans.
 - Added a reproducible second operating-point evaluation to the existing candidate-feature diagnostic: each held-out track is excluded from threshold selection, and the training fold first filters candidate LFER/HFER thresholds to those meeting a configurable minimum training precision (currently 0.85), then selects the best F1 among eligible thresholds. If a fold cannot meet the floor, the artifact records an explicit fallback instead of silently claiming the constraint was met.
 - The same precision-guarded sweep is now emitted per subset and across all subsets, including per-track selected thresholds, training precision, fallback flags, and held-out metrics. No scikit-learn dependency or production classifier change is introduced.
 - Prior exploratory calculation on the saved 2,619-candidate artifact suggested this operating point could reduce false positives while retaining roughly 90% recall; the new committed implementation must reproduce that result in Engine Validation before it is treated as verified. Runs 43421128261 (backend), 43421128525 (CI), and 43421128350 (Engine Validation) were triggered by the implementation and are pending at log update time.
+
+## 2026-11-13 — development handoff
+
+- Added `docs/HANDOFF.md` as the current consolidated handover: project goals, implemented capabilities, open quality risks, kick-classifier evidence and its limitations, current PR/Engine Validation state, next priorities, technical boundaries, and key file entry points.
+- Current handoff commit: `50a99a6fe0304711eeb623b326951ce3abed8ec1`.
+- At handoff time PR #15 remains Draft and Engine Validation run `43421181480` remains in progress; precision-guarded results are not yet verified by that run.
