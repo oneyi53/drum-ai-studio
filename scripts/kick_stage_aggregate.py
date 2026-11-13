@@ -36,6 +36,9 @@ def main() -> None:
         "candidate_feature_rows": len(rows),
         "global_track_isolated_lfer_sweep": leave_one_track_out_sweep(rows),
         "global_dc_suppressed_track_isolated_sweep": leave_one_track_out_dc_suppressed_sweep(rows),
+        "global_dc_suppressed_precision_guarded_sweep": leave_one_track_out_dc_suppressed_sweep(
+            rows, min_train_precision=0.85
+        ),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
@@ -55,6 +58,14 @@ def main() -> None:
         "KICK_GLOBAL_DC_SUPPRESSED_SWEEP "
         f"baseline_f1={dc_baseline['f1']:.3f} tuned_f1={dc_tuned['f1']:.3f} "
         f"tuned_recall={dc_tuned['recall']:.3f} tuned_precision={dc_tuned['precision']:.3f}"
+    )
+    guarded = result["global_dc_suppressed_precision_guarded_sweep"]
+    metrics = guarded["tuned_held_out"]
+    print(
+        "KICK_GLOBAL_DC_PRECISION_GUARDED_SWEEP "
+        f"floor=0.85 f1={metrics['f1']:.3f} recall={metrics['recall']:.3f} "
+        f"precision={metrics['precision']:.3f} "
+        f"fallback_folds={guarded['folds_using_precision_fallback']}"
     )
 
 
