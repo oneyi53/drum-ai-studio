@@ -70,6 +70,8 @@ def _add_note(
     *,
     chord: bool,
     dots: int = 0,
+    actual_notes: int = 1,
+    normal_notes: int = 1,
 ) -> None:
     step, octave, notehead = DISPLAY[instrument]
     note = ET.SubElement(measure, "note")
@@ -84,6 +86,10 @@ def _add_note(
     _add_text(note, "type", note_type)
     for _ in range(dots):
         ET.SubElement(note, "dot")
+    if actual_notes != normal_notes:
+        modification = ET.SubElement(note, "time-modification")
+        _add_text(modification, "actual-notes", actual_notes)
+        _add_text(modification, "normal-notes", normal_notes)
     _add_text(note, "stem", "up")
     _add_text(note, "notehead", notehead)
     play = ET.SubElement(note, "play")
@@ -207,40 +213,31 @@ def decompose_meter_aware_gap(
 
 
 def _choose_hit_duration(
-    gap: int,
-    onset: int,
-    numerator: int,
-    denominator: int,
-    *,
-    has_next_hit: bool,
-    divisions: int = DIVISIONS,
-) -> tuple[int, str, int]:
-    """Choose one notated hit value; any internal silence must be exactly spellable."""
+    gap: int, divisions: int = DIVISIONS
+) -> tuple[int, str, int, int, int]:
+    """Choose one standard hit value, using a small tuplet below 1/128th."""
     if gap <= 0:
         raise ValueError("consecutive hits must have a positive time gap")
     candidates = [
         value for value in _rhythmic_note_values(divisions)
         if value[0] <= min(gap, divisions)
     ]
-    for candidate in candidates:
-        if not has_next_hit:
-            return candidate
-        try:
-            decompose_meter_aware_gap(
-                onset + candidate[0],
-                onset + gap,
-                numerator,
-                denominator,
-                divisions,
-            )
-        except ValueError:
-            continue
-        return candidate
-    raise ValueError(
-        f"onset gap of {gap} divisions at {onset} cannot be notated exactly "
-        f"in {numerator}/{denominator}; quantize the performance to a supported "
-        "subdivision before exporting MusicXML or PDF"
-    )
+    if candidates:
+        duration, note_type, dots = candidates[0]
+        return duration, note_type, dots, 1, 1
+
+    # At this resolution, sub-128th gaps are represented as an exact tuplet
+    # rather than stretching a hit beyond the next onset.
+    smallest_type = "128th"
+    smallest_ticks = Fraction(divisions, 32)
+    if smallest_ticks.denominator != 1:
+        raise ValueError(
+            f"divisions={divisions} cannot represent a positive sub-128th hit"
+        )
+    gcd_value = math.gcd(smallest_ticks.numerator, gap)
+    actual_notes = smallest_ticks.numerator // gcd_value
+    normal_notes = gap // gcd_value
+    return gap, smallest_type, 0, actual_notes, normal_notes
 
 
 def performance_to_musicxml(performance: DrumPerformance) -> str:
