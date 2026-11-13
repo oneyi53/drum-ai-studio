@@ -780,7 +780,9 @@ def test_batch_update_can_reassign_instrument_without_moving_time(client, monkey
     project_id = uploaded["id"]
     started = client.post(f"/api/projects/{project_id}/analyze")
     job_id = started.json()["job_id"]
-    before = client.get(f"/api/projects/{project_id}/performance?job_id={job_id}").json()
+    before_response = client.get(f"/api/projects/{project_id}/performance")
+    assert before_response.status_code == 200
+    before = before_response.json()["performance"]
     kick_id = next(event["id"] for event in before["events"] if event["instrument"] == "kick")
 
     response = client.patch(
