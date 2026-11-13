@@ -215,7 +215,7 @@ def main() -> None:
         description="Measure kick-reference recall before and after DrumScript event classification."
     )
     parser.add_argument("--root", type=Path, required=True)
-    parser.add_argument("--subset", choices=("RealDrum", "WaveDrum", "TechnoDrum"), required=True)
+    parser.add_argument("--subset", choices=("RealDrum", "WaveDrum", "TechnoDrum", "all"), required=True)
     parser.add_argument("--limit", type=int, default=15)
     parser.add_argument("--tolerance-ms", type=float, default=50.0)
     parser.add_argument("--output", type=Path, required=True)
@@ -224,7 +224,14 @@ def main() -> None:
     if args.limit < 1 or args.tolerance_ms < 0:
         parser.error("--limit must be positive and --tolerance-ms non-negative")
 
-    files = find_mix_files(args.root, args.subset)[: args.limit]
+    if args.subset == "all":
+        files = [
+            path
+            for subset in ("RealDrum", "WaveDrum", "TechnoDrum")
+            for path in find_mix_files(args.root, subset)[: args.limit]
+        ]
+    else:
+        files = find_mix_files(args.root, args.subset)[: args.limit]
     if not files:
         parser.error(f"No IDMT mix files found for subset {args.subset}")
 
