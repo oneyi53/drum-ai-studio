@@ -779,7 +779,7 @@ def test_batch_update_can_reassign_instrument_without_moving_time(client, monkey
     monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
     project_id = uploaded["id"]
     started = client.post(f"/api/projects/{project_id}/analyze")
-    job_id = started.json()["job_id"]
+    assert started.status_code == 200
     before_response = client.get(f"/api/projects/{project_id}/performance")
     assert before_response.status_code == 200
     before = before_response.json()["performance"]
