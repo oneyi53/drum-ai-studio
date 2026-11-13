@@ -807,3 +807,34 @@ def test_batch_update_requires_time_offset_or_instrument(client):
         json={"event_ids": ["missing-event"]},
     )
     assert response.status_code == 422
+
+
+def test_musicxml_and_pdf_exports_report_unrepresentable_rhythm_as_422(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("irregular.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=1.0,
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=0.15, instrument=DrumInstrument.KICK),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
+
+    musicxml = client.get(f"/api/projects/{uploaded['id']}/musicxml")
+    pdf = client.get(f"/api/projects/{uploaded['id']}/pdf")
+    assert musicxml.status_code == 422
+    assert pdf.status_code == 422
+    assert "quantize" in musicxml.json()["detail"]
+    assert "quantize" in pdf.json()["detail"]
