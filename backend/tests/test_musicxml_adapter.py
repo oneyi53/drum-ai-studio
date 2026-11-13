@@ -139,3 +139,23 @@ def test_sparse_voice_uses_six_eight_dotted_quarter_pulse():
     assert [note.findtext("type") for note in voice_notes] == [
         "quarter", "eighth", "quarter"
     ]
+
+
+def test_sub_128th_hit_uses_exact_tuplet_duration():
+    performance = DrumPerformance(
+        duration_seconds=1.0,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=0.001, instrument=DrumInstrument.KICK),
+        ],
+    )
+    root = ET.fromstring(performance_to_musicxml(performance))
+    kick_notes = [
+        note for note in root.findall(".//measure/note")
+        if note.findtext("voice") == "1" and note.find("rest") is None
+    ]
+    assert kick_notes[0].findtext("duration") == "1"
+    assert kick_notes[0].findtext("type") == "128th"
+    assert kick_notes[0].findtext("time-modification/actual-notes") == "15"
+    assert kick_notes[0].findtext("time-modification/normal-notes") == "1"
