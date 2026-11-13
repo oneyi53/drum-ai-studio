@@ -94,6 +94,7 @@ class EventUpdateRequest(BaseModel):
 class EventBatchRequest(BaseModel):
     event_ids: list[str] = Field(min_length=1, max_length=5000)
     time_offset_seconds: float | None = None
+    instrument: DrumInstrument | None = None
 
 
 class EventDuplicateRequest(BaseModel):
@@ -652,8 +653,11 @@ def duplicate_events(project_id: str, payload: EventDuplicateRequest) -> dict[st
 
 @app.patch("/api/projects/{project_id}/events/batch")
 def batch_update_events(project_id: str, payload: EventBatchRequest) -> dict[str, Any]:
-    if payload.time_offset_seconds is None:
-        raise HTTPException(status_code=422, detail="time_offset_seconds must be provided.")
+    if payload.time_offset_seconds is None and payload.instrument is None:
+        raise HTTPException(
+            status_code=422,
+            detail="At least one of time_offset_seconds or instrument must be provided.",
+        )
     if len(set(payload.event_ids)) != len(payload.event_ids):
         raise HTTPException(status_code=422, detail="event_ids must be unique.")
     selected = set(payload.event_ids)
@@ -665,7 +669,11 @@ def batch_update_events(project_id: str, payload: EventBatchRequest) -> dict[str
             raise HTTPException(status_code=404, detail="One or more drum events were not found.")
         events = [
             event.model_copy(update={
-                "time_seconds": event.time_seconds + payload.time_offset_seconds,
+                **(
+                    {"time_seconds": event.time_seconds + payload.time_offset_seconds}
+                    if payload.time_offset_seconds is not None else {}
+                ),
+                **({"instrument": payload.instrument} if payload.instrument is not None else {}),
                 "source": "manual",
                 "manually_corrected": True,
             }) if event.id in selected else event
