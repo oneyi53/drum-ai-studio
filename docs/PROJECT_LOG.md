@@ -1037,3 +1037,12 @@ code or validation state changes; do not infer completion from plans.
 - Added coverage for dotted and double-dotted values, triplet ratios, invalid tuplets, missing note types, and strict validation of actual output from the existing exporter.
 - Kept strict validation opt-in to avoid silently breaking existing exports while the exporter is being upgraded to emit rests and duration fragments in a later slice.
 - CI on the implementation commit: backend 99 tests passed and Ruff clean; frontend checks passed. This slice validates notation consistency but does not yet change exporter output or claim PDF visual acceptance.
+
+
+## 2026-11-13 — Explicit MusicXML hits and rests
+
+- Reworked the exporter so a drum hit is no longer assigned the entire gap to the next hit as its note value. Hits use a single standard/dotted note value (capped at a quarter note); representable silent spans are emitted as explicit rests.
+- Added meter-aware rest grouping for 4/4, 3/4, 6/8, and common 7/8 groupings. Unspellable silent spans use exact MusicXML `forward` cursor skips instead of falsifying note values or shifting event onsets.
+- Very short sub-128th hit intervals are represented by exact `time-modification` ratios. Every generated score is checked by the strict duration/type/dot/tuplet validator.
+- PDF export performs the same MusicXML preflight before trying its fallback renderer, so the fallback cannot hide invalid notation.
+- API/exporter regressions cover sparse voices, explicit rests, irregular intervals, sub-128th tuplets, and 4/4, 3/4, and 6/8 timing. Latest standard CI: 106 backend tests passed, Ruff clean, frontend checks passed. DrumScript/IDMT engine validation is still running; do not mark the change fully accepted until that result is reviewed.
