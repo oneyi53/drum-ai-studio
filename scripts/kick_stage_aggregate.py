@@ -4,7 +4,10 @@ import argparse
 import json
 from pathlib import Path
 
-from kick_stage_diagnostics import leave_one_track_out_sweep
+from kick_stage_diagnostics import (
+    leave_one_track_out_dc_suppressed_sweep,
+    leave_one_track_out_sweep,
+)
 
 
 def main() -> None:
@@ -32,6 +35,7 @@ def main() -> None:
         "tracks_evaluated": len({row["track"] for row in rows}),
         "candidate_feature_rows": len(rows),
         "global_track_isolated_lfer_sweep": leave_one_track_out_sweep(rows),
+        "global_dc_suppressed_track_isolated_sweep": leave_one_track_out_dc_suppressed_sweep(rows),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
@@ -43,6 +47,14 @@ def main() -> None:
         f"tracks={result['tracks_evaluated']} candidates={len(rows)} "
         f"baseline_f1={baseline['f1']:.3f} tuned_f1={tuned['f1']:.3f} "
         f"tuned_recall={tuned['recall']:.3f} tuned_precision={tuned['precision']:.3f}"
+    )
+    dc_sweep = result["global_dc_suppressed_track_isolated_sweep"]
+    dc_baseline = dc_sweep["baseline_held_out"]
+    dc_tuned = dc_sweep["tuned_held_out"]
+    print(
+        "KICK_GLOBAL_DC_SUPPRESSED_SWEEP "
+        f"baseline_f1={dc_baseline['f1']:.3f} tuned_f1={dc_tuned['f1']:.3f} "
+        f"tuned_recall={dc_tuned['recall']:.3f} tuned_precision={dc_tuned['precision']:.3f}"
     )
 
 
