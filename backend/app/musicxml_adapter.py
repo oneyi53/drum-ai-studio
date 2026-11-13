@@ -78,6 +78,7 @@ def _add_note(
     note_type: str,
     *,
     chord: bool,
+    dots: int = 0,
 ) -> None:
     step, octave, notehead = DISPLAY[instrument]
     note = ET.SubElement(measure, "note")
@@ -90,11 +91,165 @@ def _add_note(
     _add_text(note, "duration", duration)
     _add_text(note, "voice", list(DrumInstrument).index(instrument) + 1)
     _add_text(note, "type", note_type)
+    for _ in range(dots):
+        ET.SubElement(note, "dot")
     _add_text(note, "stem", "up")
     _add_text(note, "notehead", notehead)
     play = ET.SubElement(note, "play")
     midi_velocity = ET.SubElement(play, "other-play", type="midi-velocity")
     midi_velocity.text = str(velocity)
+
+
+def _add_rest(
+    measure: ET.Element,
+    voice_number: int,
+    duration: int,
+    note_type: str,
+    dots: int = 0,
+) -> None:
+    note = ET.SubElement(measure, "note")
+    ET.SubElement(note, "rest")
+    _add_text(note, "duration", duration)
+    _add_text(note, "voice", voice_number)
+    _add_text(note, "type", note_type)
+    for _ in range(dots):
+        ET.SubElement(note, "dot")
+
+
+def _rhythmic_note_values(
+    divisions: int = DIVISIONS,
+) -> list[tuple[int, str, int]]:
+    if divisions <= 0:
+        raise ValueError("divisions must be positive")
+    values: list[tuple[int, str, int]] = []
+    for note_type, quarter_length in _NOTE_TYPE_QUARTERS.items():
+        for dots in range(3):
+            factor = Fraction(2 ** (dots + 1) - 1, 2**dots)
+            duration = Fraction(divisions) * quarter_length * factor
+            if duration.denominator == 1 and duration > 0:
+                values.append((duration.numerator, note_type, dots))
+    return sorted(set(values), key=lambda item: (item[0], -item[2]), reverse=True)
+
+
+def decompose_rhythmic_duration(
+    duration: int, divisions: int = DIVISIONS
+) -> list[tuple[int, str, int]]:
+    """Express an exact duration as the fewest standard/dotted note values."""
+    if duration <= 0:
+        raise ValueError("duration must be a positive integer")
+    candidates = _rhythmic_note_values(divisions)
+    best: list[list[tuple[int, str, int]] | None] = [None] * (duration + 1)
+    best[0] = []
+    for amount in range(1, duration + 1):
+        options = [
+            best[amount - value[0]] + [value]
+            for value in candidates
+            if value[0] <= amount and best[amount - value[0]] is not None
+        ]
+        if options:
+            best[amount] = min(
+                options,
+                key=lambda parts: (
+                    len(parts),
+                    sum(item[2] for item in parts),
+                    tuple(-item[0] for item in parts),
+                ),
+            )
+    if best[duration] is None:
+        raise ValueError(
+            f"duration {duration} cannot be represented at divisions={divisions}; "
+            "quantize the performance or correct the event timing before export"
+        )
+    return best[duration]
+
+
+def decompose_meter_aware_gap(
+    start: int,
+    end: int,
+    numerator: int,
+    denominator: int,
+    divisions: int = DIVISIONS,
+) -> list[tuple[int, str, int]]:
+    """Split a silent interval at meter-group boundaries before spelling rests."""
+    if start < 0 or end < start:
+        raise ValueError("gap must have a non-negative start and end after start")
+    if end == start:
+        return []
+    if numerator <= 0 or denominator <= 0 or divisions <= 0:
+        raise ValueError("meter values and divisions must be positive")
+    denominator_unit_numerator = divisions * 4
+    if denominator_unit_numerator % denominator:
+        raise ValueError("meter denominator does not produce an integral duration")
+    denominator_unit = denominator_unit_numerator // denominator
+
+    boundaries: list[int] | None = None
+    if denominator == 8 and numerator == 7:
+        boundaries = [0, 3 * denominator_unit, 5 * denominator_unit, 7 * denominator_unit]
+        bar_length = numerator * denominator_unit
+        group_size = 0
+    elif denominator == 8 and numerator > 3 and numerator % 3 == 0:
+        group_size = 3 * denominator_unit
+        bar_length = numerator * denominator_unit
+    elif numerator == 4 and denominator == 4:
+        group_size = 2 * divisions
+        bar_length = numerator * 4 * divisions // denominator
+    else:
+        group_size = denominator_unit
+        bar_length = numerator * denominator_unit
+
+    result: list[tuple[int, str, int]] = []
+    position = start
+    while position < end:
+        if boundaries is not None:
+            bar_position = position % bar_length
+            next_boundary = next(
+                (boundary for boundary in boundaries if boundary > bar_position),
+                bar_length,
+            )
+            chunk_end = min(end, position + next_boundary - bar_position)
+        else:
+            next_boundary = ((position // group_size) + 1) * group_size
+            chunk_end = min(end, next_boundary)
+        result.extend(decompose_rhythmic_duration(chunk_end - position, divisions))
+        position = chunk_end
+    return result
+
+
+def _choose_hit_duration(
+    gap: int,
+    onset: int,
+    numerator: int,
+    denominator: int,
+    *,
+    has_next_hit: bool,
+    divisions: int = DIVISIONS,
+) -> tuple[int, str, int]:
+    """Choose one notated hit value; any internal silence must be exactly spellable."""
+    if gap <= 0:
+        raise ValueError("consecutive hits must have a positive time gap")
+    candidates = [
+        value for value in _rhythmic_note_values(divisions)
+        if value[0] <= min(gap, divisions)
+    ]
+    for candidate in candidates:
+        if not has_next_hit:
+            return candidate
+        try:
+            decompose_meter_aware_gap(
+                onset + candidate[0],
+                onset + gap,
+                numerator,
+                denominator,
+                divisions,
+            )
+        except ValueError:
+            continue
+        return candidate
+    raise ValueError(
+        f"onset gap of {gap} divisions at {onset} cannot be notated exactly "
+        f"in {numerator}/{denominator}; quantize the performance to a supported "
+        "subdivision before exporting MusicXML or PDF"
+    )
 
 
 def performance_to_musicxml(performance: DrumPerformance) -> str:
