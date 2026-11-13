@@ -307,7 +307,8 @@ def reconstruct_and_validate_measure(
         return value
 
     for child in measure_elem:
-        if child.tag == "attributes":
+        child_name = _musicxml_local_name(child.tag)
+        if child_name == "attributes":
             div_elem = _musicxml_child(child, "divisions")
             if div_elem is not None:
                 effective_divisions = parse_positive_integer(
@@ -330,12 +331,12 @@ def reconstruct_and_validate_measure(
                 effective_time = (numerator, denominator)
             continue
 
-        if child.tag in {"backup", "forward"}:
+        if child_name in {"backup", "forward"}:
             raw_duration = parse_positive_integer(
-                _musicxml_child(child, "duration"), f"{child.tag}/duration"
+                _musicxml_child(child, "duration"), f"{child_name}/duration"
             )
             movement = Fraction(raw_duration, effective_divisions)
-            if child.tag == "backup":
+            if child_name == "backup":
                 cursor -= movement
                 if cursor < 0:
                     raise ValueError(
@@ -347,11 +348,11 @@ def reconstruct_and_validate_measure(
             last_note = None
             continue
 
-        if child.tag != "note":
+        if child_name != "note":
             continue
 
         duration_units = parse_positive_integer(
-            child.find("duration"), "note/duration"
+            _musicxml_child(child, "duration"), "note/duration"
         )
         duration = Fraction(duration_units, effective_divisions)
         voice_elem, staff_elem = _musicxml_child(child, "voice"), _musicxml_child(child, "staff")
