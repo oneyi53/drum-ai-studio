@@ -1026,3 +1026,6 @@ code or validation state changes; do not infer completion from plans.
 - Tracks cursor positions as exact quarter-note fractions so a `divisions` change within a measure does not silently rescale earlier offsets; carries divisions and time signatures across measures in score-partwise documents.
 - Adds regression coverage for 4/4, 6/8, additive meters, interleaved voices/staves, chord parent constraints, cursor underflow, overlap, overflow, and invalid durations.
 - This slice validates existing MusicXML structure only. It does not yet change the event-to-MusicXML exporter to generate complete rests, dotted/tied durations, tuplets, or beat-aware beams, and it does not claim PDF visual acceptance. CI validation is pending.
+
+
+- Follow-up validation: the first CI pass exposed two test-fixture/namespace-handling defects; both were corrected. The current backend CI reports 93 passed and Ruff clean, and the paired frontend CI is green. A regression now runs the validator against actual output from `performance_to_musicxml()`, not only hand-authored XML. PR #13 remains a validation-only slice; exporter notation semantics and PDF visual acceptance are still outstanding.
