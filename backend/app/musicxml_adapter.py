@@ -369,7 +369,12 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             if not notes:
                 continue
             voice_number += 1
+            instrument_voice = list(DrumInstrument).index(instrument) + 1
             if voice_number > 1:
+                if cursor != measure_duration:
+                    raise ValueError(
+                        f"voice {instrument_voice} ended at {cursor}, expected {measure_duration}"
+                    )
                 backup = ET.SubElement(measure, "backup")
                 _add_text(backup, "duration", cursor)
             cursor = 0
@@ -378,24 +383,35 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                 event, beat = notes[index]
                 onset = max(0, round((beat - start) * DIVISIONS))
                 if onset > cursor:
-                    forward = ET.SubElement(measure, "forward")
-                    _add_text(forward, "duration", onset - cursor)
-                    cursor = onset
+                    leading_rests = decompose_meter_aware_gap(
+                        cursor, onset, numerator, denominator, DIVISIONS
+                    )
+                    for rest_duration, rest_type, rest_dots in leading_rests:
+                        _add_rest(
+                            measure, instrument_voice, rest_duration, rest_type, rest_dots
+                        )
+                        cursor += rest_duration
+
                 group = []
                 while index < len(notes) and round((notes[index][1] - start) * DIVISIONS) == onset:
                     group.append(notes[index][0])
                     index += 1
+
+                has_next_hit = index < len(notes)
                 next_onset = (
                     round((notes[index][1] - start) * DIVISIONS)
-                    if index < len(notes)
-                    else round((end - start) * DIVISIONS)
+                    if has_next_hit
+                    else measure_duration
                 )
-                available_gap = max(1, next_onset - onset)
-                note_duration, note_type = next(
-                    ((duration, kind) for duration, kind in NOTE_VALUES if duration <= available_gap),
-                    (1, "128th"),
+                available_gap = next_onset - onset
+                note_duration, note_type, note_dots = _choose_hit_duration(
+                    available_gap,
+                    onset,
+                    numerator,
+                    denominator,
+                    has_next_hit=has_next_hit,
+                    divisions=DIVISIONS,
                 )
-                note_duration = min(note_duration, available_gap)
                 for chord_index, grouped_event in enumerate(group):
                     _add_note(
                         measure,
@@ -404,8 +420,24 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                         note_duration,
                         note_type,
                         chord=chord_index > 0,
+                        dots=note_dots,
                     )
                 cursor = onset + note_duration
+
+                if has_next_hit and cursor < next_onset:
+                    gap_rests = decompose_meter_aware_gap(
+                        cursor, next_onset, numerator, denominator, DIVISIONS
+                    )
+                    for rest_duration, rest_type, rest_dots in gap_rests:
+                        _add_rest(
+                            measure, instrument_voice, rest_duration, rest_type, rest_dots
+                        )
+                        cursor += rest_duration
+                elif cursor < measure_duration:
+                    forward = ET.SubElement(measure, "forward")
+                    _add_text(forward, "duration", measure_duration - cursor)
+                    cursor = measure_duration
+
             if cursor < measure_duration:
                 forward = ET.SubElement(measure, "forward")
                 _add_text(forward, "duration", measure_duration - cursor)
