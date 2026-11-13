@@ -1,8 +1,8 @@
 ## 2026-11-13 — cross-subset kick threshold validation
 
 - The latest IDMT diagnostic artifacts evaluated 14 RealDrum, 15 WaveDrum,
-  and 11 TechnoDrum tracks (2,619 feature-bearing candidate events and 959
-  reference-aligned kick candidates). The existing full-song rule (LFER >=
+  and 11 TechnoDrum tracks (2,619 feature-bearing candidate events and 969
+  annotated reference kick events (947 had matched onset candidates)). The existing full-song rule (LFER >=
   0.32 with a 40–140 Hz peak band) achieved pooled candidate-level F1 0.402.
 - An additional offline leave-one-track-out experiment pooled all three
   subsets and selected the LFER threshold using only the other tracks. Its
