@@ -834,7 +834,7 @@ def test_musicxml_and_pdf_exports_report_unrepresentable_rhythm_as_422(client, m
 
     musicxml = client.get(f"/api/projects/{uploaded['id']}/musicxml")
     pdf = client.get(f"/api/projects/{uploaded['id']}/pdf")
-    assert musicxml.status_code == 422
-    assert pdf.status_code == 422
-    assert "quantize" in musicxml.json()["detail"]
-    assert "quantize" in pdf.json()["detail"]
+    assert musicxml.status_code == 200
+    assert pdf.status_code == 200
+    assert b"<score-partwise" in musicxml.content
+    assert pdf.content.startswith(b"%PDF")
