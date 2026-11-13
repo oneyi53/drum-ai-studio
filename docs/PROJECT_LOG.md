@@ -1,3 +1,11 @@
+## 2026-11-13 — DC-suppressed kick feature experiment added
+
+- Added an offline feature path in `scripts/kick_stage_diagnostics.py` that recomputes each onset's short-window STFT from the normalized source audio and excludes the DC bin before calculating peak frequency and LFER. The original DrumScript features and production inference remain untouched.
+- Added leave-one-track-out tuning over DC-excluded LFER and an HFER ceiling, with peak frequency constrained to 20–180 Hz. The report includes per-track held-out predictions and pooled TP/FP/FN, precision, recall and F1.
+- Extended the cross-subset aggregator to calculate the same DC-suppressed experiment across all three IDMT subsets using the already extracted candidate rows; no additional audio transcription pass is introduced.
+- Validation is pending on the next Engine Validation run. This experiment is still exploratory and must be checked for low-tom/bass false positives before any production classifier change.
+- Latest completed Engine Validation run `43403116257`: all IDMT subset scoring, kick diagnostics, synthetic smoke and both repository MP3 smoke tests passed. The API E2E failed only its PDF visual-height gate (13.4% vs 15% minimum); PDF/MusicXML export and PNG generation completed.
+
 ## 2026-11-13 — kick spectral-gate failure analysis
 
 - A second offline grouped sweep tested LFER, peak-frequency handling, and HFER together on the same 40-track IDMT candidate artifact. Leave-one-track-out validation selected LFER 0.09 or 0.11, an HFER ceiling of 0.80, and a peak-frequency rule that accepts the DC-dominated zero bin or 20–180 Hz.
