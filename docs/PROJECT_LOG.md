@@ -1008,3 +1008,11 @@ code or validation state changes; do not infer completion from plans.
 - Downloaded and visually inspected CI artifact 13942911556 from run 43212702034. The PNG is 1404x993 and shows the actual defect: the first system is rendered near the top, then a second almost-empty percussion staff appears below it, leaving most of the landscape page blank. This is concrete evidence that the PDF layout is not yet acceptable.
 - Added this artifact reproduction to Issue #6 and asked Gemini to create a regression that fails on the extra near-empty system, then attach before/after PDF and PNG renders with the actual Verovio version/options; comment 6823850692.
 - Artifact run commit is f100c55b6bed2045b8598c7859fe4f51cd69eadc, older than current integration head. No production code changed in this increment. PR #4 remains open and unmerged.
+
+
+## 2026-11-13 — project lifecycle management
+
+- Added `DELETE /api/projects/{project_id}` to remove a saved project and its related analysis-job, revision-history, and history-state records. Original uploads and per-job analysis output directories are cleaned up using server-generated stored names only.
+- Deletion is rejected with HTTP 409 while any analysis job is queued or running, preventing a background worker from racing filesystem cleanup or recreating orphaned output.
+- Added API regression coverage for successful deletion (database rows and files) and the active-job guard, plus a delete action for the currently loaded project in the web editor with explicit destructive-action confirmation and UI state reset.
+- This is a project-workflow increment; no PDF rendering, transcription classifier, or benchmark thresholds were changed.
