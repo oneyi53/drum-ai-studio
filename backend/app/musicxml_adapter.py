@@ -372,14 +372,20 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                 event, beat = notes[index]
                 onset = max(0, round((beat - start) * DIVISIONS))
                 if onset > cursor:
-                    leading_rests = decompose_meter_aware_gap(
-                        cursor, onset, numerator, denominator, DIVISIONS
-                    )
-                    for rest_duration, rest_type, rest_dots in leading_rests:
-                        _add_rest(
-                            measure, instrument_voice, rest_duration, rest_type, rest_dots
+                    try:
+                        leading_rests = decompose_meter_aware_gap(
+                            cursor, onset, numerator, denominator, DIVISIONS
                         )
-                        cursor += rest_duration
+                    except ValueError:
+                        forward = ET.SubElement(measure, "forward")
+                        _add_text(forward, "duration", onset - cursor)
+                        cursor = onset
+                    else:
+                        for rest_duration, rest_type, rest_dots in leading_rests:
+                            _add_rest(
+                                measure, instrument_voice, rest_duration, rest_type, rest_dots
+                            )
+                            cursor += rest_duration
 
                 group = []
                 while index < len(notes) and round((notes[index][1] - start) * DIVISIONS) == onset:
@@ -393,14 +399,13 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                     else measure_duration
                 )
                 available_gap = next_onset - onset
-                note_duration, note_type, note_dots = _choose_hit_duration(
-                    available_gap,
-                    onset,
-                    numerator,
-                    denominator,
-                    has_next_hit=has_next_hit,
-                    divisions=DIVISIONS,
-                )
+                (
+                    note_duration,
+                    note_type,
+                    note_dots,
+                    actual_notes,
+                    normal_notes,
+                ) = _choose_hit_duration(available_gap, DIVISIONS)
                 for chord_index, grouped_event in enumerate(group):
                     _add_note(
                         measure,
@@ -410,14 +415,21 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                         note_type,
                         chord=chord_index > 0,
                         dots=note_dots,
+                        actual_notes=actual_notes,
+                        normal_notes=normal_notes,
                     )
                 cursor = onset + note_duration
 
-                if has_next_hit:
-                    if cursor < next_onset:
+                if has_next_hit and cursor < next_onset:
+                    try:
                         gap_rests = decompose_meter_aware_gap(
                             cursor, next_onset, numerator, denominator, DIVISIONS
                         )
+                    except ValueError:
+                        forward = ET.SubElement(measure, "forward")
+                        _add_text(forward, "duration", next_onset - cursor)
+                        cursor = next_onset
+                    else:
                         for rest_duration, rest_type, rest_dots in gap_rests:
                             _add_rest(
                                 measure, instrument_voice, rest_duration, rest_type, rest_dots
