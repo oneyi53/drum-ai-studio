@@ -5,7 +5,6 @@ on:
   pull_request:
     branches: [main, test/real-mp3-engine-smoke]
     paths:
-      - ".github/workflows/engine-validation.yml"
       - "scripts/engine_smoke.py"
       - "scripts/kick_stage_diagnostics.py"
       - "scripts/api_engine_smoke.py"
@@ -19,8 +18,8 @@ on:
       - "*.mp3"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   drumscript:
