@@ -179,11 +179,9 @@ def _render_with_verovio(
     # sets. Preserve the exact tempo in PDF as readable text while keeping the
     # MusicXML download's semantic metronome marking untouched.
     score_root = ET.fromstring(performance_to_musicxml(performance))
-    # Explicit MusicXML system breaks keep each printed line to four or five bars.
-    # Audio tails often contain silent measures; omit them from the printable
-    # page so Verovio does not create a nearly empty final system. The editable
-    # MusicXML endpoint remains untouched and retains the full duration.
+    # Omit silent tail bars from the printable PDF, without changing MusicXML download.
     _trim_trailing_empty_measures(score_root)
+    # Explicit MusicXML system breaks keep each printed line to four or five bars.
     _apply_system_breaks(score_root, measures_per_system)
     for metronome in score_root.findall(".//metronome"):
         direction_type = next(
@@ -313,6 +311,9 @@ def performance_to_pdf(
     Verovio is the primary engraving engine. The ReportLab fallback keeps
     minimal installations usable, but production installs include Verovio.
     """
+    # Validate rhythmic representability before entering the renderer fallback.
+    # A notation error must not be hidden by the low-fidelity ReportLab fallback.
+    performance_to_musicxml(performance)
     try:
         return _render_with_verovio(performance, title, measures_per_system)
     except ImportError as exc:

@@ -919,8 +919,12 @@ def download_project_musicxml(project_id: str) -> Response:
     if row is None:
         raise HTTPException(status_code=404, detail="No completed performance is available.")
     performance = DrumPerformance.model_validate_json(row["performance_json"])
+    try:
+        musicxml = performance_to_musicxml(performance)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Response(
-        content=performance_to_musicxml(performance),
+        content=musicxml,
         media_type="application/vnd.recordare.musicxml+xml",
         headers={
             "Content-Disposition": f'attachment; filename="{project_id}-drums.musicxml"'
@@ -946,11 +950,15 @@ def download_project_pdf(project_id: str, measures_per_system: int = 4) -> Respo
     if measures_per_system not in {4, 5}:
         raise HTTPException(status_code=422, detail="measures_per_system must be 4 or 5.")
     performance = DrumPerformance.model_validate_json(row["performance_json"])
-    return Response(
-        content=performance_to_pdf(
+    try:
+        pdf = performance_to_pdf(
             performance, title=f"{project_id} — Drum Score",
             measures_per_system=measures_per_system,
-        ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(
+        content=pdf,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{project_id}-drums.pdf"'},
     )
@@ -989,17 +997,20 @@ def download_project_bundle(project_id: str, measures_per_system: int = 4) -> Re
         raise HTTPException(status_code=404, detail="Generated MIDI file is missing.")
 
     performance = DrumPerformance.model_validate_json(row["performance_json"])
+    try:
+        musicxml = performance_to_musicxml(performance)
+        pdf = performance_to_pdf(
+            performance, title=f"{project_id} - Drum Score",
+            measures_per_system=measures_per_system,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     archive = BytesIO()
     with ZipFile(archive, "w", compression=ZIP_DEFLATED) as bundle:
         bundle.writestr("performance.json", performance.model_dump_json(indent=2))
-        bundle.writestr("score.musicxml", performance_to_musicxml(performance))
-        bundle.writestr(
-            "score.pdf",
-            performance_to_pdf(
-                performance, title=f"{project_id} - Drum Score",
-                measures_per_system=measures_per_system,
-            ),
-        )
+        bundle.writestr("score.musicxml", musicxml)
+        bundle.writestr("score.pdf", pdf)
         bundle.write(midi_path, arcname="performance.mid")
         bundle.write(source_path, arcname=f"source/{Path(row['original_filename']).name}")
         bundle.writestr("README.txt", "DrumAI Studio project archive\nperformance.json: canonical events and tempo map\nperformance.mid: GM percussion MIDI\nscore.musicxml: editable notation interchange\nscore.pdf: printable score\nsource/: original uploaded audio\n")

@@ -1,4 +1,29 @@
-## 2026-11-13 — kick detection (Issue #5): adapter-level threshold override, unmerged
+## 2026-11-14 — merged PR #15 (MusicXML explicit rests + exact rhythm); PR #1 closed
+
+- Merged PR #15 locally (branch `feat/musicxml-explicit-rhythmic-rests`
+  + fixes commit 67a198d) after the review's three fixes: (1) barline-rounding
+  guard in `musicxml_adapter.py` — a hit rounding onto the barline is skipped
+  instead of failing the whole export via `_choose_hit_duration(0)`,
+  with a regression test (hit at 1.9999999s, 4/4 @120bpm; verified the test
+  fails without the guard); (2) kick diagnostics scope split out
+  (`kick_stage_diagnostics.py` and `engine-validation.yml` reverted to main,
+  `kick_stage_aggregate.py` removed); (3) stale `docs/HANDOFF.md` deleted.
+- Merge conflicts resolved keep-both (`docs/PROJECT_LOG.md`,
+  `backend/tests/test_analysis_api.py`); also removed a duplicate
+  `test_pdf_renderer_trims_silent_tail_measures_only` and a duplicate
+  `_trim_trailing_empty_measures` call — the same trim had landed both via
+  the PR #10 squash and via the branch.
+- Verification on the merged tree: backend suite 121 passed (113 main + 8
+  net new), ruff clean. PR #1 closed as do-not-merge (value already in main
+  in newer form); PR #15 closed after this push (snapshot push, so GitHub
+  shows it closed rather than merged).
+- Still open: Issue #5 end-to-end Demucs-path verification (CI
+  engine-validation), EQ preprocessing experiment result (30 Hz high-pass +
+  120 Hz lowshelf +6 dB, F1 0.792 -> 0.840 pooled) awaiting a decision on
+  integration, and deletion of the 8 stale branches (no delete tool; manual
+  GitHub step).
+
+## 2026-11-13 — kick detection (Issue #5): adapter-level threshold override, merged (cdb3b82)
 
 - Root cause confirmed against upstream DrumScript source (HEAD e3c4707):
   the kick classifier lives upstream only, in
@@ -9,7 +34,7 @@
   (WaveDrum) / 57.1% (TechnoDrum), so the loss is at this classification
   gate, not at onset detection. Upstream `transcribe()` runs classification
   in-process, so a runtime override is possible without vendoring code.
-- Change (branch `fix/kick-detection`, uncommitted, not pushed): added
+- Change (branch `fix/kick-detection`, merged as cdb3b82): added
   `KickClassificationConfig` to `backend/app/engine_adapter.py`. It
   temporarily sets `KICK_LFER_MIN`/`KICK_FREQ_MIN`/`KICK_FREQ_MAX` on the
   upstream `drumscript.drum_classifier.classify` module (its own globals —
@@ -44,6 +69,50 @@
   onset, so low-tom recall is the unmeasured trade-off. Full-song
   `transcribe()` (Demucs path) was not run end-to-end locally; the
   diagnostic path exercises the same `classify_events` code directly.
+
+## 2026-11-13 — DC-suppressed kick feature experiment added
+
+- Grouped validation folds by the explicit `subset/track` key, not basename alone, to prevent same-named files from different IDMT subsets from leaking into each other's training folds.
+- Added an offline feature path in `scripts/kick_stage_diagnostics.py` that recomputes each onset's short-window STFT from the normalized source audio and excludes the DC bin before calculating peak frequency and LFER. The original DrumScript features and production inference remain untouched.
+- Added leave-one-track-out tuning over DC-excluded LFER and an HFER ceiling, with peak frequency constrained to 20–180 Hz. The report includes per-track held-out predictions and pooled TP/FP/FN, precision, recall and F1.
+- Extended the cross-subset aggregator to calculate the same DC-suppressed experiment across all three IDMT subsets using the already extracted candidate rows; no additional audio transcription pass is introduced.
+- Validation is pending on the next Engine Validation run. This experiment is still exploratory and must be checked for low-tom/bass false positives before any production classifier change.
+- Latest completed Engine Validation run `43403116257`: all IDMT subset scoring, kick diagnostics, synthetic smoke and both repository MP3 smoke tests passed. The API E2E failed only its PDF visual-height gate (13.4% vs 15% minimum); PDF/MusicXML export and PNG generation completed.
+
+## 2026-11-13 — kick spectral-gate failure analysis
+
+- A second offline grouped sweep tested LFER, peak-frequency handling, and HFER together on the same 40-track IDMT candidate artifact. Leave-one-track-out validation selected LFER 0.09 or 0.11, an HFER ceiling of 0.80, and a peak-frequency rule that accepts the DC-dominated zero bin or 20–180 Hz.
+- Held-out candidate-level totals were TP=882, FP=176, FN=65 (precision 0.834, recall 0.931, F1 0.880). By subset, candidate-level precision/recall were RealDrum 92.9%/87.5%, WaveDrum 82.4%/92.3%, and TechnoDrum 77.3%/100%. There were 22 annotated kicks with no matched onset candidate, so the corresponding end-to-end recall ceiling-adjusted figure is 882/969 = 91.0%; these 22 remain onset-stage misses, not classifier misses.
+- The fixed 40–140 Hz gate excludes 50 matched TechnoDrum kicks whose measured peak is 172 Hz. WaveDrum also contains 27 matched kicks with peak_freq=0; inspection of upstream DrumScript shows peak frequency is the argmax of the mean STFT magnitude including the DC bin. A zero peak can therefore indicate DC-bin dominance, not a literal 0 Hz kick fundamental. Among these zero-peak candidates, HFER median was 0.59 for annotated kicks versus 0.90 for negatives.
+- This points to two distinct classifier defects to investigate: a narrow fixed peak-frequency band and a peak-frequency feature that does not suppress DC. The HFER cap is a promising discriminator for the zero-peak cases, but this experiment reuses the same IDMT corpus and is not production validation. Do not deploy the proposed rule yet; next calculate DC-suppressed spectral features from the raw onset slices and test tom/bass false positives on independent audio.
+- These numbers are exploratory grouped cross-validation over the existing candidate artifact, not a new CI run and not a change to DrumScript inference.
+
+## 2026-11-13 — cross-subset kick threshold validation
+
+- The latest IDMT diagnostic artifacts evaluated 14 RealDrum, 15 WaveDrum,
+  and 11 TechnoDrum tracks (2,619 feature-bearing candidate events and 969
+  annotated reference kick events (947 had matched onset candidates)). The existing full-song rule (LFER >=
+  0.32 with a 40–140 Hz peak band) achieved pooled candidate-level F1 0.402.
+- An additional offline leave-one-track-out experiment pooled all three
+  subsets and selected the LFER threshold using only the other tracks. Its
+  held-out aggregate was TP=812, FP=177, FN=135 (precision 0.821, recall
+  0.857, F1 0.839). By subset, held-out recall/precision were RealDrum
+  89.2%/90.8%, WaveDrum 85.4%/81.0%, and TechnoDrum 82.5%/75.4%.
+- This is promising evidence that the fixed 0.32 LFER gate is too strict,
+  but it is still an offline feature-rule experiment, not a production
+  classifier change. False positives increased, and some individual tracks
+  remain difficult. Do not deploy a lower threshold until negative-event
+  errors (especially tom/bass overlap) and an independent evaluation split
+  are reviewed.
+- Extended the diagnostics artifact to report a second leave-one-track-out
+  sweep trained across the other IDMT subsets. This explicitly tests whether
+  a threshold transfers between drum-kit domains rather than tuning only
+  within each subset. CI validation is pending for this instrumentation.
+- The engine-validation job's final API-to-engine smoke failed for a separate
+  PDF visual gate: notation ink occupied 13.4% of the page, below the 15%
+  minimum. Earlier engine tests, IDMT diagnostics, and repository MP3 smoke
+  tests completed; backend and frontend CI passed. This PDF issue is not a
+  kick-classification failure.
 
 ## 2026-11-12 — review of revised rhythmic-beaming implementation proposal
 
@@ -1136,3 +1205,50 @@ code or validation state changes; do not infer completion from plans.
   docs/TECH_RADAR.md (DrumScript / STRUM / ADTOF / Basic Pitch / Beat
   This!). Monthly tech-watch cron drum-ai-studio-tech-watch is set
   (1st of month, ~10:16).
+## 2026-11-13 — Explicit MusicXML hits and rests
+
+- Reworked the exporter so a drum hit is no longer assigned the entire gap to the next hit as its note value. Hits use a single standard/dotted note value (capped at a quarter note); representable silent spans are emitted as explicit rests.
+- Added meter-aware rest grouping for 4/4, 3/4, 6/8, and common 7/8 groupings. Unspellable silent spans use exact MusicXML `forward` cursor skips instead of falsifying note values or shifting event onsets.
+- Very short sub-128th hit intervals are represented by exact `time-modification` ratios. Every generated score is checked by the strict duration/type/dot/tuplet validator.
+- PDF export performs the same MusicXML preflight before trying its fallback renderer, so the fallback cannot hide invalid notation.
+- API/exporter regressions cover sparse voices, explicit rests, irregular intervals, sub-128th tuplets, and 4/4, 3/4, and 6/8 timing. Latest standard CI: 106 backend tests passed, Ruff clean, frontend checks passed. DrumScript/IDMT engine validation is still running; do not mark the change fully accepted until that result is reviewed.
+
+## 2026-11-13 — validation review and mainline consolidation
+
+- Both engine-validation runs for PR #15 completed successfully. Repository MP3 smoke results: `Creep` produced 1,035 canonical events including 114 kicks; `Psycho` produced 1,131 events including 229 kicks. Both completed MIDI generation. API end-to-end export produced MusicXML (22,021 bytes), PDF (41,082 bytes), and a rendered PNG (58,573 bytes); the artifact exists, but this log does not claim visual acceptance because the PNG has not been manually inspected.
+- IDMT kick-stage diagnostics show candidate onset recall is high but kick classification retention is the bottleneck: RealDrum candidate recall 0.983 / kick recall 0.053 / precision 1.000; WaveDrum 0.963 / 0.172 / 0.956; TechnoDrum 0.990 / 0.571 / 0.851. The current feature-rule pass counts are 16/297, 65/364, and 165/286 respectively. Do not tune thresholds against these same tracks; use track-separated validation before changing production classification.
+- Consolidated the previously separate PR #10 PDF-only silent-tail trim into this PR's PDF renderer. It removes measures after the last audible measure from the printable rendering only and preserves direction markings; the MusicXML download remains unchanged. Added the regression test for tail removal and direction preservation.
+- Fixed engine-validation scheduling: docs-only changes no longer trigger the expensive audio workflow, and runs for the same PR/ref share one concurrency group with cancellation of superseded runs. This prevents duplicate full audio evaluations for sequential commits.
+- The engine smoke and artifact-upload checks passed, but automated existence checks are not equivalent to manual visual acceptance of the PDF/PNG. The PDF layout still requires visual review.
+
+
+## 2026-11-13 — kick classifier track-isolated experiment harness
+
+- Audited the actual full-song DrumScript classifier source. Its kick decision is a fixed gate on the 200 ms onset slice: LFER >= 0.32 and peak frequency 40–140 Hz. The separate rudiment classifier has different gates and is not the production full-song path.
+- Extended the IDMT kick diagnostic to retain feature rows for every classified onset candidate, including non-kick candidates, and label candidates with chronological one-to-one matching against annotated kick onsets at the configured tolerance.
+- Added a leave-one-track-out LFER threshold sweep. Each held-out track is scored using a threshold selected only from the other tracks; the frequency band remains fixed. The report includes held-out baseline and tuned TP/FP/FN, precision, recall, F1, and per-track selected thresholds.
+- This is an offline diagnostic experiment only. It does not change DrumScript production classification or claim an accuracy gain. A threshold change requires a consistent held-out improvement across subsets and review of low-tom/bass false positives.
+- The workflow will rerun the IDMT diagnostics on this instrumentation change. This is a targeted reason to run the dataset once: it creates the missing candidate-level evidence needed to choose the next classifier experiment, rather than repeating the old aggregate smoke test.
+
+## 2026-11-13 — DC-suppressed kick feature validation
+
+- Completed Engine Validation run [43415917292](https://github.com/oneyi53/drum-ai-studio/actions/runs/43415917292) on PR #15 head `791fded11ae6a5c295f55aba37d81c94db07d9e5`. The three IDMT subset diagnostics, cross-subset aggregation, synthetic smoke, and both repository MP3 smoke tests completed successfully. Standard CI and backend tests also passed (runs 43415917253 and 43415917449).
+- The 40-track / 2,619-candidate cross-subset leave-one-track-out artifact shows the original full-song gate (LFER >= 0.32, peak 40–140 Hz) at TP=246, FP=32, FN=701 (P=0.885, R=0.260, F1=0.402). Lowering LFER with the original peak feature improved held-out results to TP=812, FP=177, FN=135 (P=0.821, R=0.857, F1=0.839).
+- Recomputing the onset spectrum with the DC bin excluded, widening the peak band to 20–180 Hz, and adding an HFER ceiling produced TP=905, FP=188, FN=42 (P=0.828, R=0.956, F1=0.887) in the same track-isolated evaluation. By subset: RealDrum P/R/F1=0.910/0.916/0.913; WaveDrum=0.828/0.953/0.886; TechnoDrum=0.763/1.000/0.865. This is a strong offline signal, not production accuracy: candidate-level false positives remain, and the subset mix is small/selected.
+- Important interpretation: DC suppression + HFER recovered many WaveDrum/TechnoDrum kicks, but TechnoDrum precision remains 0.763 (89 false positives across that subset). RealDrum track 10 and some WaveDrum tracks still have substantial misses. The feature rule is therefore not safe to promote as-is; next work should inspect false-positive instrument overlap and validate on a broader independent set before changing upstream DrumScript.
+- The Engine Validation job's only failure is the unrelated API PDF visual-height gate (13.4% ink height vs 15% minimum). Both repository MP3s still transcribed and generated MIDI; the failure occurred in the separate API PDF visual check. PDF visual acceptance remains open and is not a kick-classifier failure.
+- No production classifier was changed. DrumScript is installed from its upstream repository in this workflow; these results currently validate an offline diagnostic rule only.
+
+- Follow-up threshold-risk check on the same saved candidate artifact: selecting the DC-suppressed rule with a training-fold precision floor of 0.85 yielded held-out TP=854, FP=141, FN=93 (P=0.858, R=0.902, F1=0.880). This trims 47 false positives versus unconstrained F1 tuning while retaining 90.2% recall. Raising the training precision floor to 0.90 collapsed held-out recall to 0.304 (P=0.823), showing that a stricter training constraint did not generalize reliably. Treat 0.85 as a candidate operating point for further independent testing, not a production setting.
+
+## 2026-11-13 — precision-guarded kick operating point
+
+- Added a reproducible second operating-point evaluation to the existing candidate-feature diagnostic: each held-out track is excluded from threshold selection, and the training fold first filters candidate LFER/HFER thresholds to those meeting a configurable minimum training precision (currently 0.85), then selects the best F1 among eligible thresholds. If a fold cannot meet the floor, the artifact records an explicit fallback instead of silently claiming the constraint was met.
+- The same precision-guarded sweep is now emitted per subset and across all subsets, including per-track selected thresholds, training precision, fallback flags, and held-out metrics. No scikit-learn dependency or production classifier change is introduced.
+- Prior exploratory calculation on the saved 2,619-candidate artifact suggested this operating point could reduce false positives while retaining roughly 90% recall; the new committed implementation must reproduce that result in Engine Validation before it is treated as verified. Runs 43421128261 (backend), 43421128525 (CI), and 43421128350 (Engine Validation) were triggered by the implementation and are pending at log update time.
+
+## 2026-11-13 — development handoff
+
+- Added `docs/HANDOFF.md` as the current consolidated handover: project goals, implemented capabilities, open quality risks, kick-classifier evidence and its limitations, current PR/Engine Validation state, next priorities, technical boundaries, and key file entry points.
+- Current handoff commit: `50a99a6fe0304711eeb623b326951ce3abed8ec1`.
+- At handoff time PR #15 remains Draft and Engine Validation run `43421181480` remains in progress; precision-guarded results are not yet verified by that run.

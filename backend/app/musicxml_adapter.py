@@ -7,21 +7,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from fractions import Fraction
+from math import gcd
 from xml.etree import ElementTree as ET
 
 from .drum_events import DrumInstrument, DrumPerformance, TempoChange
 from .midi_adapter import INSTRUMENT_TO_GM_NOTE
 
 DIVISIONS = 480
-NOTE_VALUES = (
-    (DIVISIONS, "quarter"),
-    (DIVISIONS // 2, "eighth"),
-    (DIVISIONS // 4, "16th"),
-    (DIVISIONS // 8, "32nd"),
-    (DIVISIONS // 16, "64th"),
-    (DIVISIONS // 32, "128th"),
-)
-
 DISPLAY: dict[DrumInstrument, tuple[str, int, str]] = {
     DrumInstrument.KICK: ("F", 4, "normal"),
     DrumInstrument.SNARE: ("C", 5, "normal"),
@@ -78,6 +70,9 @@ def _add_note(
     note_type: str,
     *,
     chord: bool,
+    dots: int = 0,
+    actual_notes: int = 1,
+    normal_notes: int = 1,
 ) -> None:
     step, octave, notehead = DISPLAY[instrument]
     note = ET.SubElement(measure, "note")
@@ -90,11 +85,160 @@ def _add_note(
     _add_text(note, "duration", duration)
     _add_text(note, "voice", list(DrumInstrument).index(instrument) + 1)
     _add_text(note, "type", note_type)
+    for _ in range(dots):
+        ET.SubElement(note, "dot")
+    if actual_notes != normal_notes:
+        modification = ET.SubElement(note, "time-modification")
+        _add_text(modification, "actual-notes", actual_notes)
+        _add_text(modification, "normal-notes", normal_notes)
     _add_text(note, "stem", "up")
     _add_text(note, "notehead", notehead)
     play = ET.SubElement(note, "play")
     midi_velocity = ET.SubElement(play, "other-play", type="midi-velocity")
     midi_velocity.text = str(velocity)
+
+
+def _add_rest(
+    measure: ET.Element,
+    voice_number: int,
+    duration: int,
+    note_type: str,
+    dots: int = 0,
+) -> None:
+    note = ET.SubElement(measure, "note")
+    ET.SubElement(note, "rest")
+    _add_text(note, "duration", duration)
+    _add_text(note, "voice", voice_number)
+    _add_text(note, "type", note_type)
+    for _ in range(dots):
+        ET.SubElement(note, "dot")
+
+
+def _rhythmic_note_values(
+    divisions: int = DIVISIONS,
+) -> list[tuple[int, str, int]]:
+    if divisions <= 0:
+        raise ValueError("divisions must be positive")
+    values: list[tuple[int, str, int]] = []
+    for note_type, quarter_length in _NOTE_TYPE_QUARTERS.items():
+        for dots in range(3):
+            factor = Fraction(2 ** (dots + 1) - 1, 2**dots)
+            duration = Fraction(divisions) * quarter_length * factor
+            if duration.denominator == 1 and duration > 0:
+                values.append((duration.numerator, note_type, dots))
+    return sorted(set(values), key=lambda item: (item[0], -item[2]), reverse=True)
+
+
+def decompose_rhythmic_duration(
+    duration: int, divisions: int = DIVISIONS
+) -> list[tuple[int, str, int]]:
+    """Express an exact duration as the fewest standard/dotted note values."""
+    if duration <= 0:
+        raise ValueError("duration must be a positive integer")
+    candidates = _rhythmic_note_values(divisions)
+    best: list[list[tuple[int, str, int]] | None] = [None] * (duration + 1)
+    best[0] = []
+    for amount in range(1, duration + 1):
+        options = [
+            best[amount - value[0]] + [value]
+            for value in candidates
+            if value[0] <= amount and best[amount - value[0]] is not None
+        ]
+        if options:
+            best[amount] = min(
+                options,
+                key=lambda parts: (
+                    len(parts),
+                    sum(item[2] for item in parts),
+                    tuple(-item[0] for item in parts),
+                ),
+            )
+    if best[duration] is None:
+        raise ValueError(
+            f"duration {duration} cannot be represented at divisions={divisions}; "
+            "quantize the performance or correct the event timing before export"
+        )
+    return best[duration]
+
+
+def decompose_meter_aware_gap(
+    start: int,
+    end: int,
+    numerator: int,
+    denominator: int,
+    divisions: int = DIVISIONS,
+) -> list[tuple[int, str, int]]:
+    """Split a silent interval at meter-group boundaries before spelling rests."""
+    if start < 0 or end < start:
+        raise ValueError("gap must have a non-negative start and end after start")
+    if end == start:
+        return []
+    if numerator <= 0 or denominator <= 0 or divisions <= 0:
+        raise ValueError("meter values and divisions must be positive")
+    denominator_unit_numerator = divisions * 4
+    if denominator_unit_numerator % denominator:
+        raise ValueError("meter denominator does not produce an integral duration")
+    denominator_unit = denominator_unit_numerator // denominator
+
+    boundaries: list[int] | None = None
+    if denominator == 8 and numerator == 7:
+        boundaries = [0, 3 * denominator_unit, 5 * denominator_unit, 7 * denominator_unit]
+        bar_length = numerator * denominator_unit
+        group_size = 0
+    elif denominator == 8 and numerator > 3 and numerator % 3 == 0:
+        group_size = 3 * denominator_unit
+        bar_length = numerator * denominator_unit
+    elif numerator == 4 and denominator == 4:
+        group_size = 2 * divisions
+        bar_length = numerator * 4 * divisions // denominator
+    else:
+        group_size = denominator_unit
+        bar_length = numerator * denominator_unit
+
+    result: list[tuple[int, str, int]] = []
+    position = start
+    while position < end:
+        if boundaries is not None:
+            bar_position = position % bar_length
+            next_boundary = next(
+                (boundary for boundary in boundaries if boundary > bar_position),
+                bar_length,
+            )
+            chunk_end = min(end, position + next_boundary - bar_position)
+        else:
+            next_boundary = ((position // group_size) + 1) * group_size
+            chunk_end = min(end, next_boundary)
+        result.extend(decompose_rhythmic_duration(chunk_end - position, divisions))
+        position = chunk_end
+    return result
+
+
+def _choose_hit_duration(
+    gap: int, divisions: int = DIVISIONS
+) -> tuple[int, str, int, int, int]:
+    """Choose one standard hit value, using a small tuplet below 1/128th."""
+    if gap <= 0:
+        raise ValueError("consecutive hits must have a positive time gap")
+    candidates = [
+        value for value in _rhythmic_note_values(divisions)
+        if value[0] <= min(gap, divisions)
+    ]
+    if candidates:
+        duration, note_type, dots = candidates[0]
+        return duration, note_type, dots, 1, 1
+
+    # At this resolution, sub-128th gaps are represented as an exact tuplet
+    # rather than stretching a hit beyond the next onset.
+    smallest_type = "128th"
+    smallest_ticks = Fraction(divisions, 32)
+    if smallest_ticks.denominator != 1:
+        raise ValueError(
+            f"divisions={divisions} cannot represent a positive sub-128th hit"
+        )
+    gcd_value = gcd(smallest_ticks.numerator, gap)
+    actual_notes = smallest_ticks.numerator // gcd_value
+    normal_notes = gap // gcd_value
+    return gap, smallest_type, 0, actual_notes, normal_notes
 
 
 def performance_to_musicxml(performance: DrumPerformance) -> str:
@@ -214,7 +358,12 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             if not notes:
                 continue
             voice_number += 1
+            instrument_voice = list(DrumInstrument).index(instrument) + 1
             if voice_number > 1:
+                if cursor != measure_duration:
+                    raise ValueError(
+                        f"voice {instrument_voice} ended at {cursor}, expected {measure_duration}"
+                    )
                 backup = ET.SubElement(measure, "backup")
                 _add_text(backup, "duration", cursor)
             cursor = 0
@@ -222,25 +371,48 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             while index < len(notes):
                 event, beat = notes[index]
                 onset = max(0, round((beat - start) * DIVISIONS))
+                if onset >= measure_duration:
+                    # A hit rounding onto (or past) the barline has no
+                    # position inside this measure: emitting it would
+                    # leave a zero gap for _choose_hit_duration and
+                    # fail the whole export, so skip it.
+                    index += 1
+                    continue
                 if onset > cursor:
-                    forward = ET.SubElement(measure, "forward")
-                    _add_text(forward, "duration", onset - cursor)
-                    cursor = onset
+                    try:
+                        leading_rests = decompose_meter_aware_gap(
+                            cursor, onset, numerator, denominator, DIVISIONS
+                        )
+                    except ValueError:
+                        forward = ET.SubElement(measure, "forward")
+                        _add_text(forward, "duration", onset - cursor)
+                        cursor = onset
+                    else:
+                        for rest_duration, rest_type, rest_dots in leading_rests:
+                            _add_rest(
+                                measure, instrument_voice, rest_duration, rest_type, rest_dots
+                            )
+                            cursor += rest_duration
+
                 group = []
                 while index < len(notes) and round((notes[index][1] - start) * DIVISIONS) == onset:
                     group.append(notes[index][0])
                     index += 1
+
+                has_next_hit = index < len(notes)
                 next_onset = (
                     round((notes[index][1] - start) * DIVISIONS)
-                    if index < len(notes)
-                    else round((end - start) * DIVISIONS)
+                    if has_next_hit
+                    else measure_duration
                 )
-                available_gap = max(1, next_onset - onset)
-                note_duration, note_type = next(
-                    ((duration, kind) for duration, kind in NOTE_VALUES if duration <= available_gap),
-                    (1, "128th"),
-                )
-                note_duration = min(note_duration, available_gap)
+                available_gap = next_onset - onset
+                (
+                    note_duration,
+                    note_type,
+                    note_dots,
+                    actual_notes,
+                    normal_notes,
+                ) = _choose_hit_duration(available_gap, DIVISIONS)
                 for chord_index, grouped_event in enumerate(group):
                     _add_note(
                         measure,
@@ -249,17 +421,44 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                         note_duration,
                         note_type,
                         chord=chord_index > 0,
+                        dots=note_dots,
+                        actual_notes=actual_notes,
+                        normal_notes=normal_notes,
                     )
                 cursor = onset + note_duration
+
+                if has_next_hit:
+                    if cursor < next_onset:
+                        try:
+                            gap_rests = decompose_meter_aware_gap(
+                                cursor, next_onset, numerator, denominator, DIVISIONS
+                            )
+                        except ValueError:
+                            forward = ET.SubElement(measure, "forward")
+                            _add_text(forward, "duration", next_onset - cursor)
+                            cursor = next_onset
+                        else:
+                            for rest_duration, rest_type, rest_dots in gap_rests:
+                                _add_rest(
+                                    measure, instrument_voice, rest_duration, rest_type, rest_dots
+                                )
+                                cursor += rest_duration
+                elif cursor < measure_duration:
+                    forward = ET.SubElement(measure, "forward")
+                    _add_text(forward, "duration", measure_duration - cursor)
+                    cursor = measure_duration
+
             if cursor < measure_duration:
                 forward = ET.SubElement(measure, "forward")
                 _add_text(forward, "duration", measure_duration - cursor)
                 cursor = measure_duration
 
     ET.indent(root, space="  ")
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
+    xml_text = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
         root, encoding="unicode"
     ) + "\n"
+    reconstruct_and_validate_musicxml(xml_text, validate_notation=True)
+    return xml_text
 
 
 def _musicxml_local_name(tag: str) -> str:
@@ -519,9 +718,13 @@ def reconstruct_and_validate_measure(
                     f"overlapping events in staff {staff}, voice {voice} at {onset}"
                 )
             if end > capacity:
+                stream_detail = [
+                    (item["onset"], item["duration"], item["is_rest"], item["is_chord"])
+                    for item in ordered
+                ]
                 raise ValueError(
                     f"staff {staff}, voice {voice} overflow: "
-                    f"extent {end} exceeds capacity {capacity}"
+                    f"extent {end} exceeds capacity {capacity}; events={stream_detail}"
                 )
             previous_onset = onset
             previous_end = end

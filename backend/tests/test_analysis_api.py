@@ -857,3 +857,34 @@ def test_delete_project_rejects_active_analysis(client, monkeypatch):
     deleted = client.delete(f"/api/projects/{uploaded['id']}")
     assert deleted.status_code == 409
     assert client.get("/api/projects").json()["projects"][0]["id"] == uploaded["id"]
+
+
+def test_musicxml_and_pdf_exports_preserve_irregular_rhythm(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("irregular.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=1.0,
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=0.15, instrument=DrumInstrument.KICK),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
+
+    musicxml = client.get(f"/api/projects/{uploaded['id']}/musicxml")
+    pdf = client.get(f"/api/projects/{uploaded['id']}/pdf")
+    assert musicxml.status_code == 200
+    assert pdf.status_code == 200
+    assert b"<score-partwise" in musicxml.content
+    assert pdf.content.startswith(b"%PDF")
