@@ -10,6 +10,7 @@ from app.musicxml_adapter import (
     performance_to_musicxml,
     reconstruct_and_validate_measure,
     reconstruct_and_validate_musicxml,
+    validate_note_notation,
 )
 
 
@@ -226,6 +227,52 @@ def test_validator_accepts_real_exporter_output_with_multiple_instrument_voices(
         ],
     )
     xml = performance_to_musicxml(performance)
-    results = reconstruct_and_validate_musicxml(xml)
+    results = reconstruct_and_validate_musicxml(xml, validate_notation=True)
     assert len(results) == 1
     assert set(results[0]["voice_events"]) == {("1", "1"), ("1", "2"), ("1", "3")}
+
+
+def test_dotted_note_duration_matches_notation():
+    note = parse('<note><duration>720</duration><type>quarter</type><dot/></note>')
+    result = validate_note_notation(note, divisions=480)
+    assert result["duration_quarters"] == Fraction(3, 2)
+    assert result["dots"] == 1
+
+
+def test_double_dotted_note_duration_matches_notation():
+    note = parse('<note><duration>840</duration><type>quarter</type><dot/><dot/></note>')
+    result = validate_note_notation(note, divisions=480)
+    assert result["duration_quarters"] == Fraction(7, 4)
+    assert result["dots"] == 2
+
+
+def test_tuplet_duration_matches_notated_value_and_ratio():
+    note = parse("""<note>
+      <duration>160</duration><type>eighth</type>
+      <time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>
+    </note>""")
+    result = validate_note_notation(note, divisions=480)
+    assert result["duration_quarters"] == Fraction(1, 3)
+    assert result["actual_notes"] == 3
+    assert result["normal_notes"] == 2
+
+
+def test_note_duration_type_mismatch_is_rejected():
+    note = parse('<note><duration>240</duration><type>quarter</type></note>')
+    with pytest.raises(ValueError, match="duration/type mismatch"):
+        validate_note_notation(note, divisions=480)
+
+
+def test_note_without_type_is_rejected_in_strict_mode():
+    note = parse('<note><duration>480</duration></note>')
+    with pytest.raises(ValueError, match="note/type must be present"):
+        validate_note_notation(note, divisions=480)
+
+
+def test_invalid_tuplet_ratio_is_rejected():
+    note = parse("""<note>
+      <duration>160</duration><type>eighth</type>
+      <time-modification><actual-notes>0</actual-notes><normal-notes>2</normal-notes></time-modification>
+    </note>""")
+    with pytest.raises(ValueError, match="tuplet note counts must be positive"):
+        validate_note_notation(note, divisions=480)
