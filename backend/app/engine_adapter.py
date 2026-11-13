@@ -53,6 +53,25 @@ UPSTREAM_KICK_FREQ_MAX_HZ = 140.0
 # rule. See docs/ENGINE_VALIDATION.md.
 DEFAULT_KICK_LFER_MIN = 0.10
 
+# Kick EQ preprocessing (2026-11-14, IDMT-SMT-Drums V2, 50 ms tolerance):
+# 2nd-order Butterworth high-pass at 30 Hz followed by an RBJ low-shelf
+# +6 dB below 120 Hz, applied to the loaded mix before normalisation /
+# onset detection / classification. Pooled 55-track kick F1 0.792 -> 0.840
+# (recall 0.763 -> 0.919, precision 0.823 -> 0.773) at lfer_min=0.10;
+# held-out WaveDrum 16-30 F1 0.643 -> 0.783. The 3 kHz beater boost was
+# measured and rejected (it dilutes the LFER share, recall collapses).
+# Filters are parameter-identical to the experiment harness
+# (~/workspace/.ds-scratch/eq-exp/kick_eq_experiment.py): Butterworth HP
+# via scipy.signal.butter, RBJ cookbook low-shelf with Q=1.0, causal
+# sosfilt, high-pass first, then the shelf.
+# Production insertion point: transcribe() loads the mix itself, so the
+# EQ is applied to the input file before calling it (Demucs path). The
+# direct-path gain above is measured; the Demucs-path gain is verified by
+# CI engine-validation, not locally. See docs/PROJECT_LOG.md (2026-11-14).
+EQ_HIGHPASS_HZ = 30.0
+EQ_LOWSHELF_FREQ_HZ = 120.0
+EQ_LOWSHELF_GAIN_DB = 6.0
+
 
 @dataclass(frozen=True)
 class KickClassificationConfig:
@@ -64,11 +83,18 @@ class KickClassificationConfig:
     The default (``lfer_min=0.10``) is the measured optimum on IDMT-SMT-Drums
     (see module comment); pass ``lfer_min=0.32`` explicitly for the stock
     upstream rule.
+
+    ``eq_preprocessing`` applies the measured kick EQ curve (30 Hz
+    high-pass + 120 Hz low-shelf +6 dB) to the input audio before
+    transcription; it is on by default. Pass ``False`` to restore the
+    pre-EQ behaviour. Stock upstream behaviour is ``lfer_min=0.32`` with
+    ``eq_preprocessing=False``.
     """
 
     lfer_min: float = DEFAULT_KICK_LFER_MIN
     peak_freq_min_hz: float = UPSTREAM_KICK_FREQ_MIN_HZ
     peak_freq_max_hz: float = UPSTREAM_KICK_FREQ_MAX_HZ
+    eq_preprocessing: bool = True
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.lfer_min <= 1.0:
@@ -77,6 +103,10 @@ class KickClassificationConfig:
             raise ValueError(
                 "peak frequency range must satisfy 0 < min < max, got "
                 f"({self.peak_freq_min_hz}, {self.peak_freq_max_hz})"
+            )
+        if not isinstance(self.eq_preprocessing, bool):
+            raise TypeError(
+                f"eq_preprocessing must be a bool, got {self.eq_preprocessing!r}"
             )
 
     @property
@@ -137,6 +167,121 @@ def _override_kick_thresholds(
             setattr(classify_module, attr, value)
 
 
+def _rbj_lowshelf_coefficients(
+    freq_hz: float, sample_rate_hz: float, gain_db: float
+) -> tuple[object, object]:
+    """RBJ cookbook low-shelf biquad (b, a), Q=1.0.
+
+    Parameter-identical to the experiment harness: ``alpha =
+    sin(w0) / (2 * Q)`` with Q=1.0. Coefficients are computed with
+    plain ``math`` so they match the harness's formula exactly.
+    """
+    import math
+
+    amplitude = 10.0 ** (gain_db / 40.0)
+    w0 = 2.0 * math.pi * freq_hz / sample_rate_hz
+    alpha = math.sin(w0) / 2.0
+    cos = math.cos(w0)
+    sqrt_a = math.sqrt(amplitude)
+    b0 = amplitude * ((amplitude + 1) - (amplitude - 1) * cos + 2 * sqrt_a * alpha)
+    b1 = 2 * amplitude * ((amplitude - 1) - (amplitude + 1) * cos)
+    b2 = amplitude * ((amplitude + 1) - (amplitude - 1) * cos - 2 * sqrt_a * alpha)
+    a0 = (amplitude + 1) + (amplitude - 1) * cos + 2 * sqrt_a * alpha
+    a1 = -2 * ((amplitude - 1) + (amplitude + 1) * cos)
+    a2 = (amplitude + 1) + (amplitude - 1) * cos - 2 * sqrt_a * alpha
+    return (
+        [b0 / a0, b1 / a0, b2 / a0],
+        [1.0, a1 / a0, a2 / a0],
+    )
+
+
+def _apply_kick_eq(audio: object, sample_rate_hz: float) -> object:
+    """Apply the adopted kick EQ curve to a mono waveform.
+
+    2nd-order Butterworth high-pass at 30 Hz, then an RBJ low-shelf
+    +6 dB below 120 Hz, both causal ``sosfilt`` — the same form and
+    parameters as the experiment harness. Input is converted to float64,
+    output is float32, matching the harness. Raises
+    :class:`EngineUnavailableError` if scipy is not installed or the
+    signal is not mono, instead of silently returning unfiltered audio.
+    """
+    try:
+        numpy = importlib.import_module("numpy")
+        scipy_signal = importlib.import_module("scipy.signal")
+    except ImportError as exc:
+        raise EngineUnavailableError(
+            "kick EQ preprocessing requires scipy, which is not installed "
+            "in this worker; install the engine runtime"
+        ) from exc
+    data = numpy.asarray(audio, dtype=numpy.float64)
+    if data.ndim != 1:
+        raise EngineUnavailableError(
+            f"kick EQ preprocessing expects mono audio, got shape {data.shape}"
+        )
+    if data.size == 0:
+        return numpy.asarray(audio, dtype=numpy.float32)
+    sos_hp = scipy_signal.butter(
+        2, EQ_HIGHPASS_HZ, btype="highpass", fs=sample_rate_hz, output="sos"
+    )
+    filtered = scipy_signal.sosfilt(sos_hp, data)
+    b, a = _rbj_lowshelf_coefficients(
+        EQ_LOWSHELF_FREQ_HZ, sample_rate_hz, EQ_LOWSHELF_GAIN_DB
+    )
+    filtered = scipy_signal.sosfilt(scipy_signal.tf2sos(b, a), filtered)
+    return numpy.asarray(filtered, dtype=numpy.float32)
+
+
+def _prepare_eq_audio(audio_path: Path, work_dir: Path) -> Path:
+    """Load audio at the DrumScript sample rate, apply the kick EQ curve,
+    and write an EQ'd WAV for :func:`transcribe`.
+
+    Fail-closed: a missing or changed upstream loader/constants interface
+    raises :class:`EngineUnavailableError` instead of silently
+    transcribing the un-EQ'd file. An empty input is returned unchanged
+    (there is nothing to filter; downstream handling is unchanged).
+    """
+    try:
+        loader_module = importlib.import_module("drumscript.audio_processor.audio_loader")
+        constants_module = importlib.import_module("drumscript.notation_generator.constants")
+        scipy_wavfile = importlib.import_module("scipy.io.wavfile")
+    except ImportError as exc:
+        raise EngineUnavailableError(
+            "kick EQ preprocessing requires drumscript and scipy, which are "
+            "not installed in this worker; install the engine runtime"
+        ) from exc
+    try:
+        sample_rate = int(constants_module.SAMPLE_RATE)
+        load_audio = loader_module.load_audio
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise EngineUnavailableError(
+            "kick EQ preprocessing cannot use the installed DrumScript: "
+            "audio loader interface changed"
+        ) from exc
+    if sample_rate <= 0:
+        raise EngineUnavailableError(
+            f"kick EQ preprocessing got an invalid DrumScript sample rate: {sample_rate}"
+        )
+    try:
+        audio, loaded_sr = load_audio(str(audio_path), sr=sample_rate)
+    except (ImportError, AttributeError, TypeError) as exc:
+        raise EngineUnavailableError(
+            "kick EQ preprocessing cannot load audio with the installed "
+            "DrumScript: audio loader interface changed"
+        ) from exc
+    size = getattr(audio, "size", None)
+    if size is None:
+        raise EngineUnavailableError(
+            "kick EQ preprocessing cannot use the installed DrumScript: "
+            "audio loader returned an unexpected type"
+        )
+    if size == 0:
+        return audio_path
+    eq_audio = _apply_kick_eq(audio, float(loaded_sr))
+    eq_path = work_dir / "source-eq.wav"
+    scipy_wavfile.write(str(eq_path), int(loaded_sr), eq_audio)
+    return eq_path
+
+
 def audio_duration_seconds(audio_path: Path) -> float:
     """Read the source duration with ffprobe; fail closed if unavailable."""
     ffprobe = shutil.which("ffprobe")
@@ -171,7 +316,9 @@ class DrumScriptEngine:
 
     ``kick_config`` overrides the upstream kick classification gate for this
     engine instance only (module attributes are restored after each call).
-    The default applies the measured ``lfer_min=0.10`` gate; pass an
+    The default applies the measured ``lfer_min=0.10`` gate and the
+    measured kick EQ preprocessing (30 Hz high-pass + 120 Hz low-shelf
+    +6 dB, applied to the input file before ``transcribe``); pass an
     explicit upstream config for stock DrumScript behaviour.
     """
 
@@ -195,9 +342,12 @@ class DrumScriptEngine:
             work_dir = Path(temp)
             isolated_audio = work_dir / f"source{audio_path.suffix.lower()}"
             shutil.copy2(audio_path, isolated_audio)
+            transcribe_audio = isolated_audio
+            if self.kick_config.eq_preprocessing:
+                transcribe_audio = _prepare_eq_audio(isolated_audio, work_dir)
             with _override_kick_thresholds(self.kick_config):
                 result = engine.transcribe(
-                    str(isolated_audio),
+                    str(transcribe_audio),
                     full_song=True,
                     midi_only=True,
                     verbose=False,
