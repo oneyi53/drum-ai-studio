@@ -5,11 +5,22 @@ import csv
 import json
 from pathlib import Path
 
+import librosa
+import numpy as np
+
 from drumscript.audio_processor.audio_loader import load_audio, normalise_audio
 from drumscript.audio_processor.onset_detector import detect_onsets
 from drumscript.datasets.idmt import find_mix_files, reference_onsets_for_file, subset_of
 from drumscript.drum_classifier.classify import classify_events
-from drumscript.notation_generator.constants import KICK_FREQ_MAX, KICK_FREQ_MIN, KICK_LFER_MIN, SAMPLE_RATE
+from drumscript.notation_generator.constants import (
+    HOP_LENGTH,
+    KICK_FREQ_MAX,
+    KICK_FREQ_MIN,
+    KICK_LFER_MIN,
+    N_FFT,
+    ONSET_SLICE_DURATION_MS,
+    SAMPLE_RATE,
+)
 
 
 def match_count(reference: list[float], estimates: list[float], tolerance: float) -> int:
@@ -28,6 +39,30 @@ def match_count(reference: list[float], estimates: list[float], tolerance: float
         else:
             i += 1
     return matched
+
+
+def dc_suppressed_features(audio: np.ndarray, onset: float, sample_rate: int) -> dict[str, float]:
+    """Recompute the short-window spectrum while excluding the DC bin."""
+    start = int(onset * sample_rate)
+    length = int(ONSET_SLICE_DURATION_MS / 1000.0 * sample_rate)
+    segment = audio[start : start + length]
+    if len(segment) < length:
+        segment = np.pad(segment, (0, length - len(segment)))
+    if not len(segment) or not np.any(segment):
+        return {"peak_freq_no_dc": 0.0, "lfer_no_dc": 0.0}
+
+    spectrum = np.abs(librosa.stft(segment, n_fft=N_FFT, hop_length=HOP_LENGTH)).mean(axis=1)
+    frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=N_FFT)
+    non_dc = spectrum[1:]
+    total = float(np.sum(non_dc))
+    if total <= 0:
+        return {"peak_freq_no_dc": 0.0, "lfer_no_dc": 0.0}
+    peak_index = int(np.argmax(non_dc)) + 1
+    low_bins = (frequencies > 0.0) & (frequencies <= 150.0)
+    return {
+        "peak_freq_no_dc": float(frequencies[peak_index]),
+        "lfer_no_dc": float(np.sum(spectrum[low_bins]) / total),
+    }
 
 
 def evaluate_file(audio_path: Path, tolerance: float) -> dict[str, int | float | str]:
@@ -78,6 +113,7 @@ def evaluate_file(audio_path: Path, tolerance: float) -> dict[str, int | float |
             "time_sec": float(event["time_sec"]),
             "lfer": lfer,
             "peak_freq": peak_freq,
+            **dc_suppressed_features(audio, float(event["time_sec"]), sample_rate),
             "centroid": float(features.get("centroid", 0.0)),
             "hfer": float(features.get("hfer", 0.0)),
             "hfer_5k": float(features.get("hfer_5k", 0.0)),
@@ -210,6 +246,84 @@ def leave_one_track_out_sweep(rows: list[dict]) -> dict:
     }
 
 
+def score_dc_rule(rows: list[dict], lfer_threshold: float, hfer_max: float) -> tuple[int, int, int]:
+    tp = fp = fn = 0
+    for row in rows:
+        predicted = (
+            float(row["lfer_no_dc"]) >= lfer_threshold
+            and 20.0 <= float(row["peak_freq_no_dc"]) <= 180.0
+            and float(row["hfer"]) <= hfer_max
+        )
+        actual = bool(row["is_reference_kick"])
+        tp += int(predicted and actual)
+        fp += int(predicted and not actual)
+        fn += int(not predicted and actual)
+    return tp, fp, fn
+
+
+def leave_one_track_out_dc_suppressed_sweep(rows: list[dict]) -> dict:
+    """Evaluate DC-suppressed peak/LFER plus HFER with track-isolated tuning."""
+    lfer_thresholds = [round(value / 100, 2) for value in range(5, 61, 2)]
+    hfer_limits = [0.55, 0.65, 0.75, 0.85, 0.95]
+    tracks = sorted({str(row["track"]) for row in rows})
+    held_out = []
+    baseline_tp = baseline_fp = baseline_fn = 0
+    for track in tracks:
+        train = [row for row in rows if row["track"] != track]
+        test = [row for row in rows if row["track"] == track]
+        if not train or not test:
+            continue
+        scored = []
+        for lfer_threshold in lfer_thresholds:
+            for hfer_max in hfer_limits:
+                tp, fp, fn = score_dc_rule(train, lfer_threshold, hfer_max)
+                precision = tp / (tp + fp) if tp + fp else 0.0
+                scored.append((f1_from_counts(tp, fp, fn), precision, lfer_threshold, hfer_max))
+        _, _, selected_lfer, selected_hfer = max(
+            scored, key=lambda item: (item[0], item[1], item[2], -item[3])
+        )
+        tp, fp, fn = score_dc_rule(test, selected_lfer, selected_hfer)
+        held_out.append({
+            "track": track,
+            "selected_lfer_no_dc_threshold": selected_lfer,
+            "selected_hfer_max": selected_hfer,
+            "tp": tp, "fp": fp, "fn": fn,
+            "precision": tp / (tp + fp) if tp + fp else 0.0,
+            "recall": tp / (tp + fn) if tp + fn else 0.0,
+            "f1": f1_from_counts(tp, fp, fn),
+        })
+        baseline = [
+            row for row in test
+            if float(row["lfer"]) >= KICK_LFER_MIN
+            and KICK_FREQ_MIN <= float(row["peak_freq"]) <= KICK_FREQ_MAX
+        ]
+        actual = sum(bool(row["is_reference_kick"]) for row in test)
+        btp = sum(bool(row["is_reference_kick"]) and row in baseline for row in test)
+        baseline_tp += btp
+        baseline_fp += len(baseline) - btp
+        baseline_fn += actual - btp
+
+    tp = sum(int(row["tp"]) for row in held_out)
+    fp = sum(int(row["fp"]) for row in held_out)
+    fn = sum(int(row["fn"]) for row in held_out)
+    return {
+        "method": "leave-one-track-out; DC-excluded spectrum; tune LFER and HFER; peak 20-180 Hz",
+        "baseline_held_out": {
+            "tp": baseline_tp, "fp": baseline_fp, "fn": baseline_fn,
+            "precision": baseline_tp / (baseline_tp + baseline_fp) if baseline_tp + baseline_fp else 0.0,
+            "recall": baseline_tp / (baseline_tp + baseline_fn) if baseline_tp + baseline_fn else 0.0,
+            "f1": f1_from_counts(baseline_tp, baseline_fp, baseline_fn),
+        },
+        "tuned_held_out": {
+            "tp": tp, "fp": fp, "fn": fn,
+            "precision": tp / (tp + fp) if tp + fp else 0.0,
+            "recall": tp / (tp + fn) if tp + fn else 0.0,
+            "f1": f1_from_counts(tp, fp, fn),
+        },
+        "per_track": held_out,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Measure kick-reference recall before and after DrumScript event classification."
@@ -293,6 +407,7 @@ def main() -> None:
         "candidate_to_kick_match_retention": kick_tp_total / candidate_tp_total if candidate_tp_total else 0.0,
         "kick_rule_feature_diagnostics": feature_diagnostics,
         "track_isolated_lfer_sweep": leave_one_track_out_sweep(all_candidate_rows),
+        "dc_suppressed_track_isolated_sweep": leave_one_track_out_dc_suppressed_sweep(all_candidate_rows),
         "candidate_feature_rows": all_candidate_rows,
         "tracks": rows,
     }
@@ -320,6 +435,14 @@ def main() -> None:
         f"tuned_f1={sweep['tuned_held_out']['f1']:.3f} "
         f"tuned_recall={sweep['tuned_held_out']['recall']:.3f} "
         f"tuned_precision={sweep['tuned_held_out']['precision']:.3f}"
+    )
+    dc_sweep = summary["dc_suppressed_track_isolated_sweep"]
+    print(
+        "KICK_DC_SUPPRESSED_SWEEP "
+        f"baseline_f1={dc_sweep['baseline_held_out']['f1']:.3f} "
+        f"tuned_f1={dc_sweep['tuned_held_out']['f1']:.3f} "
+        f"tuned_recall={dc_sweep['tuned_held_out']['recall']:.3f} "
+        f"tuned_precision={dc_sweep['tuned_held_out']['precision']:.3f}"
     )
     print(f"KICK_STAGE_ARTIFACT json={args.output} csv={csv_path}")
 
