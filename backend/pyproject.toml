@@ -24,6 +24,9 @@ dev = [
   "pytest>=8.3,<9.0",
   "httpx>=0.27,<1.0",
   "ruff>=0.6,<1.0",
+  # Adapter tests cover the kick EQ preprocessing (scipy biquads). The
+  # engine worker gets scipy via DrumScript; the API image does not need it.
+  "scipy>=1.14,<2.0",
 ]
 
 [project.scripts]
