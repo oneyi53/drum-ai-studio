@@ -1,3 +1,50 @@
+## 2026-11-13 — kick detection (Issue #5): adapter-level threshold override, unmerged
+
+- Root cause confirmed against upstream DrumScript source (HEAD e3c4707):
+  the kick classifier lives upstream only, in
+  `drumscript/drum_classifier/classify.py::classify_events`. The live kick
+  rule is `lfer >= KICK_LFER_MIN (0.32)` and `40 Hz <= peak_freq <= 140 Hz`;
+  no threshold was changed upstream or vendored. Onset-candidate recall for
+  kick is ~98% while final kick recall is 5.3% (RealDrum) / 17.2%
+  (WaveDrum) / 57.1% (TechnoDrum), so the loss is at this classification
+  gate, not at onset detection. Upstream `transcribe()` runs classification
+  in-process, so a runtime override is possible without vendoring code.
+- Change (branch `fix/kick-detection`, uncommitted, not pushed): added
+  `KickClassificationConfig` to `backend/app/engine_adapter.py`. It
+  temporarily sets `KICK_LFER_MIN`/`KICK_FREQ_MIN`/`KICK_FREQ_MAX` on the
+  upstream `drumscript.drum_classifier.classify` module (its own globals —
+  patching the constants module alone would not work) and restores them
+  after each call; a config equal to the stock upstream rule is a no-op and
+  any other config fails closed if the installed DrumScript revision does
+  not expose them. `scripts/kick_stage_diagnostics.py` gained `--lfer-min`,
+  `--peak-freq-min-hz`, `--peak-freq-max-hz`, and `--offset` (held-out
+  evaluation on tracks not used for threshold selection).
+  `docs/ENGINE_VALIDATION.md` documents the override and the numbers below.
+- Measured default (IDMT-SMT-Drums V2, 50 ms, DrumScript HEAD e3c4707,
+  55 tuning tracks / 969 kick refs): `lfer_min=0.10` lifts pooled kick
+  recall 0.25 -> 0.84 at precision 0.89 -> 0.84 (F1 0.39 -> 0.84); per
+  subset F1 0.10 -> 0.90 (RealDrum), 0.29 -> 0.82 (WaveDrum),
+  0.68 -> 0.80 (TechnoDrum). Held-out check on 15 untouched WaveDrum
+  tracks (349 refs): recall 0.24 -> 0.55, precision 0.83 -> 0.77
+  (F1 0.37 -> 0.64). `lfer_min=0.15` is the conservative alternative
+  (pooled F1 0.79, held-out F1 0.51). The default is therefore 0.10, not
+  the stock 0.32; pass an explicit `KickClassificationConfig(lfer_min=0.32)`
+  to restore upstream behaviour.
+- Verification on this branch: backend suite 110 passed (was 99; +11 new
+  adapter tests, incl. apply-and-restore, measured-default application,
+  stock no-op, fail-closed); ruff clean on all touched files. The override
+  was also verified against the real upstream module on a synthetic mix:
+  default gate finds 9/31 onsets as kick, `lfer_min=0.15` finds 31/31,
+  threshold restored to 0.32 afterwards.
+- Risk: lowering `lfer_min` recovers kicks diluted by bass/mix energy but
+  risks bass-guitar and low-tom false positives — pooled precision fell
+  0.89 -> 0.84, and on a bass-heavy synthetic mix the 0.15 gate already
+  labels every onset as kick. Snare/hi-hat rules are independent of this
+  gate, but a kick label now suppresses the low_tom label for the same
+  onset, so low-tom recall is the unmeasured trade-off. Full-song
+  `transcribe()` (Demucs path) was not run end-to-end locally; the
+  diagnostic path exercises the same `classify_events` code directly.
+
 ## 2026-11-12 — review of revised rhythmic-beaming implementation proposal
 
 - Reviewed the newly supplied `process_measure_rhythm_and_beams` patch and

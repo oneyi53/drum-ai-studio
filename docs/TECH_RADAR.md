@@ -7,6 +7,13 @@ measured against the project's own benchmark (see `KICK_RECALL_RESEARCH.md`).
 
 Last sweep: 2026-11-13.
 
+## Selection principle (user decision, 2026-11-13)
+
+Pick engines by **measured success rate on the same benchmark**, not by
+hype. Manual editing stays first-class: the editor and human corrections
+are never removed, re-analysis must not overwrite manually corrected
+events, and corrections carry provenance (`manually_corrected`).
+
 ## Engines in play
 
 ### DrumScript (current engine, Apache-2.0)
@@ -18,6 +25,13 @@ Last sweep: 2026-11-13.
   5.3% / 17.2% / 57.1% (RealDrum / WaveDrum / TechnoDrum, IDMT-SMT-Drums).
 - Verdict: keep as engine #1 while the fix in Issue #5 is measured.
   Watch upstream releases; do not vendor its code.
+- Measured 2026-11-13 (IDMT-SMT-Drums, 50 ms tolerance, 55 tracks):
+  retuning the kick LFER gate 0.32 -> 0.10 lifts pooled kick F1
+  0.395 -> 0.838 (recall 0.254 -> 0.838, precision 0.885 -> 0.837);
+  held-out WaveDrum F1 0.366 -> 0.643. Cost: TechnoDrum precision
+  0.773, low-tom trade-off unmeasured. Fix lives in
+  `backend/app/engine_adapter.py` (`KickClassificationConfig`, runtime
+  override with restore, fail-closed on upstream changes).
 
 ### STRUM (candidate engine #2 — evaluate next)
 - arXiv May 2026: Demucs HTDEMUCS_6S separation, two-stage CRNN onset
@@ -29,6 +43,9 @@ Last sweep: 2026-11-13.
   DrumScript for a like-for-like kick recall comparison. The project's
   engine-independent evaluator (`DRUM_EVENT_EVALUATION.md`) already
   supports this comparison without changing the scoring contract.
+- Status 2026-11-13: evaluation in progress (same IDMT tracks, same
+  50 ms tolerance). Winner by measured kick F1 becomes the main engine;
+  the loser stays as fallback/reference.
 
 ### ADTOF-pytorch (candidate engine #3 — license caution)
 - Code MIT-ish; model weights CC BY-NC-SA 4.0 (non-commercial).

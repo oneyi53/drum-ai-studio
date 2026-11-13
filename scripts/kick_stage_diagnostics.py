@@ -7,9 +7,34 @@ from pathlib import Path
 
 from drumscript.audio_processor.audio_loader import load_audio, normalise_audio
 from drumscript.audio_processor.onset_detector import detect_onsets
-from drumscript.datasets.idmt import find_mix_files, reference_onsets_for_file, subset_of
+from drumscript.datasets.idmt import (
+    find_mix_files,
+    reference_onsets_for_file,
+    subset_of,
+)
+from drumscript.drum_classifier import classify as classify_module
 from drumscript.drum_classifier.classify import classify_events
-from drumscript.notation_generator.constants import KICK_FREQ_MAX, KICK_FREQ_MIN, KICK_LFER_MIN, SAMPLE_RATE
+from drumscript.notation_generator.constants import SAMPLE_RATE
+
+
+def apply_kick_thresholds(lfer_min: float, peak_freq_min: float, peak_freq_max: float) -> None:
+    """Override the upstream kick gate for this diagnostic process.
+
+    ``classify_events`` reads the thresholds from its own module globals
+    (bound at import time from the constants module), so the constants
+    module alone must not be patched. Both modules are updated so the
+    reported threshold always matches the behaviour under test.
+    """
+    if not 0.0 <= lfer_min <= 1.0:
+        raise ValueError(f"--lfer-min must be within [0, 1], got {lfer_min}")
+    if not 0.0 < peak_freq_min < peak_freq_max:
+        raise ValueError(
+            "--peak-freq range must satisfy 0 < min < max, got "
+            f"({peak_freq_min}, {peak_freq_max})"
+        )
+    classify_module.KICK_LFER_MIN = lfer_min
+    classify_module.KICK_FREQ_MIN = peak_freq_min
+    classify_module.KICK_FREQ_MAX = peak_freq_max
 
 
 def match_count(reference: list[float], estimates: list[float], tolerance: float) -> int:
@@ -75,9 +100,9 @@ def evaluate_file(audio_path: Path, tolerance: float) -> dict[str, int | float |
             "hfer": float(features.get("hfer", 0.0)),
             "hfer_5k": float(features.get("hfer_5k", 0.0)),
             "decay": float(features.get("decay", 0.0)),
-            "passes_lfer": lfer >= KICK_LFER_MIN,
-            "passes_peak_frequency": KICK_FREQ_MIN <= peak_freq <= KICK_FREQ_MAX,
-            "passes_kick_rule": lfer >= KICK_LFER_MIN and KICK_FREQ_MIN <= peak_freq <= KICK_FREQ_MAX,
+            "passes_lfer": lfer >= classify_module.KICK_LFER_MIN,
+            "passes_peak_frequency": classify_module.KICK_FREQ_MIN <= peak_freq <= classify_module.KICK_FREQ_MAX,
+            "passes_kick_rule": lfer >= classify_module.KICK_LFER_MIN and classify_module.KICK_FREQ_MIN <= peak_freq <= classify_module.KICK_FREQ_MAX,
             "predicted_kick": "kick" in event.get("instruments", []),
         })
     return {
@@ -115,14 +140,46 @@ def main() -> None:
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--subset", choices=("RealDrum", "WaveDrum", "TechnoDrum"), required=True)
     parser.add_argument("--limit", type=int, default=15)
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Skip this many mix files before taking --limit tracks. Use it to "
+        "evaluate a candidate threshold on tracks that were not used to select "
+        "it (held-out validation).",
+    )
     parser.add_argument("--tolerance-ms", type=float, default=50.0)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--lfer-min",
+        type=float,
+        default=classify_module.KICK_LFER_MIN,
+        help="Override the upstream kick LFER gate (default: upstream KICK_LFER_MIN). "
+        "Use with the adapter's KickClassificationConfig to measure a candidate "
+        "threshold before adopting it.",
+    )
+    parser.add_argument(
+        "--peak-freq-min-hz",
+        type=float,
+        default=classify_module.KICK_FREQ_MIN,
+        help="Override the upstream kick peak-frequency lower bound in Hz.",
+    )
+    parser.add_argument(
+        "--peak-freq-max-hz",
+        type=float,
+        default=classify_module.KICK_FREQ_MAX,
+        help="Override the upstream kick peak-frequency upper bound in Hz.",
+    )
     args = parser.parse_args()
 
-    if args.limit < 1 or args.tolerance_ms < 0:
-        parser.error("--limit must be positive and --tolerance-ms non-negative")
+    if args.limit < 1 or args.tolerance_ms < 0 or args.offset < 0:
+        parser.error("--limit must be positive and --tolerance-ms/--offset non-negative")
+    try:
+        apply_kick_thresholds(args.lfer_min, args.peak_freq_min_hz, args.peak_freq_max_hz)
+    except ValueError as exc:
+        parser.error(str(exc))
 
-    files = find_mix_files(args.root, args.subset)[: args.limit]
+    files = find_mix_files(args.root, args.subset)[args.offset : args.offset + args.limit]
     if not files:
         parser.error(f"No IDMT mix files found for subset {args.subset}")
 
@@ -170,8 +227,8 @@ def main() -> None:
             sorted(float(item["peak_freq"]) for item in matched_features)[feature_count // 2]
             if feature_count else None
         ),
-        "kick_lfer_threshold": KICK_LFER_MIN,
-        "kick_peak_frequency_range_hz": [KICK_FREQ_MIN, KICK_FREQ_MAX],
+        "kick_lfer_threshold": classify_module.KICK_LFER_MIN,
+        "kick_peak_frequency_range_hz": [classify_module.KICK_FREQ_MIN, classify_module.KICK_FREQ_MAX],
     }
 
     summary = {
@@ -200,7 +257,9 @@ def main() -> None:
 
     print(
         f"KICK_STAGE_DIAGNOSTICS subset={args.subset} tracks={len(rows)} "
-        f"refs={reference_total} candidate_recall={summary['candidate_recall']:.3f} "
+        f"refs={reference_total} lfer_min={classify_module.KICK_LFER_MIN:.3f} "
+        f"peak_freq_hz=[{classify_module.KICK_FREQ_MIN:.0f}, {classify_module.KICK_FREQ_MAX:.0f}] "
+        f"candidate_recall={summary['candidate_recall']:.3f} "
         f"kick_recall={summary['kick_recall']:.3f} "
         f"kick_precision={summary['kick_precision']:.3f} "
         f"candidate_to_kick_retention={summary['candidate_to_kick_match_retention']:.3f} "
