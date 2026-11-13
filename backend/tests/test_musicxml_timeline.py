@@ -5,7 +5,9 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
+from app.drum_events import DrumEvent, DrumInstrument, DrumPerformance, TempoChange
 from app.musicxml_adapter import (
+    performance_to_musicxml,
     reconstruct_and_validate_measure,
     reconstruct_and_validate_musicxml,
 )
@@ -209,3 +211,21 @@ def test_rest_cannot_be_used_as_chord_parent():
     </measure>""")
     with pytest.raises(ValueError, match="rest cannot be the parent"):
         reconstruct_and_validate_measure(measure, divisions=4)
+
+
+def test_validator_accepts_real_exporter_output_with_multiple_instrument_voices():
+    performance = DrumPerformance(
+        duration_seconds=2.0,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
+        events=[
+            DrumEvent(time_seconds=0.0, instrument=DrumInstrument.KICK, velocity=110),
+            DrumEvent(time_seconds=0.0, instrument=DrumInstrument.CLOSED_HIHAT, velocity=85),
+            DrumEvent(time_seconds=0.25, instrument=DrumInstrument.SNARE, velocity=96),
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, velocity=100),
+            DrumEvent(time_seconds=0.75, instrument=DrumInstrument.CLOSED_HIHAT, velocity=80),
+        ],
+    )
+    xml = performance_to_musicxml(performance)
+    results = reconstruct_and_validate_musicxml(xml)
+    assert len(results) == 1
+    assert set(results[0]["voice_events"]) == {("1", "1"), ("1", "2"), ("1", "3")}
