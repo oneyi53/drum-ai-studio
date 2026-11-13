@@ -100,3 +100,41 @@ def test_musicxml_export_rejects_unrepresentable_internal_onset_gap():
 
     with pytest.raises(ValueError, match="quantize the performance"):
         performance_to_musicxml(performance)
+
+
+def test_sparse_voice_uses_three_four_meter_boundaries():
+    performance = DrumPerformance(
+        duration_seconds=1.5,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=3, denominator=4)],
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=1.0, instrument=DrumInstrument.KICK),
+        ],
+    )
+    root = ET.fromstring(performance_to_musicxml(performance))
+    voice_notes = [
+        note for note in root.findall(".//measure/note")
+        if note.findtext("voice") == "1"
+    ]
+    assert [note.find("rest") is not None for note in voice_notes] == [False, True, False]
+    assert [note.findtext("duration") for note in voice_notes] == ["480", "480", "480"]
+
+
+def test_sparse_voice_uses_six_eight_dotted_quarter_pulse():
+    performance = DrumPerformance(
+        duration_seconds=1.5,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=6, denominator=8)],
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=0.75, instrument=DrumInstrument.KICK),
+        ],
+    )
+    root = ET.fromstring(performance_to_musicxml(performance))
+    voice_notes = [
+        note for note in root.findall(".//measure/note")
+        if note.findtext("voice") == "1"
+    ]
+    assert [note.find("rest") is not None for note in voice_notes] == [False, True, False]
+    assert [note.findtext("type") for note in voice_notes] == [
+        "quarter", "eighth", "quarter"
+    ]
