@@ -55,3 +55,48 @@ def test_engraves_note_values_from_spacing_between_repeated_hits():
     )
     root = ET.fromstring(performance_to_musicxml(performance))
     assert [item.text for item in root.findall(".//note/type")] == ["eighth", "quarter"]
+
+
+def test_sparse_kick_voice_emits_explicit_rest_between_hits():
+    performance = DrumPerformance(
+        duration_seconds=2.0,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=1.0, instrument=DrumInstrument.KICK),
+        ],
+    )
+    root = ET.fromstring(performance_to_musicxml(performance))
+    voice_notes = [
+        note for note in root.findall(".//measure/note")
+        if note.findtext("voice") == "1"
+    ]
+    assert [note.find("rest") is not None for note in voice_notes] == [False, True, False]
+    assert [note.findtext("type") for note in voice_notes] == [
+        "quarter", "quarter", "quarter"
+    ]
+    assert [note.findtext("duration") for note in voice_notes] == ["480", "480", "480"]
+
+
+def test_meter_aware_rest_decomposition_preserves_6_8_grouping():
+    from app.musicxml_adapter import decompose_meter_aware_gap
+
+    assert decompose_meter_aware_gap(480, 1440, 6, 8, divisions=480) == [
+        (240, "eighth", 0),
+        (720, "quarter", 1),
+    ]
+
+
+def test_musicxml_export_rejects_unrepresentable_internal_onset_gap():
+    performance = DrumPerformance(
+        duration_seconds=1.0,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=0.15, instrument=DrumInstrument.KICK),
+        ],
+    )
+    import pytest
+
+    with pytest.raises(ValueError, match="quantize the performance"):
+        performance_to_musicxml(performance)
