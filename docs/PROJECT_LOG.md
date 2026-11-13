@@ -1029,3 +1029,11 @@ code or validation state changes; do not infer completion from plans.
 
 
 - Follow-up validation: the first CI pass exposed two test-fixture/namespace-handling defects; both were corrected. The current backend CI reports 93 passed and Ruff clean, and the paired frontend CI is green. A regression now runs the validator against actual output from `performance_to_musicxml()`, not only hand-authored XML. PR #13 remains a validation-only slice; exporter notation semantics and PDF visual acceptance are still outstanding.
+
+
+## 2026-11-13 — MusicXML note-value semantics validation
+
+- Added an opt-in strict validator for MusicXML note `duration`, `type`, dot count, and `time-modification` ratios. The calculation uses exact fractions in quarter-note units.
+- Added coverage for dotted and double-dotted values, triplet ratios, invalid tuplets, missing note types, and strict validation of actual output from the existing exporter.
+- Kept strict validation opt-in to avoid silently breaking existing exports while the exporter is being upgraded to emit rests and duration fragments in a later slice.
+- CI on the implementation commit: backend 99 tests passed and Ruff clean; frontend checks passed. This slice validates notation consistency but does not yet change exporter output or claim PDF visual acceptance.
