@@ -478,18 +478,22 @@ function App() {
     }
   }
 
-  async function moveEventsByOffset(eventIds: string[], offset: number) {
-    if (!summary || !eventIds.length || Math.abs(offset) < 0.001) return;
+  async function moveEventsByOffset(eventIds: string[], offset: number, instrument?: string) {
+    if (!summary || !eventIds.length || (Math.abs(offset) < 0.001 && !instrument)) return;
     setSaving(true);
     try {
       const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/events/batch`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event_ids: eventIds, time_offset_seconds: offset }),
+        body: JSON.stringify({
+          event_ids: eventIds,
+          ...(Math.abs(offset) >= 0.001 ? { time_offset_seconds: offset } : {}),
+          ...(instrument ? { instrument } : {}),
+        }),
       });
       const result = await response.json() as Record<string, unknown>;
       if (!response.ok) throw new Error(responseError(result, "拖动移动失败"));
       await refreshPerformance(summary.projectId, summary.jobId);
-      setMessage(`已拖动移动 ${eventIds.length} 个鼓点（${offset >= 0 ? "+" : ""}${offset.toFixed(3)}s），已记录历史并同步 MIDI。`);
+      setMessage(`已移动 ${eventIds.length} 个鼓点${Math.abs(offset) >= 0.001 ? `（${offset >= 0 ? "+" : ""}${offset.toFixed(3)}s）` : ""}${instrument ? `至 ${instrument} 音轨` : ""}，已记录历史并同步 MIDI。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "拖动移动失败");
     } finally {
@@ -587,9 +591,10 @@ function App() {
       return;
     }
     const offset = drag.currentTime - drag.startTime;
-    if (Math.abs(offset) >= 0.001 && drag.eventIds.length) {
+    const laneChanged = drag.currentLane !== drag.startLane;
+    if ((Math.abs(offset) >= 0.001 || laneChanged) && drag.eventIds.length) {
       suppressTimelineClickRef.current = true;
-      void moveEventsByOffset(drag.eventIds, offset);
+      void moveEventsByOffset(drag.eventIds, offset, laneChanged ? drag.currentLane : undefined);
     }
   }
 

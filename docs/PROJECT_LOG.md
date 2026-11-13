@@ -1008,3 +1008,12 @@ code or validation state changes; do not infer completion from plans.
 - Downloaded and visually inspected CI artifact 13942911556 from run 43212702034. The PNG is 1404x993 and shows the actual defect: the first system is rendered near the top, then a second almost-empty percussion staff appears below it, leaving most of the landscape page blank. This is concrete evidence that the PDF layout is not yet acceptable.
 - Added this artifact reproduction to Issue #6 and asked Gemini to create a regression that fails on the extra near-empty system, then attach before/after PDF and PNG renders with the actual Verovio version/options; comment 6823850692.
 - Artifact run commit is f100c55b6bed2045b8598c7859fe4f51cd69eadc, older than current integration head. No production code changed in this increment. PR #4 remains open and unmerged.
+
+
+## 2026-11-13 — timeline cross-lane editing
+
+- Fixed a functional mismatch in the piano-roll-style timeline: vertical pointer drags previously tracked the destination lane visually but only persisted horizontal time offsets, so a drum hit could not actually change instrument by dragging it to another lane.
+- Extended the batch event API to accept an optional target instrument independently of an optional time offset. Selected events can now be reassigned to a drum lane, shifted in time, or both in one atomic history revision; edits retain velocity and are marked manual/corrected.
+- Updated timeline pointer-up handling to persist the destination lane as well as time movement, and to allow a purely vertical move with zero time offset.
+- Added API regression tests for instrument reassignment preserving event timing/velocity and for rejecting empty batch edits.
+- No transcription classifier, benchmark thresholds, or PDF code changed.

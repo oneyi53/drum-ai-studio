@@ -755,3 +755,55 @@ def test_project_bundle_rejects_unsupported_pdf_layout(client):
         f"/api/projects/{uploaded['id']}/bundle?measures_per_system=6"
     )
     assert response.status_code == 422
+
+
+def test_batch_update_can_reassign_instrument_without_moving_time(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("lanes.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=4,
+        events=[
+            DrumEvent(time_seconds=0.75, instrument=DrumInstrument.KICK, velocity=111),
+            DrumEvent(time_seconds=1.25, instrument=DrumInstrument.SNARE, velocity=90),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    started = client.post(f"/api/projects/{project_id}/analyze")
+    assert started.status_code == 202
+    assert started.json()["status"] == "queued"
+    before_response = client.get(f"/api/projects/{project_id}/performance")
+    assert before_response.status_code == 200
+    before = before_response.json()["performance"]
+    kick_id = next(event["id"] for event in before["events"] if event["instrument"] == "kick")
+
+    response = client.patch(
+        f"/api/projects/{project_id}/events/batch",
+        json={"event_ids": [kick_id], "instrument": "snare"},
+    )
+    assert response.status_code == 200
+    changed = next(event for event in response.json()["performance"]["events"] if event["id"] == kick_id)
+    assert changed["instrument"] == "snare"
+    assert changed["time_seconds"] == 0.75
+    assert changed["velocity"] == 111
+    assert changed["manually_corrected"] is True
+
+
+def test_batch_update_requires_time_offset_or_instrument(client):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("empty.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    response = client.patch(
+        f"/api/projects/{uploaded['id']}/events/batch",
+        json={"event_ids": ["missing-event"]},
+    )
+    assert response.status_code == 422
