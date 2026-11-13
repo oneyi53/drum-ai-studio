@@ -13,7 +13,6 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/engine-validation.yml"
       - "scripts/engine_smoke.py"
       - "*.mp3"
 
