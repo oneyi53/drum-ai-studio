@@ -116,6 +116,21 @@ def _draw_note(pdf: canvas.Canvas, x: float, y: float, instrument: DrumInstrumen
     pdf.restoreState()
 
 
+def _trim_trailing_empty_measures(score_root: ET.Element) -> int:
+    """Drop silent tail measures from the printable score, preserving MusicXML export."""
+    measures = score_root.findall("./part/measure")
+    last_audible = max(
+        (index for index, measure in enumerate(measures) if measure.find("note") is not None),
+        default=0,
+    )
+    removed = measures[last_audible + 1 :]
+    for measure in removed:
+        for direction in measure.findall("direction"):
+            measures[last_audible].append(direction)
+        score_root.find("./part").remove(measure)
+    return len(removed)
+
+
 def _apply_system_breaks(score_root: ET.Element, measures_per_system: int) -> None:
     """Insert explicit MusicXML line breaks after each configured measure group."""
     if measures_per_system not in {4, 5}:
@@ -164,6 +179,8 @@ def _render_with_verovio(
     # sets. Preserve the exact tempo in PDF as readable text while keeping the
     # MusicXML download's semantic metronome marking untouched.
     score_root = ET.fromstring(performance_to_musicxml(performance))
+    # Omit silent tail bars from the printable PDF, without changing MusicXML download.
+    _trim_trailing_empty_measures(score_root)
     # Explicit MusicXML system breaks keep each printed line to four or five bars.
     _apply_system_breaks(score_root, measures_per_system)
     for metronome in score_root.findall(".//metronome"):
