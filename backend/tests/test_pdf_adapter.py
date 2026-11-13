@@ -108,3 +108,19 @@ def test_pdf_rejects_unsupported_measures_per_system():
         assert "4 or 5" in str(exc)
     else:
         raise AssertionError("unsupported measure grouping should be rejected")
+
+def test_pdf_renderer_trims_silent_tail_measures_only():
+    score = ET.fromstring(
+        '<score-partwise><part id="P1">'
+        '<measure number="1"><note/></measure>'
+        '<measure number="2"><attributes/></measure>'
+        '<measure number="3"><attributes/><direction/></measure>'
+        '</part></score-partwise>'
+    )
+    removed = pdf_adapter._trim_trailing_empty_measures(score)
+    measures = score.findall("./part/measure")
+    assert removed == 2
+    assert len(measures) == 1
+    # Directional markings from the tail are not silently discarded.
+    assert measures[0].find("direction") is not None
+
