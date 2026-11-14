@@ -161,6 +161,35 @@ def decompose_rhythmic_duration(
     return best[duration]
 
 
+def _beat_group_boundaries(
+    numerator: int, denominator: int, divisions: int = DIVISIONS
+) -> list[int]:
+    """Tick boundaries of the beat groups inside one measure.
+
+    Beat groups are the units beaming (and meter-aware rest decomposition)
+    must not cross: half measures in 4/4, dotted-quarter pulses in compound
+    meters, the 3+2+2 eighth groups in 7/8, and one beat unit elsewhere.
+    The returned list starts at 0 and ends at the bar length in ticks.
+    """
+    if numerator <= 0 or denominator <= 0 or divisions <= 0:
+        raise ValueError("meter values and divisions must be positive")
+    denominator_unit_numerator = divisions * 4
+    if denominator_unit_numerator % denominator:
+        raise ValueError("meter denominator does not produce an integral duration")
+    denominator_unit = denominator_unit_numerator // denominator
+    bar_length = numerator * denominator_unit
+
+    if denominator == 8 and numerator == 7:
+        return [0, 3 * denominator_unit, 5 * denominator_unit, bar_length]
+    if denominator == 8 and numerator > 3 and numerator % 3 == 0:
+        group_size = 3 * denominator_unit
+    elif numerator == 4 and denominator == 4:
+        group_size = 2 * divisions
+    else:
+        group_size = denominator_unit
+    return list(range(0, bar_length + 1, group_size))
+
+
 def decompose_meter_aware_gap(
     start: int,
     end: int,
@@ -173,41 +202,18 @@ def decompose_meter_aware_gap(
         raise ValueError("gap must have a non-negative start and end after start")
     if end == start:
         return []
-    if numerator <= 0 or denominator <= 0 or divisions <= 0:
-        raise ValueError("meter values and divisions must be positive")
-    denominator_unit_numerator = divisions * 4
-    if denominator_unit_numerator % denominator:
-        raise ValueError("meter denominator does not produce an integral duration")
-    denominator_unit = denominator_unit_numerator // denominator
-
-    boundaries: list[int] | None = None
-    if denominator == 8 and numerator == 7:
-        boundaries = [0, 3 * denominator_unit, 5 * denominator_unit, 7 * denominator_unit]
-        bar_length = numerator * denominator_unit
-        group_size = 0
-    elif denominator == 8 and numerator > 3 and numerator % 3 == 0:
-        group_size = 3 * denominator_unit
-        bar_length = numerator * denominator_unit
-    elif numerator == 4 and denominator == 4:
-        group_size = 2 * divisions
-        bar_length = numerator * 4 * divisions // denominator
-    else:
-        group_size = denominator_unit
-        bar_length = numerator * denominator_unit
+    boundaries = _beat_group_boundaries(numerator, denominator, divisions)
+    bar_length = boundaries[-1]
 
     result: list[tuple[int, str, int]] = []
     position = start
     while position < end:
-        if boundaries is not None:
-            bar_position = position % bar_length
-            next_boundary = next(
-                (boundary for boundary in boundaries if boundary > bar_position),
-                bar_length,
-            )
-            chunk_end = min(end, position + next_boundary - bar_position)
-        else:
-            next_boundary = ((position // group_size) + 1) * group_size
-            chunk_end = min(end, next_boundary)
+        bar_position = position % bar_length
+        next_boundary = next(
+            (boundary for boundary in boundaries if boundary > bar_position),
+            bar_length,
+        )
+        chunk_end = min(end, position + next_boundary - bar_position)
         result.extend(decompose_rhythmic_duration(chunk_end - position, divisions))
         position = chunk_end
     return result
@@ -239,6 +245,172 @@ def _choose_hit_duration(
     actual_notes = smallest_ticks.numerator // gcd_value
     normal_notes = gap // gcd_value
     return gap, smallest_type, 0, actual_notes, normal_notes
+
+
+_BEAM_LEVELS = {
+    "eighth": 1,
+    "16th": 2,
+    "32nd": 3,
+    "64th": 4,
+    "128th": 5,
+    "256th": 6,
+    "512th": 7,
+    "1024th": 8,
+}
+
+
+def _beam_level(note_type: str | None) -> int | None:
+    """Beam depth for a note type, or None when the note is never beamed."""
+    if note_type is None:
+        return None
+    return _BEAM_LEVELS.get(note_type)
+
+
+def _insert_beams(note_element: ET.Element, beams: list[tuple[int, str]]) -> None:
+    """Insert <beam> children before <play>, in MusicXML note order.
+
+    In a <note>, beams sit after stem/notehead and before notations/play.
+    The exporter always writes <play> last, so inserting before it keeps
+    the schema order without re-serializing the whole note.
+    """
+    play = _musicxml_child(note_element, "play")
+    index = list(note_element).index(play) if play is not None else len(note_element)
+    for offset, (number, value) in enumerate(beams):
+        beam = ET.Element("beam", {"number": str(number)})
+        beam.text = value
+        note_element.insert(index + offset, beam)
+
+
+def _beat_group_index(boundaries: list[int], onset_ticks: Fraction) -> int:
+    """Index of the beat group containing an onset given in ticks."""
+    for index in range(len(boundaries) - 1):
+        if boundaries[index] <= onset_ticks < boundaries[index + 1]:
+            return index
+    return len(boundaries) - 2
+
+
+def _secondary_beam_value(
+    group: list[tuple[dict[str, object], int]], position: int, beam_level: int
+) -> str | None:
+    """Beam value at one secondary level, or None when the note has no such beam."""
+    _, level = group[position]
+    if level < beam_level:
+        return None
+    # Maximal run of notes at this level (or deeper) containing this note.
+    # The level-1 group is contiguous by construction, so a run only splits
+    # where a longer note intervenes.
+    start = position
+    while start > 0:
+        previous_record, previous_level = group[start - 1]
+        record, _ = group[start]
+        if previous_level < beam_level:
+            break
+        if Fraction(record["onset"]) != Fraction(previous_record["offset_end"]):
+            break
+        start -= 1
+    end = position
+    while end + 1 < len(group):
+        record, _ = group[end]
+        next_record, next_level = group[end + 1]
+        if next_level < beam_level:
+            break
+        if Fraction(next_record["onset"]) != Fraction(record["offset_end"]):
+            break
+        end += 1
+    if end > start:
+        if position == start:
+            return "begin"
+        if position == end:
+            return "end"
+        return "continue"
+    # Lone secondary beam: a hook pointing toward the rest of the group.
+    return "backward hook" if position == len(group) - 1 else "forward hook"
+
+
+def _beam_voice_stream(
+    records: list[dict[str, object]],
+    boundaries: list[int],
+    divisions: int,
+) -> None:
+    """Add <beam> elements to one voice stream in one measure.
+
+    Beam groups are maximal runs of beamable notes (eighth or shorter,
+    no tuplets) that are contiguous in time and stay inside one beat
+    group. Rests, forwards, tuplets, and longer notes break a run; a
+    single-note run is left unbeamed (flagged). Secondary beams break at
+    each eighth-note unit; a lone secondary beam becomes a hook.
+    """
+    candidates: list[tuple[dict[str, object], int]] = []
+    for record in sorted(records, key=lambda item: (item["onset"], bool(item["is_chord"]))):
+        if record["is_chord"] or record["is_rest"]:
+            continue
+        element = record["element"]
+        level = _beam_level(element.findtext("type"))
+        if level is None:
+            continue
+        # The MusicXML schema caps <beam> at 6 per note; deeper values keep
+        # their flags instead of emitting an invalid seventh beam.
+        if level > 6:
+            continue
+        if _musicxml_child(element, "time-modification") is not None:
+            continue
+        candidates.append((record, level))
+
+    groups: list[list[tuple[dict[str, object], int]]] = []
+    previous_end: Fraction | None = None
+    previous_group: int | None = None
+    for candidate in candidates:
+        record, _ = candidate
+        onset_ticks = Fraction(record["onset"]) * divisions
+        group_index = _beat_group_index(boundaries, onset_ticks)
+        if (
+            groups
+            and previous_end is not None
+            and onset_ticks == previous_end
+            and group_index == previous_group
+        ):
+            groups[-1].append(candidate)
+        else:
+            groups.append([candidate])
+        previous_end = Fraction(record["offset_end"]) * divisions
+        previous_group = group_index
+
+    for group in groups:
+        if len(group) < 2:
+            continue
+        max_level = max(level for _, level in group)
+        for position, (record, _level) in enumerate(group):
+            if position == 0:
+                beams: list[tuple[int, str]] = [(1, "begin")]
+            elif position == len(group) - 1:
+                beams = [(1, "end")]
+            else:
+                beams = [(1, "continue")]
+            for beam_level in range(2, max_level + 1):
+                value = _secondary_beam_value(group, position, beam_level)
+                if value is not None:
+                    beams.append((beam_level, value))
+            _insert_beams(record["element"], beams)
+
+
+def _apply_beams(part: ET.Element) -> None:
+    """Add <beam> elements to every measure in a built <part>.
+
+    Runs on the finished MusicXML tree via the same shared-cursor
+    reconstruction the validator uses, so beam groups are computed from
+    absolute onsets per voice — never from per-voice iteration order.
+    """
+    effective_divisions = DIVISIONS
+    effective_time: tuple[int, int] | None = None
+    for measure in _musicxml_children(part, "measure"):
+        result = reconstruct_and_validate_measure(
+            measure, time_sig=effective_time, divisions=effective_divisions
+        )
+        effective_divisions = int(result["divisions"])
+        effective_time = result["time_signature"]
+        boundaries = _beat_group_boundaries(*effective_time, effective_divisions)
+        for stream in result["voice_events"].values():
+            _beam_voice_stream(stream, boundaries, effective_divisions)
 
 
 def performance_to_musicxml(performance: DrumPerformance) -> str:
@@ -452,6 +624,8 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                 forward = ET.SubElement(measure, "forward")
                 _add_text(forward, "duration", measure_duration - cursor)
                 cursor = measure_duration
+
+    _apply_beams(part)
 
     ET.indent(root, space="  ")
     xml_text = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
