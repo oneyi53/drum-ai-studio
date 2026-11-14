@@ -1,3 +1,27 @@
+## 2026-11-14 — Issue #6: PDF engraving fixed after first visual inspection (3 blocking defects)
+
+- First rendered score ever inspected by eye (16-bar groove, 237 events):
+  every bar started with "4/4" (MusicXML emits `<time>` per measure),
+  `breaks=auto` ignored the configured 4-measure grouping ([3,4,4,4,1]
+  with an orphan final bar), and short scores stayed narrow (2 bars 50%,
+  sparse 22% vs the 72% width gate). Fixed in `backend/app/pdf_adapter.py`
+  (print path only; the MusicXML download is untouched): redundant
+  `<time>` stripped except in measure 1 and on meter change, `"breaks":
+  "line"` when explicit breaks exist, `minLastJustification=0` for
+  single-system scores. Tempo text rounded to one decimal ("60.0927" ->
+  "60.1 BPM", integer tempos unchanged) in both the Verovio and fallback
+  paths. Post-fix: systems [4,4,4,4] / [4,4], width 95.8% on all renders,
+  no collisions; the 300-dpi bar-16 fill crop is clean.
+- Tests: 5 new in `backend/tests/test_pdf_adapter.py` (time-signature
+  strip incl. meter-change case, Verovio options, real-geometry systems
+  via Verovio SVG, tempo rounding). Backend suite 134 passed, ruff clean,
+  offline API smoke `API_ENGINE_E2E_OK`.
+- Open follow-up (not changed): the 15% ink-height gate is a fragile
+  proxy for single-system scores — correct short scores measure 9.8–11.3%
+  and the smoke passes at 16.0% only because one low rest glyph extends
+  the bbox. Rework it to measure first-system height rather than the
+  whole-page bbox before it false-fails a correct short score.
+
 ## 2026-11-14 — Salvaged real-audio evaluation toolchain from `feat/real-audio-evaluation-harness` (PR #1 closed as do-not-merge)
 
 - Content merge onto main, no merge commit (same snapshot pattern as the
