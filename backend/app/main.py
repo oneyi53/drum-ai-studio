@@ -25,6 +25,13 @@ from .engine_adapter import DrumScriptEngine
 from .midi_adapter import performance_to_midi
 from .musicxml_adapter import performance_to_musicxml
 from .pdf_adapter import performance_to_pdf
+from .project_file import (
+    ProjectFile,
+    ProjectFileAnnotation,
+    ProjectFileExportRequest,
+    annotation_csv_text,
+    build_project_file,
+)
 from .quantization_api import router as quantization_router
 
 APP_DIR = Path(__file__).resolve().parent
@@ -514,9 +521,13 @@ def _load_editable_performance(connection: sqlite3.Connection, project_id: str):
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="No completed performance is available.")
-    if not row["midi_filename"]:
-        raise HTTPException(status_code=404, detail="Generated MIDI file is missing.")
-    return row, DrumPerformance.model_validate_json(row["performance_json"])
+    # A row without a recorded MIDI name (e.g. a performance seeded
+    # straight into the DB) defaults to the engine's standard name; the
+    # save step regenerates the file from the performance JSON, so an
+    # edit never fails on a missing derived artifact.
+    editable = dict(row)
+    editable["midi_filename"] = row["midi_filename"] or "performance.mid"
+    return editable, DrumPerformance.model_validate_json(row["performance_json"])
 
 
 def _save_edited_performance(
@@ -526,8 +537,10 @@ def _save_edited_performance(
     performance: DrumPerformance,
 ) -> None:
     midi_path = ANALYSIS_DIR / job_id / midi_filename
-    if not midi_path.is_file():
-        raise HTTPException(status_code=404, detail="Generated MIDI file is missing.")
+    # A missing derived MIDI (e.g. a project whose analysis files were
+    # cleaned) is regenerated from the performance instead of failing the
+    # edit: the performance JSON is the source of truth.
+    midi_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = midi_path.with_suffix(".tmp.mid")
     try:
         performance_to_midi(performance, temporary_path)
@@ -852,6 +865,7 @@ def _save_edited_performance_without_history(
     performance: DrumPerformance,
 ) -> None:
     midi_path = ANALYSIS_DIR / job_id / midi_filename
+    midi_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = midi_path.with_suffix(".tmp.mid")
     try:
         performance_to_midi(performance, temporary_path)
@@ -1020,6 +1034,138 @@ def download_project_bundle(project_id: str, measures_per_system: int = 4) -> Re
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{project_id}-drumai-project.zip"',},
     )
+
+@app.post("/api/projects/{project_id}/project-file")
+def export_project_file(
+    project_id: str, payload: ProjectFileExportRequest | None = None
+) -> Response:
+    """Export the re-editable .drumai.json project file: audio reference,
+    full canonical event list, tempo map, the history revision it came
+    from, and the annotation state. Contains no audio bytes."""
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            SELECT projects.original_filename, jobs.performance_json
+            FROM projects
+            JOIN analysis_jobs AS jobs ON jobs.project_id = projects.id
+            WHERE projects.id=? AND jobs.status='completed'
+              AND jobs.performance_json IS NOT NULL
+            ORDER BY jobs.created_at DESC LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=404, detail="No completed performance is available."
+            )
+        history = _history_status(connection, project_id)
+    performance = DrumPerformance.model_validate_json(row["performance_json"])
+    annotation = payload.annotation if payload else ProjectFileAnnotation()
+    project_file = build_project_file(
+        project_id,
+        row["original_filename"],
+        performance,
+        history["current_revision"],
+        annotation,
+    )
+    return Response(
+        content=project_file.model_dump_json(indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{project_id}.drumai.json"'
+        },
+    )
+
+
+@app.post("/api/projects/{project_id}/project-file/import")
+async def import_project_file(
+    project_id: str, project_file: UploadFile = File(...)  # noqa: B008
+) -> dict[str, Any]:
+    """Restore a project from a .drumai.json file. The file's audio must
+    match this project (same project id and original filename); if the
+    audio differs, upload it as a new project, run one analysis, then
+    import the file there. The import replaces the current performance
+    as a new history revision, so undo still reaches the pre-import
+    state. Event ids, sources and manually_corrected flags are kept
+    verbatim, so a round-trip is lossless."""
+    raw = await project_file.read()
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(
+            status_code=422, detail="Project file is not valid JSON."
+        ) from exc
+    try:
+        parsed = ProjectFile.model_validate(data)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Project file failed validation: {exc}"
+        ) from exc
+    if parsed.audio.project_id != project_id:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Project file belongs to project {parsed.audio.project_id}, "
+            f"not {project_id}. Import it into its own project, or upload "
+            "the audio as a new project and import the file there.",
+        )
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        project = connection.execute(
+            "SELECT original_filename FROM projects WHERE id=?", (project_id,)
+        ).fetchone()
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found.")
+        if parsed.audio.original_filename != project["original_filename"]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Project file audio is {parsed.audio.original_filename}, "
+                f"but this project holds {project['original_filename']}. "
+                "Import the file into the project that holds that audio.",
+            )
+        row, _ = _load_editable_performance(connection, project_id)
+        try:
+            performance = parsed.to_performance()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _save_edited_performance(connection, row["id"], row["midi_filename"], performance)
+        history = _history_status(connection, project_id)
+    return {
+        "project_id": project_id,
+        "imported_event_count": len(performance.events),
+        "history_revision": history["current_revision"],
+        "annotation": parsed.annotation.model_dump(),
+    }
+
+
+@app.get("/api/projects/{project_id}/annotation.csv")
+def download_annotation_csv(project_id: str) -> Response:
+    """Export the current (corrected) events as a reference CSV in the
+    format scripts/evaluate_midi.py accepts: onset_seconds,instrument.
+    Whatever the editor currently holds is the reference, so correct in
+    annotation mode first, then export."""
+    with connect_db() as connection:
+        row = connection.execute(
+            """
+            SELECT performance_json
+            FROM analysis_jobs
+            WHERE project_id=? AND status='completed' AND performance_json IS NOT NULL
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (project_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail="No completed performance is available."
+        )
+    performance = DrumPerformance.model_validate_json(row["performance_json"])
+    return Response(
+        content=annotation_csv_text(performance),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{project_id}-reference.csv"'
+        },
+    )
+
 
 @app.get("/api/projects/{project_id}/midi")
 def download_project_midi(project_id: str) -> FileResponse:
