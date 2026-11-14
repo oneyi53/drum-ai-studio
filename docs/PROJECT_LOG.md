@@ -1,3 +1,33 @@
+## 2026-11-14 — Per-style threshold tuning: swept, verdict NO
+
+- User-proposed fix tested honestly: 8 configs (lfer {0.10, 0.15, 0.20,
+  0.32} × EQ {off, on}) on the direct stem path for all 6 real tracks,
+  @100 ms vs first-pass references. No production code changed.
+- The best setting is IDENTICAL for both reference tracks (EQ off +
+  lfer 0.10); EQ-on-stem never wins (rock hat-merged 0.689→0.499,
+  electronic 0.633→0.516 at lfer 0.10). No per-track differentiation
+  to exploit in this knob. lfer moves only the kick count; EQ adds
+  kicks everywhere.
+- Circularity correction (applies to ALL prior kick numbers): the rock
+  kick reference is exactly the lfer-0.10 rule too — build_reference.py
+  keeps the kick label whenever peak 40–140 AND LFER≥0.10;
+  attack/bass-coincidence only set confidence, never filter. Kick
+  P=R=1.000 at EQoff/lfer 0.10 on both tracks. So all kick P/R/F1 vs
+  these references is circular, rock as well as electronic. The
+  non-circular metrics (hat-merged ex-kick, hats+crash-only) are bad
+  in every config (crash F1 0.008–0.021, closed-hat recall 0.07–0.50).
+- Other 4 tracks: lfer 0.10 roughly doubles–triples kick counts vs
+  0.32 (jazz 448 vs 40, blues 214 vs 23); 448 kicks in a slow jazz
+  ballad is implausible. The IDMT-tuned 0.10 gate does not transfer
+  to real stems. Auto-selection not validatable (only 2 reference
+  tracks; stem features are Demucs-routing-dependent).
+- Nuance: on the app path (EQ on the mix before Demucs) rock and
+  electronic DO want different settings — but that is a Demucs-routing
+  effect, not a threshold effect; proving it needs a full app-path
+  sweep (~4 h Demucs per config) plus human-annotated references.
+  Recommendation: do not implement per-style thresholds now. Full
+  report (local only): .ds-scratch/real-audio/tuning/REPORT.md.
+
 ## 2026-11-14 — Ink-height smoke gate reworked to first-system height
 
 - The old 15% whole-page ink-box gate false-failed correct short scores
