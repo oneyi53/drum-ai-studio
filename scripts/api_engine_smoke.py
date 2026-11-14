@@ -14,6 +14,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from engine_smoke import make_synthetic_full_mix  # noqa: E402
+from score_geometry import FIRST_SYSTEM_MIN_HEIGHT_RATIO, first_system_height_ratio  # noqa: E402
 
 with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
     os.environ["DRUMAI_DATA_DIR"] = data_dir
@@ -97,11 +98,20 @@ with tempfile.TemporaryDirectory(prefix="drumai-api-e2e-") as data_dir:
             score_bounds = ink_mask.getbbox()
             if score_bounds is None:
                 raise RuntimeError("PDF visual check found no score notation")
-            score_height_ratio = (score_bounds[3] - score_bounds[1]) / rendered_image.height
-            if score_height_ratio < 0.15:
+            # Height gate: the first staff system must be substantial. The
+            # old whole-page ink-box check (15%) false-failed correct
+            # single-system short scores (9.8-11.3%); the first system is
+            # stable across scores because the engraving scale is constant.
+            first_system_ratio = first_system_height_ratio(rendered_image)
+            if first_system_ratio is None:
+                raise RuntimeError(
+                    "PDF visual check could not locate the first staff system"
+                )
+            if first_system_ratio < FIRST_SYSTEM_MIN_HEIGHT_RATIO:
                 raise RuntimeError(
                     "PDF score notation is too vertically compressed: "
-                    f"ink height is {score_height_ratio:.1%} of the page; expected at least 15%"
+                    f"first-system height is {first_system_ratio:.1%} of the page; "
+                    f"expected at least {FIRST_SYSTEM_MIN_HEIGHT_RATIO:.0%}"
                 )
             score_width_ratio = (score_bounds[2] - score_bounds[0]) / rendered_image.width
             if score_width_ratio < 0.72:
