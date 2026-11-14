@@ -64,6 +64,11 @@ npm run dev
 
 The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_API_BASE_URL` to override it.
 
+### macOS 一键启动
+
+双击仓库根目录的 `start.command`：自动启动后端与前端并打开浏览器。
+首次使用前先 `chmod +x start.command` 一次。停止：在两个终端窗口里各按 Ctrl+C。
+
 ## Current scope and limitations
 
 - Audio upload creates a project record and stores the original file locally.
