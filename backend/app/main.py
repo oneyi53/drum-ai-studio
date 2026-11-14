@@ -33,6 +33,7 @@ from .project_file import (
     build_project_file,
 )
 from .quantization_api import router as quantization_router
+from .tempo_api import router as tempo_router
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("DRUMAI_DATA_DIR", APP_DIR.parent.parent / "data"))
@@ -69,6 +70,7 @@ app = FastAPI(
 )
 
 app.include_router(quantization_router)
+app.include_router(tempo_router)
 
 app.add_middleware(
     CORSMiddleware,
