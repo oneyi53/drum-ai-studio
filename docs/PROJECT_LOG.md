@@ -1,3 +1,22 @@
+## 2026-11-14 — Exported MIDI tempo now matches the corrected tempo map
+
+- `DrumScriptEngine.analyze` built the corrected tempo map on the
+  performance but wrote the on-disk MIDI as a verbatim copy of
+  DrumScript's upstream file, so `set_tempo` stayed at the stock
+  tempo (rock 69.8 vs corrected 142.9, electronic 215.3 vs 107.7).
+  MusicXML had no such bug (it already renders tempo from
+  `performance.tempo_map`).
+- Fix: new `rewrite_midi_tempo` in `backend/app/midi_adapter.py`
+  replaces the file's own `set_tempo`/`time_signature` with the
+  performance tempo map and re-ticks every other message from its
+  absolute time under the new tempo (a naive `set_tempo`-only edit
+  would have halved all note times). `analyze()` now calls it
+  instead of `shutil.copy2`; empty tempo map copies verbatim.
+- Verified on the real tracks: rock MIDI tempo 69.84→142.86,
+  1142 events before and after, max event time shift 0.00095 s;
+  electronic 215.3→107.67, 1288 events, max shift 0.00127 s.
+  5 new tests; backend suite 168 passed, 1 skipped.
+
 ## 2026-11-14 — Waveform + per-bar loop panel in the editor
 
 - wavesurfer.js (BSD-3-Clause) panel added above the existing timeline
