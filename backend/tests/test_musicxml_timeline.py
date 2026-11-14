@@ -229,7 +229,9 @@ def test_validator_accepts_real_exporter_output_with_multiple_instrument_voices(
     xml = performance_to_musicxml(performance)
     results = reconstruct_and_validate_musicxml(xml, validate_notation=True)
     assert len(results) == 1
-    assert set(results[0]["voice_events"]) == {("1", "1"), ("1", "2"), ("1", "3")}
+    # Kick + snare + hats now share the two-voice layout: hands (snare,
+    # hats) in voice 1, feet (kick) in voice 2.
+    assert set(results[0]["voice_events"]) == {("1", "1"), ("1", "2")}
 
 
 def test_dotted_note_duration_matches_notation():
