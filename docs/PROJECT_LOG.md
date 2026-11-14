@@ -1,3 +1,29 @@
+## 2026-11-14 — App path (EQ+0.10) measured on real audio; MIDI duplicates fixed
+
+- First measurement of the app engine on the 6 real tracks (EQ + lfer
+  0.10, full Demucs re-run per track): rock improves — overall F1
+  0.261→0.320 @100 ms (hat-merged 0.461→0.519), kick F1 0.263→0.524;
+  electronic collapses — F1 0.515→0.183 (hat-merged 0.696→0.277),
+  kick precision 0.078 (374 predicted vs 62 reference candidates).
+  Verdict is split: the IDMT-measured EQ+0.10 gain does not transfer
+  to real electronic mixes. Kick counts explode everywhere (blues
+  23→144, electronic 4→374, jazz 40→364); snare falls on rock
+  (539→282) and electronic (324→193).
+- MIDI exact-duplicate fix (`backend/app/midi_adapter.py`): upstream
+  DrumScript emits byte-identical duplicate note-ons; `midi_to_performance`
+  now collapses (channel, instrument, time) duplicates and
+  `performance_to_midi` skips (tick, pitch) re-emissions, chords kept.
+  319 extra notes removed across the 6 tracks (rock −136). 2 regression
+  tests; backend suite 152 passed, ruff clean. F1 effect is neutral
+  (rock 0.320→0.310, electronic 0.183→0.186) — the fix stands on
+  correctness, not F1.
+- 1.0 NOT READY on accuracy grounds: electronic regression is the
+  biggest blocker (kick-precision guard needed), crash classification
+  is broken on real audio (electronic 308 crash FPs), snare recall fell
+  on rock (0.676→0.430), tempo octave errors persist (rock 69.8 vs
+  ~140, electronic 215.3 vs ~108), and no human-annotated benchmark
+  exists yet.
+
 ## 2026-11-14 — MusicXML note element order fixed (XSD)
 
 - The exporter wrote `<instrument>` before `<duration>` in every note;
