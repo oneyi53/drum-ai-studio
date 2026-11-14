@@ -182,6 +182,65 @@ def test_chord_tie_marks_parent_pitch_only():
     ]
 
 
+def test_note_children_follow_xsd_element_order():
+    # MusicXML XSD note complexType (musicxml.xsd): full-note
+    # (chord?, pitch|unpitched|rest), duration, tie*, instrument?,
+    # editorial-voice (voice), type?, dot*, time-modification?, stem?,
+    # notehead?, beam*, notations*. <play> is excluded here: it is not in
+    # the schema at all, a separate pre-existing issue.
+    xsd_order = [
+        "chord",
+        "pitch",
+        "unpitched",
+        "rest",
+        "duration",
+        "tie",
+        "instrument",
+        "footnote",
+        "level",
+        "voice",
+        "type",
+        "dot",
+        "accidental",
+        "time-modification",
+        "stem",
+        "notehead",
+        "staff",
+        "beam",
+        "notations",
+        "lyric",
+    ]
+    performance = DrumPerformance(
+        duration_seconds=4.0,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
+        events=[
+            DrumEvent(time_seconds=0, instrument=DrumInstrument.CLOSED_HIHAT),
+            DrumEvent(time_seconds=0.25, instrument=DrumInstrument.CLOSED_HIHAT),
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.CLOSED_HIHAT),
+            DrumEvent(time_seconds=0.75, instrument=DrumInstrument.CLOSED_HIHAT),
+            DrumEvent(time_seconds=1.75, instrument=DrumInstrument.KICK, velocity=110),
+            DrumEvent(time_seconds=1.75, instrument=DrumInstrument.KICK, velocity=80),
+            DrumEvent(time_seconds=2.25, instrument=DrumInstrument.KICK),
+        ],
+    )
+    root = ET.fromstring(performance_to_musicxml(performance))
+    notes = root.findall("./part/measure/note")
+    assert notes
+    assert any(note.find("chord") is not None for note in notes)
+    assert any(note.find("tie") is not None for note in notes)
+    assert any(note.find("rest") is not None for note in notes)
+    assert any(note.findall("beam") for note in notes)
+    for note in notes:
+        tags = [child.tag for child in note if child.tag != "play"]
+        positions = [xsd_order.index(tag) for tag in tags]
+        assert positions == sorted(positions), tags
+        if "instrument" in tags:
+            assert tags.index("instrument") > tags.index("duration")
+            assert all(tags.index("instrument") > i for i, tag in enumerate(tags) if tag == "tie")
+        if note.find("rest") is not None:
+            assert tags[:2] == ["rest", "duration"]
+
+
 def test_tied_score_renders_with_verovio():
     from io import BytesIO
 
