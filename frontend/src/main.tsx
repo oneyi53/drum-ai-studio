@@ -110,6 +110,26 @@ function buildTimelineBeats(duration: number, tempoMap: AnalysisSummary["tempoMa
   return beats;
 }
 
+/** Tempo x2 / 1/2 toggle: three gears anchored to the analysis tempo
+ * (half / original / double). The backend clamps, so the buttons only
+ * reflect the current gear; a click at a limit is a server-side no-op. */
+function TempoToggle({ bpm, ratio, disabled, onChange }: {
+  bpm: number;
+  ratio: number;
+  disabled: boolean;
+  onChange: (factor: 2 | 0.5) => void;
+}) {
+  const gear = ratio >= 2 ? "原始速度的 ×2" : ratio <= 0.5 ? "原始速度的 ×½" : "原始速度";
+  return (
+    <span className="tempo-toggle" aria-label="速度倍速切换">
+      <span className="tempo-toggle-bpm">{bpm.toFixed(1)} BPM</span>
+      <button type="button" disabled={disabled || ratio >= 2} onClick={() => onChange(2)} title="速度 ×2（速度减半误判时用）">×2</button>
+      <button type="button" disabled={disabled || ratio <= 0.5} onClick={() => onChange(0.5)} title="速度 ×½（速度翻倍误判时用）">½</button>
+      <small className="tempo-gear">{gear}</small>
+    </span>
+  );
+}
+
 function App() {
   const [file, setFile] = React.useState<File | null>(null);
   const [message, setMessage] = React.useState("选择一首完整歌曲，上传后启动鼓谱分析。");
@@ -125,6 +145,7 @@ function App() {
   const [quantizeStrength, setQuantizeStrength] = React.useState(100);
   const [quantizePreview, setQuantizePreview] = React.useState<Performance | null>(null);
   const [history, setHistory] = React.useState({ current_revision: 0, can_undo: false, can_redo: false });
+  const [tempoRatio, setTempoRatio] = React.useState(1);
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
   const [audioTime, setAudioTime] = React.useState(0);
   const [audioDuration, setAudioDuration] = React.useState(0);
@@ -441,6 +462,11 @@ function App() {
     setSummary(summarizePerformance(jobId, projectId, result.performance));
     setQuantizePreview(null);
     setSelectedEventIds([]);
+    const tempoResponse = await fetch(`${API_BASE}/api/projects/${projectId}/tempo`);
+    if (tempoResponse.ok) {
+      const tempo = await tempoResponse.json() as { ratio?: number };
+      if (typeof tempo.ratio === "number") setTempoRatio(tempo.ratio);
+    }
     const historyResponse = await fetch(`${API_BASE}/api/projects/${projectId}/history`);
     if (historyResponse.ok) setHistory(await historyResponse.json());
   }
@@ -456,6 +482,31 @@ function App() {
       setMessage(direction === "undo" ? "已撤销上一步，MIDI 已同步。" : "已重做上一步，MIDI 已同步。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "历史操作失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Tempo x2 / 1/2 toggle: scales the tempo map (never the event times),
+   * saves a normal undoable history revision, then refreshes so the roll,
+   * timeline, waveform bars and staff all re-derive from the new tempo. */
+  async function changeTempo(factor: 2 | 0.5) {
+    if (!summary || saving) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/tempo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factor }),
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "切换速度失败"));
+      if (typeof result.ratio === "number") setTempoRatio(result.ratio);
+      await refreshPerformance(summary.projectId, summary.jobId);
+      const bpm = typeof result.bpm === "number" ? result.bpm : summary.bpm;
+      setMessage(`速度已切换：${bpm.toFixed(1)} BPM（原始速度的 ×${result.ratio ?? 1}），小节网格、MIDI 与谱面已同步。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "切换速度失败");
     } finally {
       setSaving(false);
     }
@@ -1028,7 +1079,7 @@ function App() {
               {audioPlaying ? "⏸ 暂停" : "▶ 播放"}
             </button>
             <span className="transport-time">{audioTime.toFixed(2)}s / {(audioDuration || summary.durationSeconds).toFixed(2)}s</span>
-            <span className="transport-bpm">{summary.bpm.toFixed(1)} BPM</span>
+            <TempoToggle bpm={summary.bpm} ratio={tempoRatio} disabled={saving} onChange={(factor) => void changeTempo(factor)} />
             <button type="button" className={metronomeEnabled ? "metronome-on" : ""} onClick={toggleMetronome}>{metronomeEnabled ? "节拍器：开" : "节拍器：关"}</button>
             <label className="loop-toggle"><input type="checkbox" checked={loopEnabled} disabled={!loopRangeValid} onChange={(event) => setLoopEnabled(event.target.checked)} /> A–B 循环</label>
             <small>走带条常驻顶部；跳转滑块与 A/B 点在下方播放器里。</small>
@@ -1235,7 +1286,8 @@ function App() {
           <div className="timeline-panel">
             <div className="timeline-heading">
               <div><p className="eyebrow">ARRANGEMENT VIEW</p><h3>鼓点时间轴</h3></div>
-              <span>{summary.bpm.toFixed(1)} BPM · {summary.durationSeconds.toFixed(1)} 秒</span>
+              <TempoToggle bpm={summary.bpm} ratio={tempoRatio} disabled={saving} onChange={(factor) => void changeTempo(factor)} />
+              <span>{summary.durationSeconds.toFixed(1)} 秒</span>
             </div>
             <div className="tempo-map-labels">
               {(summary.tempoMap.length ? summary.tempoMap : [{ time_seconds: 0, bpm: 120, numerator: 4, denominator: 4 }]).map((change, index) => (
