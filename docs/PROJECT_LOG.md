@@ -1,3 +1,52 @@
+## 2026-11-14 — STRUM evaluation: complete, verdict DO NOT SWAP
+
+- Repo `opria123/strum` HEAD 9f420cb, MIT (code + weights), arXiv
+  2605.12135. Cloned locally (1.6 GB), CPU-runnable. Pipeline:
+  Demucs htdemucs_ft → V14 two-stage CRNN onset detector → 7-model
+  ensemble classifier → phase-3 multi-class model → tom CNN →
+  64th-note quantization + phase align, 8 classes. Caveats: measured
+  STRUM is STRUM-minus-tomcym (tom/cymbal CNN checkpoint missing
+  locally) and minus-drumsep (arbiter assets absent); doc bug:
+  `--onset-threshold` help says default 0.35, real default 0.50.
+  Runtime ~7 min per 150 s stem, ~23 min full pipeline vs
+  DrumScript app path ~5 min.
+- Like-for-like IDMT (55 tracks, @50 ms): kick STRUM F1 0.866
+  (P 0.972 / R 0.781) vs DrumScript (EQ+0.10) 0.840 (P 0.773 /
+  R 0.919) — +0.026. Opposite error profiles: STRUM precision-first
+  (misses ~22% of kicks), DrumScript recall-first. @100 ms STRUM
+  kick F1 0.891, P 1.000. Snare 0.848; closed hat 0.782
+  (P 0.949 / R 0.666 — hat recall is the weak spot; export enforces
+  ≥100 ms between same-lane hat hits). Neither engine is near
+  ADTOF-pytorch's reported IDMT kick F1 0.961.
+- Real audio (6 tracks, @100 ms vs first-pass references): rock
+  STRUM 0.378 vs DrumScript 0.320 (modestly better); electronic
+  0.003 vs 0.183 (catastrophic — drums stem nearly empty, RMS
+  0.015; V14 found 131 onsets vs funk 462); funk/latin tie; jazz
+  STRUM over-fires cymbals (665 crash + 355 ride vs DS 30 + 3),
+  under-fires hats (232 vs 747); blues under-detects (267 vs 1026
+  events; kick 2, snare 5). Threshold experiment (done):
+  electronic @0.35 → 694 onsets but events become crash 426 +
+  low_tom 94, kick still 1, snare 0; F1 0.003→0.009. The failure
+  is classifier-side, not tunable.
+- Tempo: STRUM estimated rock at 139.99 BPM (true ~140) where
+  DrumScript octave-errors to 69.8 — its grid-alignment tempo
+  refinement works.
+- Adoption: DO NOT SWAP THE ENGINE. STRUM is a lateral move: the
+  +0.026 IDMT kick gain does not transfer to real songs, it makes
+  the worst case (electronic) far worse, and integration costs
+  1.6 GB weights + torch + 7-model ensemble for no net win. Take
+  two things: (1) tempo refinement — cleanest adoption is Beat
+  This! (MIT), not STRUM's code; (2) the precision-first kick
+  lesson (P ~0.97–1.00 achievable) as a research direction — a
+  precision-first classifier as filter/arbiter on DrumScript
+  onsets — but only after a human-annotated benchmark exists. Do
+  NOT adopt the V14 onset detector as-is.
+- Two evaluator bugs found and fixed in the harness (STRUM Clone
+  Hero hat names `closed_hihat`/`open_hihat` were missed, hats
+  scored 0; `no_kick` double-counted overall TP). All numbers
+  above are post-fix. Full write-up (local only):
+  .ds-scratch/strum-eval/REPORT.md.
+
 ## 2026-11-14 — Per-style threshold tuning: swept, verdict NO
 
 - User-proposed fix tested honestly: 8 configs (lfer {0.10, 0.15, 0.20,
