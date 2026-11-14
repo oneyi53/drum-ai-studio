@@ -414,3 +414,103 @@ def test_kick_config_eq_preprocessing_defaults_on_and_restores_stock():
     assert stock.eq_preprocessing is False
     with pytest.raises(TypeError):
         KickClassificationConfig(eq_preprocessing="yes")
+
+
+def _write_stock_tempo_midi(path: Path) -> None:
+    """Upstream-shaped MIDI: type 1, 220 tpq, set_tempo 69.8 BPM."""
+    ticks_per_beat = 220
+    ticks_per_second = ticks_per_beat * 69.8 / 60.0
+    midi = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
+    conductor = mido.MidiTrack()
+    conductor.append(
+        mido.MetaMessage("set_tempo", tempo=round(60_000_000 / 69.8), time=0)
+    )
+    conductor.append(
+        mido.MetaMessage("time_signature", numerator=4, denominator=4, time=0)
+    )
+    conductor.append(mido.MetaMessage("end_of_track", time=1))
+    midi.tracks.append(conductor)
+    notes = mido.MidiTrack()
+    notes.append(
+        mido.Message(
+            "note_on",
+            channel=9,
+            note=36,
+            velocity=101,
+            time=round(1.0 * ticks_per_second),
+        )
+    )
+    notes.append(
+        mido.Message(
+            "note_on",
+            channel=9,
+            note=36,
+            velocity=0,
+            time=round(0.2 * ticks_per_second),
+        )
+    )
+    notes.append(mido.MetaMessage("end_of_track", time=0))
+    midi.tracks.append(notes)
+    midi.save(path)
+
+
+def _run_engine_with_tempo(monkeypatch, tmp_path, corrected_bpm):
+    """Run analyze() with a fake engine and a stubbed tempo correction."""
+    from app.drum_events import TempoChange
+
+    def fake_transcribe(audio_path, **kwargs):
+        midi_path = Path(audio_path).with_suffix(".mid")
+        _write_stock_tempo_midi(midi_path)
+        return {"midi_path": str(midi_path)}
+
+    monkeypatch.setattr(
+        engine_adapter.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(
+            KICK_LFER_MIN=0.32,
+            KICK_FREQ_MIN=40.0,
+            KICK_FREQ_MAX=140.0,
+            transcribe=fake_transcribe,
+        ),
+    )
+    monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 4.0)
+    monkeypatch.setattr(
+        engine_adapter,
+        "correct_tempo_map",
+        lambda tempo_map, audio, checkpoint: (
+            [TempoChange(time_seconds=0, bpm=corrected_bpm, numerator=4, denominator=4)],
+            "beat_this",
+        ),
+    )
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"fake audio")
+    engine = engine_adapter.DrumScriptEngine(
+        kick_config=KickClassificationConfig(eq_preprocessing=False)
+    )
+    return engine.analyze(source, tmp_path / "output")
+
+
+def _exported_tempo_bpm(midi_path: Path) -> float:
+    midi = mido.MidiFile(midi_path)
+    tempos = [
+        60_000_000 / message.tempo
+        for track in midi.tracks
+        for message in track
+        if message.type == "set_tempo"
+    ]
+    assert len(tempos) == 1
+    return tempos[0]
+
+
+def test_engine_adapter_exports_corrected_tempo_in_midi(tmp_path, monkeypatch):
+    performance, midi_path = _run_engine_with_tempo(monkeypatch, tmp_path, 142.86)
+    assert performance.tempo_map[0].bpm == pytest.approx(142.86)
+    assert _exported_tempo_bpm(midi_path) == pytest.approx(142.86)
+    assert performance.events[0].time_seconds == pytest.approx(1.0, abs=0.01)
+
+
+def test_engine_adapter_keeps_stock_tempo_when_uncorrected(tmp_path, monkeypatch):
+    performance, midi_path = _run_engine_with_tempo(monkeypatch, tmp_path, 69.8)
+    assert performance.tempo_map[0].bpm == pytest.approx(69.8)
+    assert _exported_tempo_bpm(midi_path) == pytest.approx(69.8)
+    assert performance.events[0].time_seconds == pytest.approx(1.0, abs=0.01)
