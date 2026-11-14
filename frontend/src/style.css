@@ -183,6 +183,13 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .drum-roll-grid{height:308px;background:repeating-linear-gradient(to bottom,transparent 0 28px,rgba(148,163,184,.05) 28px 56px)}
 .drum-roll-grid:focus-visible{outline:2px solid #c9f36b;outline-offset:-2px}
 .drum-note-fill{position:absolute;inset:2px 1px;border-radius:3px;opacity:calc(.45 + .55 * var(--piano-roll-velocity,1))}
+/* Hits are points in time (0.2s display length). On a long song the fitted
+   timeline squeezes a hit below a pixel, and the fill's 1px side insets
+   then leave nothing to paint — the roll looks empty although the notes
+   are in the DOM. Force a minimum painted width so a hit is always
+   visible; zooming in will give them real width. */
+.drum-roll-grid [role="button"]{min-width:6px}
+.drum-velocity-bar{width:6px}
 .drum-roll-grid [aria-pressed="true"] .drum-note-fill{outline:2px solid #fff;outline-offset:1px}
 .drum-roll-playhead{height:100%;width:2px;background:#f43f5e;pointer-events:none;z-index:5}
 .drum-roll-velocity{height:56px;background:#0b1220;border-top:1px solid #22304d}
