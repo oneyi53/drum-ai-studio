@@ -73,6 +73,47 @@ def test_missing_file_fails_clearly(tmp_path):
         midi_to_performance(tmp_path / "missing.mid")
 
 
+def test_import_collapses_exact_duplicate_note_ons(tmp_path):
+    path = tmp_path / "dups.mid"
+    _write_midi(
+        path,
+        [[
+            mido.Message("note_on", channel=9, note=38, velocity=100, time=0),
+            mido.Message("note_on", channel=9, note=38, velocity=100, time=0),
+            mido.Message("note_on", channel=9, note=38, velocity=100, time=480),
+            mido.Message("note_on", channel=9, note=36, velocity=100, time=0),
+        ]],
+    )
+    performance = midi_to_performance(path)
+    # Two identical snares at tick 0 collapse to one; the snare at tick 480
+    # and the kick at the same instant as the second snare are kept.
+    assert [(event.instrument, event.time_seconds) for event in performance.events] == [
+        (DrumInstrument.SNARE, pytest.approx(0)),
+        (DrumInstrument.SNARE, pytest.approx(0.5)),
+        (DrumInstrument.KICK, pytest.approx(0.5)),
+    ]
+
+
+def test_export_writes_each_pitch_tick_once(tmp_path):
+    performance = DrumPerformance(
+        duration_seconds=2.0,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, velocity=110),
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK, velocity=110),
+            # 0.5 ms later: quantizes to the same tick at 480 ppq / 120 BPM.
+            DrumEvent(time_seconds=0.5005, instrument=DrumInstrument.KICK, velocity=110),
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.SNARE, velocity=90),
+        ],
+    )
+    path = performance_to_midi(performance, tmp_path / "dedup.mid")
+    restored = midi_to_performance(path)
+    assert [(event.instrument, event.time_seconds) for event in restored.events] == [
+        (DrumInstrument.KICK, pytest.approx(0.5)),
+        (DrumInstrument.SNARE, pytest.approx(0.5)),
+    ]
+
+
 def test_exports_canonical_events_with_tempo_and_velocity(tmp_path):
     performance = DrumPerformance(
         duration_seconds=2.0,
