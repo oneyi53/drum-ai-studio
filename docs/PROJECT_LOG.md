@@ -1,3 +1,20 @@
+## 2026-11-14 — DAW 式重设计：走带条置顶、卷帘主编辑区、缩放、lane 显示/独奏、可编辑谱面
+
+- 走带条常驻结果面板顶部（播放/暂停、时间、速度、节拍器、A–B 循环，复用现有音频播放逻辑）；钢琴卷帘放大成主编辑区（行高 36px）；下载区（MIDI / PDF / MusicXML / 备份）与工程文件、标注入口移到结果面板上方，不再埋在页底；事件表折叠成 `<details>` 默认关闭；波形面板保留。
+- 卷帘缩放：接管 `zoom`（px/秒），工具栏「− 缩小 / 适应宽度 / 放大 +」；`Timeline.Viewport` 做滚动容器，标尺与网格同滚、lane 标签列固定（152px，全名可读）；min-width 6px 兜底保留。
+- 每 lane 显示/独奏：lane 头 👁 开关 + S 独奏，影响卷帘、鼓点时间轴、波形标记（仅显示过滤，不改模型；无音频静音，播的是原音频）。
+- 可编辑谱面（`frontend/src/DrumStaff.tsx` + `drumStaff.ts`）：VexFlow 5.0.0（MIT，字体 Bravura/Academico 内嵌 base64，不依赖 CDN）；每小节一个 system、每页 4 小节（63 小节 → 16 页），放卷帘下方同屏对照；映射与 MusicXML 导出同一套 Weinberg/PAS 位置（含落地嗵 G4）；点选同步、上下拖改鼓件、左右拖移时间（16 分音符吸附）、Delete 删除，提交走现有 `onCommit`。
+- 验证：构建通过、单测 13 通过（7 roll + 6 staff）；244s / 61.5 BPM 复现工程 DOM 核对通过（309 音符/fill/力度条、谱面 4 stave、独奏/隐藏计数正确）；种子工程恢复 30.03s / 140 BPM / 309 事件。包体积 441KB → 1,581KB（VexFlow 内嵌字体）。
+- 仍需用户真浏览器核对：谱面符头是否显示（本机 Moli 不渲染 webfont 的 SVG 文本，DOM 里 91 个文本元素都在但截图只有空五线谱，真 Chrome 应正常，须亲眼确认）、缩放后横向滚动与标签对齐、拖拽手势、波形标记随 lane 过滤联动。
+
+## 2026-11-14 — MusicXML 导出谱面修复（MuseScore 显示逻辑）
+
+- 用户在 MuseScore 里打开导出的 XML：“一点也不像鼓谱”。根因：导出器每个小节都发 `<attributes>`（含 `<time>`，故每小节重复 4/4）；速度用 `{bpm:g}` 不取整（61.5234）；每种鼓件占一个 voice（最多 7 声部），休止符在 MuseScore 里上下乱飘。
+- 先学金标准：MuseScore 仓库的 `testImportDrums.xml` / `testDrumset1/2.xml` 与导入代码（`importmusicxmlpass2.cpp`、`importmusicxmlnotepitch.cpp`、`unpitch2xml`）及 MusicXML 4.1 规范 percussion 教程。关键规则：音色由 part-list 的 `<midi-unpitched>` 定、显示位置由 display-step/octave 定；声部定符干（voice 1 朝上、voice 2 朝下）；休止符必须写 display 位置；attributes 只在变化处出现；notehead `x`→cross；打击乐谱 clef 不带 `<line>`。
+- 修复（`backend/app/musicxml_adapter.py`）：两声部（手 voice 1 / 脚 voice 2，踩镲脚归脚声部）、`<time>`/`<clef>` 只第 1 小节、速度保留 1 位小数、休止符带 display 位置（手 B4 / 脚 D4）、clef 去 `<line>`；唯一冲突：LOW_TOM 按 MuseScore 是 G4（GM 41 低落地嗵），不是 Weinberg 的 A4（那是 GM 43 高落地嗵），已按 MuseScore 改，音色不变。
+- 验证：后端 183 通过 1 跳过、ruff 全过；16 小节 groove 结构断言（`<time>` 1 个、速度 120、只用 voice 1/2）；Verovio 渲染目视已像鼓谱。验证文件在 `~/workspace/.ds-scratch/musicxml-fix/`（groove-16bars.musicxml / .pdf / .png）。
+- 仍需用户在 MuseScore 里核对：16 小节验证文件，以及拉新版后用真实 Starlight 重新导出的 MusicXML（61.5 BPM、63 小节、真实密度下的连线与跨小节 tie）。
+
 ## 2026-11-14 — 钢琴卷帘长歌音符不可见修复
 
 - 根因（用户真机截图证实）：鼓点是 0.2s 的时间点；适配宽度下
