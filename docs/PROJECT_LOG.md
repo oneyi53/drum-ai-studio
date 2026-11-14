@@ -1,3 +1,23 @@
+## 2026-11-14 — Waveform + per-bar loop panel in the editor
+
+- wavesurfer.js (BSD-3-Clause) panel added above the existing timeline
+  strip: waveform of the project audio (same URL as the built-in
+  player), bar regions from the copy-bar tempo-map derivation (no new
+  bar model), hit markers from the event list coloured by instrument.
+  Click a bar (region or button) to loop it; click a marker to seek +
+  select the event; waveform and built-in audio never double-play
+  (each pauses the other). No new backend endpoint; no backend files
+  touched.
+- Verified: frontend build passes (260 KB bundle, wavesurfer ~80 KB);
+  backend suite 163 passed, 1 skipped. Verified live against a seeded
+  local project from real rock data (309 events, 18 bars @140 BPM) —
+  endpoints + audio stream OK. Not yet verified in a real browser:
+  actual waveform/region rendering, loop playback, marker-click
+  select (no headless browser on the VM) — needs a human eye check.
+- Judgement calls: bar regions carry no number labels on the waveform
+  (clutter at ~100+ bars); numbers + hit counts live on the
+  bar-button strip below.
+
 ## 2026-11-14 — Beat This! F1 lift: measured, NO lift (structure win only)
 
 - Re-ran the app path on rock + electronic with the Beat This!
