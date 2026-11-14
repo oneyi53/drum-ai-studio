@@ -141,6 +141,104 @@ def _apply_system_breaks(score_root: ET.Element, measures_per_system: int) -> No
             measure.insert(0, ET.Element("print", {"new-system": "yes"}))
 
 
+def _strip_redundant_time_signatures(score_root: ET.Element) -> int:
+    """Keep <time> only in the first measure and where the meter changes.
+
+    performance_to_musicxml emits <attributes><time> in every measure, and
+    Verovio prints each one, so every bar started with "4/4". The meter
+    applies until changed, so later identical signatures are redundant.
+    This touches only the printable PDF score: the MusicXML download is built
+    separately and keeps its per-measure attributes.
+    """
+    previous: tuple[str | None, str | None] | None = None
+    removed = 0
+    for measure in score_root.findall("./part/measure"):
+        attributes = measure.find("attributes")
+        time = None if attributes is None else attributes.find("time")
+        if time is None:
+            continue
+        signature = (time.findtext("beats"), time.findtext("beat-type"))
+        if previous is None or signature != previous:
+            previous = signature
+        else:
+            attributes.remove(time)
+            removed += 1
+    return removed
+
+
+def _verovio_options(measure_count: int, measures_per_system: int) -> dict:
+    """Verovio layout options for the printable score.
+
+    "line" honours only the explicit system breaks from _apply_system_breaks.
+    "auto" re-flows the layout instead: 16 bars became systems of 3, 4, 4, 4
+    and 1, with a lone final bar, instead of the configured 4- or 5-measure
+    grouping. A single-system score is Verovio's "last system": with the
+    default minLastJustification (0.8) a short score stays narrow, so justify
+    it to the full page width. Multi-system scores keep the default so a
+    short final system is not stretched.
+    """
+    options: dict = {
+        "inputFrom": "xml",
+        "pageWidth": 2970,
+        "pageHeight": 2100,
+        # Short drum arrangements often contain only one percussion staff.
+        # The default 100% scale leaves that single system very small on A4.
+        # Use a larger engraving scale for a readable single-system score.
+        # Vertical justification spreads sparse systems over the full page and
+        # creates large empty regions, so leave system placement natural.
+        "scale": 180,
+        "unit": 12,
+        "justifyVertically": False,
+        "breaks": "line" if measure_count > measures_per_system else "auto",
+    }
+    if measure_count <= measures_per_system:
+        options["minLastJustification"] = 0
+    return options
+
+
+def _prepare_print_score(
+    performance: DrumPerformance, measures_per_system: int = MEASURES_PER_SYSTEM
+) -> ET.Element:
+    """Build the MusicXML tree the PDF engraver consumes.
+
+    Applies the print-only transformations that must never leak into the
+    downloadable MusicXML: silent-tail trimming, explicit system breaks,
+    redundant time-signature removal, and the metronome-to-words swap for the
+    SMuFL glyph missing from some packaged font sets.
+    """
+    if measures_per_system not in {4, 5}:
+        raise ValueError("measures_per_system must be 4 or 5")
+    # Verovio's SMuFL metronome-note glyph is missing in some packaged font
+    # sets. Preserve the exact tempo in PDF as readable text while keeping the
+    # MusicXML download's semantic metronome marking untouched.
+    score_root = ET.fromstring(performance_to_musicxml(performance))
+    # Omit silent tail bars from the printable PDF, without changing MusicXML download.
+    _trim_trailing_empty_measures(score_root)
+    # Explicit MusicXML system breaks keep each printed line to four or five bars.
+    _apply_system_breaks(score_root, measures_per_system)
+    _strip_redundant_time_signatures(score_root)
+    for metronome in score_root.findall(".//metronome"):
+        direction_type = next(
+            (parent for parent in score_root.iter() if metronome in list(parent)),
+            None,
+        )
+        if direction_type is None:
+            continue
+        per_minute = metronome.findtext("per-minute", "120")
+        direction_type.remove(metronome)
+        ET.SubElement(direction_type, "words").text = f"Tempo: {_format_tempo_text(per_minute)} BPM"
+    return score_root
+
+
+def _format_tempo_text(value: float | str) -> str:
+    """Render a BPM value with at most one decimal (60.0927 -> '60.1', 120 -> '120')."""
+    try:
+        text = f"{float(value):.1f}"
+    except (TypeError, ValueError):
+        return str(value)
+    return text.rstrip("0").rstrip(".")
+
+
 def _render_with_verovio(
     performance: DrumPerformance, title: str, measures_per_system: int = MEASURES_PER_SYSTEM
 ) -> bytes:
@@ -156,43 +254,9 @@ def _render_with_verovio(
     resource_path = Path(verovio.__file__).resolve().parent / "data"
     if not resource_path.is_dir() or not toolkit.setResourcePath(str(resource_path)):
         raise ValueError(f"Verovio font resources are unavailable at {resource_path}")
-    toolkit.setOptions(
-        {
-            "inputFrom": "xml",
-            "pageWidth": 2970,
-            "pageHeight": 2100,
-            # Short drum arrangements often contain only one percussion staff.
-            # The default 100% scale leaves that single system very small on A4.
-            # Use a larger engraving scale for a readable single-system score.
-            # Vertical justification spreads sparse systems over the full page and
-            # creates large empty regions, so leave system placement natural.
-            "scale": 180,
-            "unit": 12,
-            "justifyVertically": False,
-            "breaks": "auto",
-        }
-    )
-    if measures_per_system not in {4, 5}:
-        raise ValueError("measures_per_system must be 4 or 5")
-
-    # Verovio's SMuFL metronome-note glyph is missing in some packaged font
-    # sets. Preserve the exact tempo in PDF as readable text while keeping the
-    # MusicXML download's semantic metronome marking untouched.
-    score_root = ET.fromstring(performance_to_musicxml(performance))
-    # Omit silent tail bars from the printable PDF, without changing MusicXML download.
-    _trim_trailing_empty_measures(score_root)
-    # Explicit MusicXML system breaks keep each printed line to four or five bars.
-    _apply_system_breaks(score_root, measures_per_system)
-    for metronome in score_root.findall(".//metronome"):
-        direction_type = next(
-            (parent for parent in score_root.iter() if metronome in list(parent)),
-            None,
-        )
-        if direction_type is None:
-            continue
-        per_minute = metronome.findtext("per-minute", "120")
-        direction_type.remove(metronome)
-        ET.SubElement(direction_type, "words").text = f"Tempo: {per_minute} BPM"
+    score_root = _prepare_print_score(performance, measures_per_system)
+    measure_count = len(score_root.findall("./part/measure"))
+    toolkit.setOptions(_verovio_options(measure_count, measures_per_system))
     score_xml = ET.tostring(score_root, encoding="unicode")
     if not toolkit.loadData(score_xml):
         raise ValueError("Verovio could not load the generated drum MusicXML.")
@@ -249,7 +313,7 @@ def _render_fallback_pdf(
             pdf.drawString(LEFT, PAGE_H - 32, title[:90])
             pdf.setFont("Helvetica", 8)
             first = changes[0]
-            pdf.drawString(LEFT, PAGE_H - 46, f"Tempo: {first.bpm:g} BPM    Meter: {first.numerator}/{first.denominator}    Duration: {performance.duration_seconds:.1f}s")
+            pdf.drawString(LEFT, PAGE_H - 46, f"Tempo: {_format_tempo_text(first.bpm)} BPM    Meter: {first.numerator}/{first.denominator}    Duration: {performance.duration_seconds:.1f}s")
             pdf.drawRightString(PAGE_W - RIGHT, PAGE_H - 46, f"{len(performance.events)} drum events")
         top = PAGE_H - 76 - page_system * SYSTEM_HEIGHT
         staff_mid = top - 48
