@@ -235,6 +235,12 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .transport-time{font:12px "DM Mono",monospace;color:#edf0f7}
 .transport-bpm{font:12px "DM Mono",monospace;color:#c9f36b}
 .transport-bar small{color:#748096;font-size:10px;margin-left:auto}
+/* --- Tempo x2 / 1/2 toggle (transport bar + timeline heading) --- */
+.tempo-toggle{display:inline-flex;align-items:center;gap:6px}
+.tempo-toggle-bpm{font:12px "DM Mono",monospace;color:#c9f36b}
+.tempo-toggle button{border:1px solid #c9f36b55;border-radius:6px;background:#202a26;color:#c9f36b;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer}
+.tempo-toggle button:disabled{opacity:.4;cursor:default}
+.tempo-toggle small{margin-left:0;color:#748096;font-size:10px}
 
 /* --- Editable drum staff (VexFlow) --- */
 .drum-staff-panel{margin-top:22px;border:1px solid #22304d;border-radius:12px;background:#0f1626;padding:16px}
