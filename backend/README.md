@@ -21,3 +21,18 @@ pytest
 ```
 
 This is a local-development scaffold, not a production-hardened upload service.
+
+## Tempo correction (optional, Beat This!)
+
+The stock DrumScript tempo estimator octave-errors on real songs (rock
+69.8 BPM vs true ~140). When the Beat This! checkpoint is available, the
+engine replaces the tempo map with the fused Beat This! tempo; otherwise
+the stock tempo is kept unchanged.
+
+```bash
+pip install git+https://github.com/CPJKU/beat_this
+export BEAT_THIS_CHECKPOINT=/path/to/final0.ckpt
+```
+
+The checkpoint (~81 MB, MIT) is not committed to the repo. Without it,
+transcription still works — only the tempo correction is skipped.
