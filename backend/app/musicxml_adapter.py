@@ -1,8 +1,11 @@
 """Export canonical drum performances as MusicXML partwise scores.
 
-The exporter writes a single percussion staff with separate voices per
-instrument, tempo directions, time signatures, and absolute event placement.
+The exporter writes a single percussion staff in the standard two-voice
+drum layout (Weinberg/PAS): voice 1 is the hands (stems up), voice 2 is
+the feet (stems down). Tempo directions, time signatures, and absolute
+event placement follow the canonical performance.
 """
+
 from __future__ import annotations
 
 from bisect import bisect_right
@@ -11,23 +14,61 @@ from fractions import Fraction
 from math import gcd
 from xml.etree import ElementTree as ET
 
-from .drum_events import DrumInstrument, DrumPerformance, TempoChange
+from .drum_events import DrumEvent, DrumInstrument, DrumPerformance, TempoChange
 from .midi_adapter import INSTRUMENT_TO_GM_NOTE
 
 DIVISIONS = 480
+#: Staff positions (display-step, display-octave, notehead) per the
+#: Weinberg/PAS drum layout, cross-checked against MuseScore's default
+#: drumset (its drum palette) for the GM pitch each instrument maps to:
+#: crash on the ledger line above the staff, hi-hat in the space above
+#: the top line, ride on the top line, snare in the third space, high
+#: tom in the fourth space, mid tom on the third line, low floor tom on
+#: the second line from the bottom, kick in the bottom space, hi-hat
+#: pedal in the space below the staff. (Weinberg's single floor tom sits
+#: in the second space from the bottom, A4, but that is MuseScore's high
+#: floor tom, GM 43; our LOW_TOM is GM 41, the low floor tom, whose
+#: MuseScore default line is G4 — MuseScore's display wins on the
+#: conflict, so the note still sounds GM 41 and now sits where a
+#: MuseScore user expects it.)
 DISPLAY: dict[DrumInstrument, tuple[str, int, str]] = {
     DrumInstrument.KICK: ("F", 4, "normal"),
     DrumInstrument.SNARE: ("C", 5, "normal"),
     DrumInstrument.CLOSED_HIHAT: ("G", 5, "x"),
     DrumInstrument.OPEN_HIHAT: ("G", 5, "circle-x"),
-    DrumInstrument.PEDAL_HIHAT: ("E", 4, "x"),
+    DrumInstrument.PEDAL_HIHAT: ("D", 4, "x"),
     DrumInstrument.RIDE: ("F", 5, "x"),
     DrumInstrument.CRASH: ("A", 5, "x"),
-    DrumInstrument.HIGH_TOM: ("D", 5, "normal"),
+    DrumInstrument.HIGH_TOM: ("E", 5, "normal"),
     DrumInstrument.MID_TOM: ("B", 4, "normal"),
     DrumInstrument.LOW_TOM: ("G", 4, "normal"),
     DrumInstrument.OTHER: ("C", 5, "normal"),
 }
+
+#: Hands (voice 1, stems up) vs feet (voice 2, stems down), per the
+#: Weinberg/PAS two-voice drum layout. The hi-hat pedal is foot-played,
+#: so it joins the kick in the feet voice; every other instrument is
+#: played with the hands.
+HAND_VOICE = 1
+FOOT_VOICE = 2
+FOOT_INSTRUMENTS = frozenset({DrumInstrument.KICK, DrumInstrument.PEDAL_HIHAT})
+
+
+#: Rest display positions, per the MusicXML percussion tutorial: a rest
+#: sits in its own voice's zone — hands rests on the middle line (B4),
+#: feet rests below the staff (D4, the pedal-hat position). MuseScore
+#: honors <rest><display-step>/<display-octave> (handleDisplayStep) and
+#: otherwise drops the rest at its default position, which is what left
+#: the foot-voice rests floating mid-staff in the user's screenshots.
+REST_DISPLAY: dict[int, tuple[str, int]] = {
+    HAND_VOICE: ("B", 4),
+    FOOT_VOICE: ("D", 4),
+}
+
+
+def _voice_of(instrument: DrumInstrument) -> int:
+    """Voice number for an instrument in the two-voice drum layout."""
+    return FOOT_VOICE if instrument in FOOT_INSTRUMENTS else HAND_VOICE
 
 
 def _tempo_changes(performance: DrumPerformance) -> list[TempoChange]:
@@ -55,9 +96,16 @@ def _seconds_to_quarters(seconds: float, changes: list[TempoChange]) -> float:
     return quarters + (seconds - elapsed_seconds) * bpm / 60.0
 
 
-def _add_text(
-    parent: ET.Element, tag: str, value: str | float, **attributes: str
-) -> ET.Element:
+def _format_tempo(value: float) -> str:
+    """Render a BPM value with at most one decimal (61.5234 -> '61.5').
+
+    Same rule as the PDF path's tempo text: one decimal, trailing zeros
+    stripped, so whole tempos print without a decimal point.
+    """
+    return f"{value:.1f}".rstrip("0").rstrip(".")
+
+
+def _add_text(parent: ET.Element, tag: str, value: str | float, **attributes: str) -> ET.Element:
     child = ET.SubElement(parent, tag, attributes)
     child.text = str(value)
     return child
@@ -70,6 +118,7 @@ def _add_note(
     duration: int,
     note_type: str,
     *,
+    voice_number: int,
     chord: bool,
     dots: int = 0,
     actual_notes: int = 1,
@@ -91,7 +140,7 @@ def _add_note(
     for tie_type in ties:
         ET.SubElement(note, "tie", type=tie_type)
     ET.SubElement(note, "instrument", id=f"P1-{instrument.value}")
-    _add_text(note, "voice", list(DrumInstrument).index(instrument) + 1)
+    _add_text(note, "voice", voice_number)
     _add_text(note, "type", note_type)
     for _ in range(dots):
         ET.SubElement(note, "dot")
@@ -99,7 +148,7 @@ def _add_note(
         modification = ET.SubElement(note, "time-modification")
         _add_text(modification, "actual-notes", actual_notes)
         _add_text(modification, "normal-notes", normal_notes)
-    _add_text(note, "stem", "up")
+    _add_text(note, "stem", "up" if voice_number == HAND_VOICE else "down")
     _add_text(note, "notehead", notehead)
     if ties:
         notations = ET.SubElement(note, "notations")
@@ -118,7 +167,10 @@ def _add_rest(
     dots: int = 0,
 ) -> None:
     note = ET.SubElement(measure, "note")
-    ET.SubElement(note, "rest")
+    rest = ET.SubElement(note, "rest")
+    step, octave = REST_DISPLAY[voice_number]
+    _add_text(rest, "display-step", step)
+    _add_text(rest, "display-octave", octave)
     _add_text(note, "duration", duration)
     _add_text(note, "voice", voice_number)
     _add_text(note, "type", note_type)
@@ -231,15 +283,12 @@ def decompose_meter_aware_gap(
     return result
 
 
-def _choose_hit_duration(
-    gap: int, divisions: int = DIVISIONS
-) -> tuple[int, str, int, int, int]:
+def _choose_hit_duration(gap: int, divisions: int = DIVISIONS) -> tuple[int, str, int, int, int]:
     """Choose one standard hit value, using a small tuplet below 1/128th."""
     if gap <= 0:
         raise ValueError("consecutive hits must have a positive time gap")
     candidates = [
-        value for value in _rhythmic_note_values(divisions)
-        if value[0] <= min(gap, divisions)
+        value for value in _rhythmic_note_values(divisions) if value[0] <= min(gap, divisions)
     ]
     if candidates:
         duration, note_type, dots = candidates[0]
@@ -250,9 +299,7 @@ def _choose_hit_duration(
     smallest_type = "128th"
     smallest_ticks = Fraction(divisions, 32)
     if smallest_ticks.denominator != 1:
-        raise ValueError(
-            f"divisions={divisions} cannot represent a positive sub-128th hit"
-        )
+        raise ValueError(f"divisions={divisions} cannot represent a positive sub-128th hit")
     gcd_value = gcd(smallest_ticks.numerator, gap)
     actual_notes = smallest_ticks.numerator // gcd_value
     normal_notes = gap // gcd_value
@@ -478,8 +525,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     """Return a MusicXML 4.0 score for a canonical drum performance."""
     changes = _tempo_changes(performance)
     event_beats = [
-        (event, _seconds_to_quarters(event.time_seconds, changes))
-        for event in performance.events
+        (event, _seconds_to_quarters(event.time_seconds, changes)) for event in performance.events
     ]
     duration_beats = _seconds_to_quarters(performance.duration_seconds, changes)
     total_beats = max(
@@ -533,9 +579,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     _add_text(score_part, "part-abbreviation", "Drs.")
     for instrument in DrumInstrument:
         instrument_id = f"P1-{instrument.value}"
-        score_instrument = ET.SubElement(
-            score_part, "score-instrument", id=instrument_id
-        )
+        score_instrument = ET.SubElement(score_part, "score-instrument", id=instrument_id)
         _add_text(score_instrument, "instrument-name", instrument.value.replace("_", " ").title())
         midi_instrument = ET.SubElement(score_part, "midi-instrument", id=instrument_id)
         _add_text(midi_instrument, "midi-channel", 10)
@@ -548,30 +592,44 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     # Per-voice hit beats across the whole performance, for the cross-measure
     # gap a barline-crossing hit needs. Ties are decided at fragment-generation
     # time (when the hit duration is chosen), never by patching the tree.
-    voice_beats: dict[DrumInstrument, list[float]] = defaultdict(list)
+    voice_beats: dict[int, list[float]] = defaultdict(list)
     for event, beat in event_beats:
-        voice_beats[event.instrument].append(beat)
+        voice_beats[_voice_of(event.instrument)].append(beat)
     for beats in voice_beats.values():
         beats.sort()
     # Continuation fragments a tied hit leaves for the next measure, keyed by
-    # voice: (velocity, [(duration, type, dots, tie markers), ...]).
-    pending_ties: dict[DrumInstrument, tuple[int, list[tuple[int, str, int, tuple[str, ...]]]]] = {}
+    # voice: (instrument, velocity, [(duration, type, dots, tie markers), ...]).
+    # Only one hit per voice can cross a barline (the last hit of the voice
+    # in the measure), so one pending tie per voice is enough.
+    pending_ties: dict[
+        int, tuple[DrumInstrument, int, list[tuple[int, str, int, tuple[str, ...]]]]
+    ] = {}
+    previous_meter: tuple[int, int] | None = None
     for measure_number, (start, end, numerator, denominator) in enumerate(measures, 1):
         measure_attributes = {"number": str(measure_number)}
         nominal_measure_beats = numerator * 4.0 / denominator
         if end - start < nominal_measure_beats - 1e-9:
             measure_attributes["implicit"] = "yes"
         measure = ET.SubElement(part, "measure", measure_attributes)
-        attributes = ET.SubElement(measure, "attributes")
-        _add_text(attributes, "divisions", DIVISIONS)
-        time = ET.SubElement(attributes, "time")
-        _add_text(time, "beats", numerator)
-        _add_text(time, "beat-type", denominator)
-        clef = ET.SubElement(attributes, "clef")
-        _add_text(clef, "sign", "percussion")
-        _add_text(clef, "line", 2)
-        staff_details = ET.SubElement(attributes, "staff-details")
-        _add_text(staff_details, "staff-lines", 5)
+        meter_changed = previous_meter != (numerator, denominator)
+        if measure_number == 1 or meter_changed:
+            # Divisions, clef and staff lines are constant for the whole
+            # score and belong in measure 1 only; a later <time> appears
+            # solely where the meter actually changes. Repeating them in
+            # every measure made MuseScore print 4/4 on every barline.
+            attributes = ET.SubElement(measure, "attributes")
+            if measure_number == 1:
+                _add_text(attributes, "divisions", DIVISIONS)
+            if meter_changed:
+                time = ET.SubElement(attributes, "time")
+                _add_text(time, "beats", numerator)
+                _add_text(time, "beat-type", denominator)
+            if measure_number == 1:
+                clef = ET.SubElement(attributes, "clef")
+                _add_text(clef, "sign", "percussion")
+                staff_details = ET.SubElement(attributes, "staff-details")
+                _add_text(staff_details, "staff-lines", 5)
+        previous_meter = (numerator, denominator)
 
         for change in changes:
             beat = _seconds_to_quarters(change.time_seconds, changes)
@@ -580,34 +638,31 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                 direction_type = ET.SubElement(direction, "direction-type")
                 metronome = ET.SubElement(direction_type, "metronome")
                 _add_text(metronome, "beat-unit", "quarter")
-                _add_text(metronome, "per-minute", f"{change.bpm:g}")
+                _add_text(metronome, "per-minute", _format_tempo(change.bpm))
                 _add_text(direction, "offset", round((beat - start) * DIVISIONS))
                 sound = ET.SubElement(direction, "sound")
-                sound.set("tempo", f"{change.bpm:g}")
+                sound.set("tempo", _format_tempo(change.bpm))
 
         in_measure = [
-            (event, beat)
-            for event, beat in ordered_events
-            if start - 1e-9 <= beat < end - 1e-9
+            (event, beat) for event, beat in ordered_events if start - 1e-9 <= beat < end - 1e-9
         ]
-        by_instrument: dict[DrumInstrument, list[tuple[object, float]]] = defaultdict(list)
+        by_voice: dict[int, list[tuple[DrumEvent, float]]] = defaultdict(list)
         for event, beat in in_measure:
-            by_instrument[event.instrument].append((event, beat))
+            by_voice[_voice_of(event.instrument)].append((event, beat))
 
-        voice_number = 0
+        emitted_voices = 0
         measure_duration = round((end - start) * DIVISIONS)
         cursor = 0
-        for instrument in DrumInstrument:
-            notes = by_instrument.get(instrument, [])
-            continuation = pending_ties.pop(instrument, None)
+        for voice_number in (HAND_VOICE, FOOT_VOICE):
+            notes = by_voice.get(voice_number, [])
+            continuation = pending_ties.pop(voice_number, None)
             if not notes and continuation is None:
                 continue
-            voice_number += 1
-            instrument_voice = list(DrumInstrument).index(instrument) + 1
-            if voice_number > 1:
+            emitted_voices += 1
+            if emitted_voices > 1:
                 if cursor != measure_duration:
                     raise ValueError(
-                        f"voice {instrument_voice} ended at {cursor}, expected {measure_duration}"
+                        f"voice {voice_number} ended at {cursor}, expected {measure_duration}"
                     )
                 backup = ET.SubElement(measure, "backup")
                 _add_text(backup, "duration", cursor)
@@ -615,14 +670,15 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
             if continuation is not None:
                 # A tied hit from the previous measure continues here at
                 # onset 0; the hit loop below fills any gap to the next hit.
-                velocity, fragments = continuation
+                continuation_instrument, velocity, fragments = continuation
                 for frag_duration, frag_type, frag_dots, frag_ties in fragments:
                     _add_note(
                         measure,
-                        instrument,
+                        continuation_instrument,
                         velocity,
                         frag_duration,
                         frag_type,
+                        voice_number=voice_number,
                         chord=False,
                         dots=frag_dots,
                         ties=frag_ties,
@@ -650,9 +706,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                         cursor = onset
                     else:
                         for rest_duration, rest_type, rest_dots in leading_rests:
-                            _add_rest(
-                                measure, instrument_voice, rest_duration, rest_type, rest_dots
-                            )
+                            _add_rest(measure, voice_number, rest_duration, rest_type, rest_dots)
                             cursor += rest_duration
 
                 group = []
@@ -670,7 +724,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                     # The group is beat-ordered, so the last member's beat
                     # is the right lookup point for "after this group".
                     group_end_beat = notes[index - 1][1]
-                    next_beat = _next_voice_beat(voice_beats[instrument], group_end_beat)
+                    next_beat = _next_voice_beat(voice_beats[voice_number], group_end_beat)
                     next_onset = (
                         round((next_beat - start) * DIVISIONS)
                         if next_beat is not None
@@ -715,16 +769,18 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                             # at the barline, as with beaming (parent only).
                             _add_note(
                                 measure,
-                                instrument,
+                                grouped_event.instrument,
                                 grouped_event.velocity,
                                 frag_duration,
                                 frag_type,
+                                voice_number=voice_number,
                                 chord=chord_index > 0,
                                 dots=frag_dots,
                                 ties=frag_ties if chord_index == 0 else (),
                             )
                     cursor = measure_duration
-                    pending_ties[instrument] = (
+                    pending_ties[voice_number] = (
+                        group[0].instrument,
                         group[0].velocity,
                         [
                             (
@@ -745,10 +801,11 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                     for chord_index, grouped_event in enumerate(group):
                         _add_note(
                             measure,
-                            instrument,
+                            grouped_event.instrument,
                             grouped_event.velocity,
                             note_duration,
                             note_type,
+                            voice_number=voice_number,
                             chord=chord_index > 0,
                             dots=note_dots,
                             actual_notes=actual_notes,
@@ -769,7 +826,7 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                         else:
                             for rest_duration, rest_type, rest_dots in gap_rests:
                                 _add_rest(
-                                    measure, instrument_voice, rest_duration, rest_type, rest_dots
+                                    measure, voice_number, rest_duration, rest_type, rest_dots
                                 )
                                 cursor += rest_duration
                 elif cursor < measure_duration:
@@ -785,15 +842,15 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
     if pending_ties:
         raise ValueError(
             "tied continuations were never emitted: "
-            + ", ".join(sorted(item.value for item in pending_ties))
+            + ", ".join(sorted(f"voice {voice}" for voice in pending_ties))
         )
 
     _apply_beams(part)
 
     ET.indent(root, space="  ")
-    xml_text = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
-        root, encoding="unicode"
-    ) + "\n"
+    xml_text = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode") + "\n"
+    )
     reconstruct_and_validate_musicxml(xml_text, validate_notation=True)
     return xml_text
 
@@ -828,9 +885,7 @@ _NOTE_TYPE_QUARTERS = {
 }
 
 
-def validate_note_notation(
-    note_elem: ET.Element, divisions: int = DIVISIONS
-) -> dict[str, object]:
+def validate_note_notation(note_elem: ET.Element, divisions: int = DIVISIONS) -> dict[str, object]:
     """Check that MusicXML duration matches type, dots, and tuplet ratio."""
     if divisions <= 0:
         raise ValueError("divisions must be positive")
@@ -927,19 +982,17 @@ def reconstruct_and_validate_measure(
         if child_name == "attributes":
             div_elem = _musicxml_child(child, "divisions")
             if div_elem is not None:
-                effective_divisions = parse_positive_integer(
-                    div_elem, "attributes/divisions"
-                )
+                effective_divisions = parse_positive_integer(div_elem, "attributes/divisions")
             time_elem = _musicxml_child(child, "time")
             if time_elem is not None:
                 beats_elem = _musicxml_child(time_elem, "beats")
                 beat_type_elem = _musicxml_child(time_elem, "beat-type")
-                beats_text = beats_elem.text.strip() if beats_elem is not None and beats_elem.text else ""
+                beats_text = (
+                    beats_elem.text.strip() if beats_elem is not None and beats_elem.text else ""
+                )
                 try:
                     numerator = sum(int(part) for part in beats_text.split("+"))
-                    denominator = parse_positive_integer(
-                        beat_type_elem, "time/beat-type"
-                    )
+                    denominator = parse_positive_integer(beat_type_elem, "time/beat-type")
                 except ValueError as exc:
                     raise ValueError("invalid time signature") from exc
                 if not beats_text or numerator <= 0:
@@ -955,9 +1008,7 @@ def reconstruct_and_validate_measure(
             if child_name == "backup":
                 cursor -= movement
                 if cursor < 0:
-                    raise ValueError(
-                        f"backup underflow: shared cursor became {cursor}"
-                    )
+                    raise ValueError(f"backup underflow: shared cursor became {cursor}")
             else:
                 cursor += movement
                 max_cursor = max(max_cursor, cursor)
@@ -967,23 +1018,13 @@ def reconstruct_and_validate_measure(
         if child_name != "note":
             continue
 
-        duration_units = parse_positive_integer(
-            _musicxml_child(child, "duration"), "note/duration"
-        )
+        duration_units = parse_positive_integer(_musicxml_child(child, "duration"), "note/duration")
         duration = Fraction(duration_units, effective_divisions)
         if validate_notation:
             validate_note_notation(child, effective_divisions)
         voice_elem, staff_elem = _musicxml_child(child, "voice"), _musicxml_child(child, "staff")
-        voice = (
-            voice_elem.text.strip()
-            if voice_elem is not None and voice_elem.text
-            else "1"
-        )
-        staff = (
-            staff_elem.text.strip()
-            if staff_elem is not None and staff_elem.text
-            else "1"
-        )
+        voice = voice_elem.text.strip() if voice_elem is not None and voice_elem.text else "1"
+        staff = staff_elem.text.strip() if staff_elem is not None and staff_elem.text else "1"
         is_chord = _musicxml_child(child, "chord") is not None
         is_rest = _musicxml_child(child, "rest") is not None
         if is_chord and is_rest:
@@ -1046,14 +1087,10 @@ def reconstruct_and_validate_measure(
             end = event["offset_end"]
             if event["is_chord"]:
                 if onset != previous_onset:
-                    raise ValueError(
-                        f"chord onset mismatch in staff {staff}, voice {voice}"
-                    )
+                    raise ValueError(f"chord onset mismatch in staff {staff}, voice {voice}")
                 continue
             if onset < previous_end:
-                raise ValueError(
-                    f"overlapping events in staff {staff}, voice {voice} at {onset}"
-                )
+                raise ValueError(f"overlapping events in staff {staff}, voice {voice} at {onset}")
             if end > capacity:
                 stream_detail = [
                     (item["onset"], item["duration"], item["is_rest"], item["is_chord"])
@@ -1117,11 +1154,13 @@ def reconstruct_and_validate_musicxml(
             )
             effective_divisions = int(result["divisions"])
             effective_time = result["time_signature"]
-            results.append({
-                "part": part.get("id") or str(part_index),
-                "measure": measure.get("number") or str(measure_index),
-                **result,
-            })
+            results.append(
+                {
+                    "part": part.get("id") or str(part_index),
+                    "measure": measure.get("number") or str(measure_index),
+                    **result,
+                }
+            )
     if not results:
         raise ValueError("MusicXML contains no part measures")
     return results
