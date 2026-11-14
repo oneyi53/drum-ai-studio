@@ -81,6 +81,7 @@ The frontend expects the API at `http://127.0.0.1:8000` by default. Set `VITE_AP
 - [Architecture](docs/ARCHITECTURE.md)
 - [Engine validation runbook](docs/ENGINE_VALIDATION.md)
 - [Canonical event schema and evaluation](docs/DRUM_EVENT_EVALUATION.md)
+- [Real-audio evaluation protocol](docs/REAL_AUDIO_EVALUATION.md)
 - [MIDI adapter and GM mapping assumptions](docs/MIDI_ADAPTER.md)
 - [Asynchronous analysis API and engine runtime](docs/ANALYSIS_API.md)
 - [User guide: analysis, editing, practice, and export](docs/USER_GUIDE.md)
