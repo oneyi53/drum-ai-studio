@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from .beat_this_tempo import correct_tempo_map, resolve_checkpoint
 from .drum_events import DrumPerformance
 from .midi_adapter import midi_to_performance
 
@@ -320,10 +321,21 @@ class DrumScriptEngine:
     measured kick EQ preprocessing (30 Hz high-pass + 120 Hz low-shelf
     +6 dB, applied to the input file before ``transcribe``); pass an
     explicit upstream config for stock DrumScript behaviour.
+
+    ``beat_this_checkpoint`` enables the Beat This! tempo correction: the
+    stock tempogram tempo is replaced with the fused Beat This! tempo
+    (see ``app.beat_this_tempo``). Pass an explicit checkpoint path, or
+    set ``BEAT_THIS_CHECKPOINT``; when neither is available the stock
+    tempo is kept unchanged.
     """
 
-    def __init__(self, kick_config: KickClassificationConfig | None = None) -> None:
+    def __init__(
+        self,
+        kick_config: KickClassificationConfig | None = None,
+        beat_this_checkpoint: Path | str | None = None,
+    ) -> None:
         self.kick_config = kick_config or KickClassificationConfig()
+        self.beat_this_checkpoint = resolve_checkpoint(beat_this_checkpoint)
 
     def analyze(self, audio_path: Path, output_dir: Path) -> tuple[DrumPerformance, Path]:
         audio_path = audio_path.resolve()
@@ -370,6 +382,13 @@ class DrumScriptEngine:
                 raise EngineOutputError(
                     "DrumScript MIDI contains no GM percussion events on channel 10"
                 )
+            # Tempo correction runs on the original audio (pre-EQ) inside
+            # the temp dir. Without a Beat This! checkpoint this is a
+            # no-op: the stock tempo map is returned unchanged.
+            tempo_map, _tempo_source = correct_tempo_map(
+                normalized.tempo_map, isolated_audio, self.beat_this_checkpoint
+            )
+            normalized = normalized.model_copy(update={"tempo_map": tempo_map})
             event_end = max(event.time_seconds for event in normalized.events)
             tempo_end = max(change.time_seconds for change in normalized.tempo_map)
             performance = normalized.model_copy(
