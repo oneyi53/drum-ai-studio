@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .beat_this_tempo import correct_tempo_map, resolve_checkpoint
 from .drum_events import DrumPerformance
-from .midi_adapter import midi_to_performance
+from .midi_adapter import midi_to_performance, rewrite_midi_tempo
 
 
 class EngineUnavailableError(RuntimeError):
@@ -396,7 +396,13 @@ class DrumScriptEngine:
                     "duration_seconds": max(duration, event_end + 0.001, tempo_end + 0.001),
                 }
             )
+            # The on-disk MIDI is the upstream file re-ticked under the
+            # (possibly corrected) performance tempo map: a verbatim copy
+            # would keep DrumScript's own set_tempo (e.g. rock 69.8 vs the
+            # corrected 142.9), so a DAW's bar grid would be off by 2x.
+            # With no tempo correction the rewrite is a round-trip under
+            # the stock tempo, so note times are unchanged.
             midi_destination = output_dir / "performance.mid"
-            shutil.copy2(midi_source, midi_destination)
+            rewrite_midi_tempo(midi_source, midi_destination, performance.tempo_map)
 
         return performance, midi_destination
