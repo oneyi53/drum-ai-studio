@@ -238,7 +238,20 @@ export default function DrumPianoRoll({
                 <PianoRoll.Marquee />
                 <Timeline.Playhead className="drum-roll-playhead" />
               </PianoRoll.Grid>
-              <PianoRoll.VelocityLane className="drum-roll-velocity" />
+              <PianoRoll.VelocityLane className="drum-roll-velocity">
+                {draftNotes.map((note) => (
+                  <PianoRoll.Velocity
+                    key={note.id}
+                    note={note}
+                    className="drum-velocity-bar"
+                    style={{
+                      background:
+                        INSTRUMENT_COLORS[pitchToInstrument(note.pitch)] ??
+                        "#94a3b8",
+                    }}
+                  />
+                ))}
+              </PianoRoll.VelocityLane>
             </PianoRoll.Root>
           </div>
         </Timeline.Root>
