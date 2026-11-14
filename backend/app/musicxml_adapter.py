@@ -83,13 +83,14 @@ def _add_note(
     unpitched = ET.SubElement(note, "unpitched")
     _add_text(unpitched, "display-step", step)
     _add_text(unpitched, "display-octave", octave)
-    ET.SubElement(note, "instrument", id=f"P1-{instrument.value}")
     _add_text(note, "duration", duration)
-    # Per the MusicXML schema, <tie> (sound) follows <duration> and
-    # precedes <voice>; <tied> (notation) lives in <notations>, which
-    # follows <notehead> and precedes <play>.
+    # Per the MusicXML schema (note complexType), <tie> (sound) follows
+    # <duration> and precedes <voice>; <instrument> follows <tie>;
+    # <tied> (notation) lives in <notations>, which follows <notehead>
+    # and precedes <play>.
     for tie_type in ties:
         ET.SubElement(note, "tie", type=tie_type)
+    ET.SubElement(note, "instrument", id=f"P1-{instrument.value}")
     _add_text(note, "voice", list(DrumInstrument).index(instrument) + 1)
     _add_text(note, "type", note_type)
     for _ in range(dots):
