@@ -61,6 +61,139 @@ def _hat_performance(times: list[float], duration_seconds: float = 2.0) -> DrumP
     )
 
 
+def _kick_performance(times: list[float], duration_seconds: float = 4.0) -> DrumPerformance:
+    return DrumPerformance(
+        duration_seconds=duration_seconds,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
+        events=[DrumEvent(time_seconds=time, instrument=DrumInstrument.KICK) for time in times],
+    )
+
+
+def _voice_ties(root: ET.Element, voice: str, measure_index: int = 0) -> list[tuple]:
+    """(type, duration, is_rest, is_chord, [tie types], [tied types]) per note."""
+    measure = root.findall("./part/measure")[measure_index]
+    return [
+        (
+            note.findtext("type"),
+            note.findtext("duration"),
+            note.find("rest") is not None,
+            note.find("chord") is not None,
+            [tie.get("type") for tie in note.findall("tie")],
+            [tied.get("type") for tied in note.findall("notations/tied")],
+        )
+        for note in measure.findall("note")
+        if note.findtext("voice") == voice
+    ]
+
+
+def test_hit_crossing_barline_splits_into_tied_fragments():
+    # 4/4 @120bpm: kick at beat 3.5, next kick at beat 4.5. The gap is one
+    # quarter, so the hit is a quarter tied across the barline as 8th + 8th.
+    xml = performance_to_musicxml(_kick_performance([1.75, 2.25]))
+    root = ET.fromstring(xml)
+    assert _voice_ties(root, "1") == [
+        ("half", "960", True, False, [], []),
+        ("quarter", "720", True, False, [], []),
+        ("eighth", "240", False, False, ["start"], ["start"]),
+    ]
+    assert _voice_ties(root, "1", measure_index=1) == [
+        ("eighth", "240", False, False, ["stop"], ["stop"]),
+        ("quarter", "480", False, False, [], []),
+    ]
+    # Duration is conserved across the split (240 + 240 = one quarter), and
+    # the strict validator accepts the tied output on its own.
+    from app.musicxml_adapter import reconstruct_and_validate_musicxml
+
+    reconstruct_and_validate_musicxml(xml, validate_notation=True)
+
+
+def test_hit_inside_measure_gets_no_tie():
+    root = ET.fromstring(performance_to_musicxml(_kick_performance([0, 0.5])))
+    assert root.findall(".//tie") == []
+    assert root.findall(".//tied") == []
+
+
+def test_hit_ending_exactly_on_barline_gets_no_tie():
+    # Kick at beat 3.0 with the next kick at beat 4.0: the quarter ends
+    # exactly on the barline, so there is nothing to tie across it.
+    root = ET.fromstring(performance_to_musicxml(_kick_performance([1.5, 2.0])))
+    assert root.findall(".//tie") == []
+    assert root.findall(".//tied") == []
+    assert _voice_ties(root, "1")[2] == ("quarter", "480", False, False, [], [])
+
+
+def test_unrepresentable_barline_split_falls_back_without_tie():
+    # Kick at beat 3.9 with the next kick at beat 4.4: the crossing 8th
+    # would leave a 48-tick first segment, which is not a standard/dotted
+    # value, so the exporter keeps the old truncated duration, untied.
+    root = ET.fromstring(performance_to_musicxml(_kick_performance([1.95, 2.2])))
+    assert root.findall(".//tie") == []
+    assert root.findall(".//tied") == []
+    assert _voice_ties(root, "1") == [("64th", "45", False, False, [], [])]
+
+
+def test_tied_continuation_emitted_for_voice_without_hits_in_next_measure():
+    # Kick at beat 3.5, next kick at beat 8.0: the tied 8th continues into
+    # measure 2 even though that voice has no hits of its own there.
+    root = ET.fromstring(performance_to_musicxml(_kick_performance([1.75, 4.0], 6.0)))
+    assert _voice_ties(root, "1", measure_index=1) == [
+        ("eighth", "240", False, False, ["stop"], ["stop"]),
+    ]
+
+
+def test_multi_fragment_tie_chain_uses_stop_start_markers():
+    # Kick at beat 3.375, next kick at beat 4.5: the quarter splits as
+    # 8th + 32nd in measure 1 and a dotted 16th in measure 2.
+    root = ET.fromstring(performance_to_musicxml(_kick_performance([1.6875, 2.25])))
+    assert _voice_ties(root, "1") == [
+        ("half", "960", True, False, [], []),
+        ("quarter", "480", True, False, [], []),
+        ("16th", "180", True, False, [], []),
+        ("eighth", "240", False, False, ["start"], ["start"]),
+        ("32nd", "60", False, False, ["stop", "start"], ["stop", "start"]),
+    ]
+    assert _voice_ties(root, "1", measure_index=1) == [
+        ("16th", "180", False, False, ["stop"], ["stop"]),
+        ("32nd", "60", True, False, [], []),
+        ("quarter", "480", False, False, [], []),
+    ]
+
+
+def test_chord_tie_marks_parent_pitch_only():
+    performance = DrumPerformance(
+        duration_seconds=4.0,
+        tempo_map=[TempoChange(time_seconds=0, bpm=120, numerator=4, denominator=4)],
+        events=[
+            DrumEvent(time_seconds=1.75, instrument=DrumInstrument.KICK, velocity=110),
+            DrumEvent(time_seconds=1.75, instrument=DrumInstrument.KICK, velocity=80),
+            DrumEvent(time_seconds=2.25, instrument=DrumInstrument.KICK),
+        ],
+    )
+    root = ET.fromstring(performance_to_musicxml(performance))
+    assert _voice_ties(root, "1") == [
+        ("half", "960", True, False, [], []),
+        ("quarter", "720", True, False, [], []),
+        ("eighth", "240", False, False, ["start"], ["start"]),
+        ("eighth", "240", False, True, [], []),
+    ]
+    assert _voice_ties(root, "1", measure_index=1) == [
+        ("eighth", "240", False, False, ["stop"], ["stop"]),
+        ("quarter", "480", False, False, [], []),
+    ]
+
+
+def test_tied_score_renders_with_verovio():
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    from app.pdf_adapter import _render_with_verovio
+
+    pdf = _render_with_verovio(_kick_performance([1.75, 2.25]), "Tied score")
+    assert len(pdf) > 0
+    assert len(PdfReader(BytesIO(pdf)).pages) == 1
+
+
 def test_eighth_notes_beam_within_one_beat_group():
     root = ET.fromstring(performance_to_musicxml(_hat_performance([0, 0.25, 0.5, 0.75, 1.0])))
     assert _voice_notes(root, "3") == [
