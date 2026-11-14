@@ -1,3 +1,30 @@
+## 2026-11-14 — Kick-precision guard: diagnosed, NOT shipped
+
+- The attack/flux guard cannot fix the electronic blocker, so nothing
+  was shipped. On the original-mix stems, bass-stem LF flux separates
+  true from false kicks (AUC 0.83, keeps 93% of TPs while killing 65%
+  of FPs); on the EQ'd-mix stems — the signal the classifier actually
+  sees — it collapses (bass 0.69, drums 0.53), because the EQ boosts
+  sustained bass into the kick band before Demucs. Even the best guard
+  moves electronic F1 only 0.186→~0.20, and a mix-flux guard would cost
+  rock 14–19% of its recovered kicks. The collapse is multi-instrument
+  (crash 308 FPs, hats), not a single-gate problem.
+- Reference circularity found: the electronic kick reference IS the
+  direct lfer-0.10 rule (reproduced exactly, P/R 1.000) and the snare
+  reference equals the production snare rule — neither can validate
+  EQ-added kicks or snare recall. Hat/crash measurements are
+  independent and real. A human-annotated benchmark is now the critical
+  missing piece for any 1.0 accuracy claim.
+- Proposed next lever (measured, not shipped): separate first, EQ only
+  the drums stem, guard on the un-EQ'd bass stem — but its measured
+  effect is kick P 0.214→0.249 with overall F1 flat, so it is
+  architecture alignment, not a 1.0 unblocker.
+- Evaluator fix shipped with this entry: `scripts/evaluate_midi.py`
+  `normalize_instrument` had no alias for `hi_hat_closed`/`hi_hat_open`
+  (raw classifier labels), so raw output evaluated with hat recall 0.
+  Two aliases added + test; scripts tests 11 passed. (Pre-existing
+  ruff EXE001 on the file's shebang is untouched.)
+
 ## 2026-11-14 — App path (EQ+0.10) measured on real audio; MIDI duplicates fixed
 
 - First measurement of the app engine on the 6 real tracks (EQ + lfer
