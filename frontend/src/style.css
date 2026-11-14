@@ -160,3 +160,51 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .waveform-legend em{color:#748096;font-style:normal;margin-left:auto}
 .waveform-note{display:block;color:#748096;font-size:9px;line-height:1.6}
 @media(max-width:640px){.waveform-panel{padding:12px}.waveform-heading{align-items:flex-start;flex-direction:column}.waveform-heading>span{text-align:left}.waveform-legend em{margin-left:0}}
+
+/* --- Drum-lane piano roll (@audio-ui/react, headless) --- */
+.drum-roll-panel{margin-top:22px;border:1px solid #22304d;border-radius:12px;background:#0f1626;padding:16px}
+.drum-roll-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.drum-roll-heading h3{margin:4px 0 0;font-size:15px}
+.drum-roll-heading>span{color:#748096;font-size:11px;text-align:right;max-width:46%}
+.drum-roll-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px}
+.drum-roll-toolbar button{background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer}
+.drum-roll-toolbar button.reclassify-on{background:#c9f36b;color:#141a0e;border-color:#c9f36b;font-weight:700}
+.drum-roll-toolbar label{display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1}
+.drum-roll-toolbar select{background:#1a2740;color:#e5edf7;border:1px solid #2b3d61;border-radius:6px;padding:5px}
+.drum-roll-toolbar small{color:#748096;font-size:11px}
+.drum-roll-timeline{display:grid;grid-template-columns:96px minmax(0,1fr);grid-template-rows:22px auto;margin-top:12px;border:1px solid #22304d;border-radius:8px;overflow:hidden;background:#0b1220}
+.drum-roll-corner{background:#0f1626}
+.drum-roll-ruler{height:22px;background:#0f1626;color:#94a3b8;font-size:10px;overflow:hidden;border-bottom:1px solid #22304d}
+.drum-roll-mark{height:100%;padding:2px 0 0 4px;border-left:1px solid #2b3d61;color:#94a3b8;font-size:10px;line-height:1;white-space:nowrap}
+.drum-roll-labels{display:flex;flex-direction:column;background:#0f1626}
+.drum-roll-label{height:28px;display:flex;align-items:center;gap:6px;padding:0 8px 0 10px;font-size:11px;color:#cbd5e1;white-space:nowrap;overflow:hidden;border-bottom:1px solid #1a2740}
+.drum-roll-label i{display:inline-block;width:8px;height:8px;border-radius:2px;flex:none}
+.drum-roll-body{min-width:0}
+.drum-roll-grid{height:308px;background:repeating-linear-gradient(to bottom,transparent 0 28px,rgba(148,163,184,.05) 28px 56px)}
+.drum-roll-grid:focus-visible{outline:2px solid #c9f36b;outline-offset:-2px}
+.drum-note-fill{position:absolute;inset:2px 1px;border-radius:3px;opacity:calc(.45 + .55 * var(--piano-roll-velocity,1))}
+.drum-roll-grid [aria-pressed="true"] .drum-note-fill{outline:2px solid #fff;outline-offset:1px}
+.drum-roll-playhead{height:100%;width:2px;background:#f43f5e;pointer-events:none;z-index:5}
+.drum-roll-velocity{height:56px;background:#0b1220;border-top:1px solid #22304d}
+.drum-roll-note{display:block;margin-top:10px;color:#748096;font-size:11px;line-height:1.6}
+@media(max-width:640px){.drum-roll-panel{padding:12px}.drum-roll-heading{align-items:flex-start;flex-direction:column}.drum-roll-heading>span{text-align:left;max-width:none}}
+
+/* --- Project file + annotation --- */
+.project-file-panel{margin-top:18px;border:1px solid #22304d;border-radius:12px;background:#0f1626;padding:16px}
+.project-file-panel h3{margin:4px 0 0;font-size:15px}
+.project-file-panel>small{display:block;margin-top:10px;color:#748096;font-size:11px;line-height:1.6}
+.project-file-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.project-file-actions button{background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:7px;padding:7px 12px;font-size:12px;cursor:pointer}
+.project-file-actions button:disabled{opacity:.5;cursor:default}
+.project-file-import{display:inline-flex;align-items:center;gap:8px;background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:7px;padding:7px 12px;font-size:12px;cursor:pointer}
+.project-file-import input{color:#cbd5e1;font-size:11px;max-width:220px}
+.annotation-toggle{display:flex;align-items:center;gap:10px;margin-top:14px}
+.annotation-toggle button{background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer}
+.annotation-toggle button.annotation-on{background:#c9f36b;color:#141a0e;border-color:#c9f36b;font-weight:700}
+.annotation-toggle small{color:#748096;font-size:11px}
+.annotation-bars{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.annotation-bar{min-width:34px;padding:5px 8px;background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:6px;font-size:12px;cursor:pointer}
+.annotation-bar.done{background:#c9f36b;color:#141a0e;border-color:#c9f36b;font-weight:700}
+.annotation-note{display:block;margin-top:12px;font-size:12px;color:#cbd5e1}
+.annotation-note textarea{display:block;width:100%;margin-top:6px;min-height:56px;background:#0b1220;color:#e5edf7;border:1px solid #2b3d61;border-radius:8px;padding:8px;font-size:12px;line-height:1.6;resize:vertical}
+.annotation-link{margin-top:12px}
