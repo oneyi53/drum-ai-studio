@@ -36,6 +36,8 @@ def test_wrong_instrument_is_not_counted_as_hit() -> None:
 def test_instrument_aliases_are_normalized() -> None:
     assert normalize_instrument("Bass Drum") == "kick"
     assert normalize_instrument("closed-hihat") == "closed_hat"
+    assert normalize_instrument("hi_hat_closed") == "closed_hat"
+    assert normalize_instrument("hi_hat_open") == "open_hat"
 
 
 def test_drumscript_pitch_map_matches_upstream_notation_constants() -> None:
