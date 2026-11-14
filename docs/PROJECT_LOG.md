@@ -1,3 +1,21 @@
+## 2026-11-14 — Ink-height smoke gate reworked to first-system height
+
+- The old 15% whole-page ink-box gate false-failed correct short scores
+  (2-bar 11.2%, sparse 9.7%, fresh smoke 12.6% — the stored smoke's
+  16.0% pass depended on one low rest glyph). The gate now measures
+  the first staff system's height (`scripts/score_geometry.py`,
+  `first_system_height_ratio`, threshold 6%): first staff line found
+  by full-width ink, system ends at the first blank band ≥2.5% of
+  page height below it; returns `None` when no staff system can be
+  located. Known-good renders measure 9.8–16.0% first-system height,
+  so the 6% threshold has ~40% margin and still catches blank or
+  squashed engraving. `scripts/api_engine_smoke.py` uses the new
+  gate (width + no-ink checks untouched); CI evaluation job installs
+  pillow for the new tests; `engine-validation.yml` triggers on the
+  new helper. 8 new tests (synthetic images), scripts tests 19
+  passed, backend 152 passed, full offline smoke `API_ENGINE_E2E_OK`,
+  rendered score inspected unchanged.
+
 ## 2026-11-14 — Kick-precision guard: diagnosed, NOT shipped
 
 - The attack/flux guard cannot fix the electronic blocker, so nothing
