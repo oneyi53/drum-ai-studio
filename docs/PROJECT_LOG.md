@@ -1,3 +1,46 @@
+## 2026-11-14 — ADTOF-pytorch ceiling: measured, verdict DO NOT SWAP
+
+- License (verified): weights CC BY-NC-SA 4.0 (non-commercial) —
+  evaluation/reference only, never shippable; a fine-tuned
+  derivative inherits NC-SA. Code: no LICENSE file at HEAD
+  85c192e (all rights reserved by default; maintainer promised MIT
+  in issue #3 but it hasn't landed).
+- IDMT sanity check — the 0.961 claim is verified (exceeded):
+  same 55 tracks, @50 ms, kick P 0.991 / R 0.958 / F1 0.974
+  (TP 1263, FP 12, FN 55). Snare 0.897, closed-hat 0.942. On
+  drum-only audio ADTOF is clearly the best of the three engines
+  (DrumScript 0.840, STRUM 0.866).
+- Real songs — the advantage does NOT transfer. Full mixes,
+  @100 ms vs first-pass references (non-circular metric:
+  hat-merged ex-kick): rock ADTOF 0.249 (0.211) vs DrumScript
+  0.320 (0.233); electronic ADTOF 0.006 (0.002, 9 events total)
+  vs DrumScript 0.183 (0.195). Jazz 426 kicks in a slow ballad
+  (walking bass read as kicks; DS: 40). Blues 0 events. ADTOF is
+  the worst of the three engines on real songs (STRUM rock 0.378).
+- Why (diagnosed): hat/cymbal confusion on rock (340 cymbals +
+  64 hats vs 433 reference hats); out-of-distribution styles —
+  raw activations on the blues mix peak at 0.252, electronic hat
+  max 0.055, the model barely responds and it's not tunable;
+  separation only partly unmasks blues (drums stem: 20 kick /
+  9 snare / 72 hat vs 0 on the mix); electronic stem still 0
+  events (kicks live in the bass stem). Runtime ~0.09x realtime
+  on CPU; whole run (6 real + 55 IDMT) 105.6 s.
+- Fine-tune scope (NOT done — scoped only): ~1–3 hours of
+  human-annotated real songs across the six styles; annotation
+  ~5–10x realtime for an expert; compute hours on CPU, well
+  under an hour on a single consumer GPU (estimate). Expected
+  gain: rock plausibly ~0.25–0.32 toward ~0.4–0.5 if fine-tune
+  data covers the style; electronic/blues stay bad without
+  in-style data. Shipping blocker: fine-tuned weights stay
+  NC-SA derivatives — a shippable engine needs a
+  permissively-licensed base or the from-scratch ADT_STR route.
+- Verdict: do not swap the engine. Useful next step: (1)
+  human-annotate the benchmark (rock + electronic first),
+  (2) fine-tune ADTOF on it for evaluation, (3) decide
+  separately whether a shippable engine needs the from-scratch
+  route. Full write-up (local only):
+  .ds-scratch/adtof-eval/REPORT.md.
+
 ## 2026-11-14 — STRUM evaluation: complete, verdict DO NOT SWAP
 
 - Repo `opria123/strum` HEAD 9f420cb, MIT (code + weights), arXiv
