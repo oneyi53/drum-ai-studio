@@ -1,6 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./style.css";
+import DrumPianoRoll from "./DrumPianoRoll";
+import type { RollCommit } from "./drumRoll";
 import WaveformPanel, { type WaveformPanelHandle } from "./WaveformPanel";
 
 type DrumEvent = {
@@ -141,6 +143,10 @@ function App() {
   const [timelineSelectionBox, setTimelineSelectionBox] = React.useState<{
     startTime: number; endTime: number; startLane: string; endLane: string;
   } | null>(null);
+  const [annotationMode, setAnnotationMode] = React.useState(false);
+  const [annotationDoneBars, setAnnotationDoneBars] = React.useState<number[]>([]);
+  const [annotationNote, setAnnotationNote] = React.useState("");
+  const [projectFile, setProjectFile] = React.useState<File | null>(null);
   const [timelineDragDelta, setTimelineDragDelta] = React.useState(0);
   const timelineDragRef = React.useRef<{
     mode: "select" | "move"; pointerId: number; startX: number; startY: number;
@@ -454,6 +460,33 @@ function App() {
     return () => window.removeEventListener("keydown", handleEditorHistoryShortcut);
   }, [summary, saving]);
 
+  // A / D: jump the playhead to the previous / next hit (signal-style
+  // neighbour navigation). Ignored while typing in a field.
+  React.useEffect(() => {
+    const handleHitNavigation = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (
+        target.isContentEditable ||
+        target.closest("input, textarea, select, [contenteditable='true']")
+      )) return;
+      const key = event.key.toLowerCase();
+      if ((key !== "a" && key !== "d") || !summary) return;
+      const time = audioRef.current?.currentTime ?? audioTime;
+      const times = summary.events.map((item) => item.time_seconds).sort((x, y) => x - y);
+      const next = key === "d"
+        ? times.find((item) => item > time + 0.005)
+        : [...times].reverse().find((item) => item < time - 0.005);
+      if (next === undefined) return;
+      event.preventDefault();
+      if (audioRef.current) audioRef.current.currentTime = next;
+      setAudioTime(next);
+      waveformRef.current?.seek(next);
+    };
+    window.addEventListener("keydown", handleHitNavigation);
+    return () => window.removeEventListener("keydown", handleHitNavigation);
+  }, [summary, audioTime]);
+
   async function editEvent(eventId: string, changes: Partial<Pick<DrumEvent, "time_seconds" | "instrument" | "velocity">>) {
     if (!summary) return;
     setSaving(true);
@@ -477,28 +510,163 @@ function App() {
     }
   }
 
+  async function addEventAt(timeSeconds: number, instrument: string, velocity: number) {
+    if (!summary) return;
+    const response = await fetch(
+      `${API_BASE}/api/projects/${summary.projectId}/events`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          time_seconds: timeSeconds,
+          instrument,
+          velocity,
+        }),
+      },
+    );
+    const result = await response.json() as Record<string, unknown>;
+    if (!response.ok) throw new Error(responseError(result, "无法添加鼓事件"));
+  }
+
   async function addEvent() {
     if (!summary) return;
     setSaving(true);
     try {
-      const response = await fetch(
-        `${API_BASE}/api/projects/${summary.projectId}/events`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            time_seconds: Number(newTime),
-            instrument: newInstrument,
-            velocity: Number(newVelocity),
-          }),
-        },
-      );
-      const result = await response.json() as Record<string, unknown>;
-      if (!response.ok) throw new Error(responseError(result, "无法添加鼓事件"));
+      await addEventAt(Number(newTime), newInstrument, Number(newVelocity));
       await refreshPerformance(summary.projectId, summary.jobId);
       setMessage("已添加手动鼓事件。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "添加鼓事件失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Persist one piano-roll gesture: drawn notes, moves, reclassifies,
+   * velocity changes and deletions. Moves/reclassifies with the same
+   * offset and lane go through one batch call; everything else is a
+   * single PATCH per note. One refresh at the end. */
+  async function handleRollCommit(commit: RollCommit) {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const projectId = summary.projectId;
+      for (const note of commit.added) {
+        await addEventAt(note.time_seconds, note.instrument, note.velocity);
+      }
+      const groups = new Map<string, { ids: string[]; offset: number; instrument?: string }>();
+      const velocityPatches: { id: string; velocity: number }[] = [];
+      for (const patch of commit.changed) {
+        const original = summary.events.find((item) => item.id === patch.eventId);
+        if (!original) continue;
+        const offset = patch.changes.time_seconds !== undefined
+          ? patch.changes.time_seconds - original.time_seconds
+          : 0;
+        if (patch.changes.velocity !== undefined) {
+          velocityPatches.push({ id: patch.eventId, velocity: patch.changes.velocity });
+        }
+        if (Math.abs(offset) >= 0.001 || patch.changes.instrument) {
+          const key = `${offset.toFixed(3)}|${patch.changes.instrument ?? ""}`;
+          const group = groups.get(key) ?? { ids: [], offset, instrument: patch.changes.instrument };
+          group.ids.push(patch.eventId);
+          groups.set(key, group);
+        }
+      }
+      for (const group of groups.values()) {
+        const response = await fetch(`${API_BASE}/api/projects/${projectId}/events/batch`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_ids: group.ids,
+            ...(Math.abs(group.offset) >= 0.001 ? { time_offset_seconds: group.offset } : {}),
+            ...(group.instrument ? { instrument: group.instrument } : {}),
+          }),
+        });
+        const result = await response.json() as Record<string, unknown>;
+        if (!response.ok) throw new Error(responseError(result, "钢琴卷帘移动失败"));
+      }
+      for (const patch of velocityPatches) {
+        const response = await fetch(`${API_BASE}/api/projects/${projectId}/events/${patch.id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ velocity: patch.velocity }),
+        });
+        const result = await response.json() as Record<string, unknown>;
+        if (!response.ok) throw new Error(responseError(result, "钢琴卷帘力度保存失败"));
+      }
+      if (commit.removed.length) {
+        const response = await fetch(`${API_BASE}/api/projects/${projectId}/events/batch`, {
+          method: "DELETE", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event_ids: commit.removed }),
+        });
+        const result = await response.json() as Record<string, unknown>;
+        if (!response.ok) throw new Error(responseError(result, "钢琴卷帘删除失败"));
+      }
+      await refreshPerformance(projectId, summary.jobId);
+      setSelectedEventIds((current) => current.filter((id) => !commit.removed.includes(id)));
+      setMessage(
+        `钢琴卷帘已保存：新增 ${commit.added.length} 个，修改 ${commit.changed.length} 个，删除 ${commit.removed.length} 个；MIDI 已同步。`,
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "钢琴卷帘保存失败");
+      if (summary) await refreshPerformance(summary.projectId, summary.jobId);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function downloadProjectFile() {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const doneBars = [...annotationDoneBars].sort((a, b) => a - b);
+      const status = !waveformBars.length ? "not_started"
+        : doneBars.length === waveformBars.length ? "done"
+        : doneBars.length > 0 ? "in_progress" : "not_started";
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/project-file`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          annotation: { status, done_bars: doneBars, note: annotationNote },
+        }),
+      });
+      if (!response.ok) {
+        const result = await response.json() as Record<string, unknown>;
+        throw new Error(responseError(result, "导出工程文件失败"));
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${summary.projectId}.drumai.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setMessage("工程文件已导出：含全部鼓事件、速度图与标注状态，可再导入继续改。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "导出工程文件失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function importProjectFile() {
+    if (!summary || !projectFile) return;
+    setSaving(true);
+    try {
+      const body = new FormData();
+      body.append("project_file", projectFile);
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/project-file/import`, {
+        method: "POST", body,
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "导入工程文件失败"));
+      await refreshPerformance(summary.projectId, summary.jobId);
+      const annotation = result.annotation as { done_bars?: number[]; note?: string } | undefined;
+      if (annotation) {
+        setAnnotationDoneBars(annotation.done_bars ?? []);
+        setAnnotationNote(annotation.note ?? "");
+      }
+      setProjectFile(null);
+      setMessage(`工程文件已导入：恢复 ${Number(result.imported_event_count ?? 0)} 个鼓事件与标注状态；原版本仍可撤销。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "导入工程文件失败");
     } finally {
       setSaving(false);
     }
@@ -927,6 +1095,28 @@ function App() {
             }}
             onWaveformPlay={() => { audioRef.current?.pause(); }}
           />
+          <DrumPianoRoll
+            events={summary.events}
+            durationSeconds={summary.durationSeconds}
+            gridStepSeconds={60 / summary.bpm / 4}
+            barMarks={waveformBars.map((bar) => ({ value: bar.start, label: String(bar.number) }))}
+            playheadSeconds={audioTime}
+            selectedEventId={selectedEventId}
+            selectedEventIds={selectedEventIds}
+            onSelectEvent={(eventId) => {
+              setSelectedEventId(eventId);
+              if (eventId) document.getElementById(`event-${eventId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            }}
+            onSelectEvents={(eventIds) => {
+              setSelectedEventIds(eventIds);
+              if (eventIds.length === 0) setSelectedEventId(null);
+            }}
+            onCommit={(commit) => void handleRollCommit(commit)}
+            onSeek={(timeSeconds) => {
+              if (audioRef.current) audioRef.current.currentTime = timeSeconds;
+              setAudioTime(timeSeconds);
+            }}
+          />
           <div className="timeline-panel">
             <div className="timeline-heading">
               <div><p className="eyebrow">ARRANGEMENT VIEW</p><h3>鼓点时间轴</h3></div>
@@ -1014,6 +1204,54 @@ function App() {
           <a className="download-link pdf-link" href={`${API_BASE}/api/projects/${summary.projectId}/pdf?measures_per_system=${pdfMeasuresPerSystem}`} download>下载打印版 PDF 鼓谱（每行 {pdfMeasuresPerSystem} 小节）</a>
           <a className="download-link musicxml-link" href={`${API_BASE}/api/projects/${summary.projectId}/musicxml`} download>下载可编辑 MusicXML 乐谱</a>
           <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/bundle?measures_per_system=${pdfMeasuresPerSystem}`} download>下载完整项目备份（原音频 + 鼓谱文件）</a>
+          <div className="project-file-panel">
+            <div><p className="eyebrow">PROJECT FILE · ANNOTATION</p><h3>工程文件与人工标注</h3></div>
+            <div className="project-file-actions">
+              <button type="button" disabled={saving} onClick={() => void downloadProjectFile()}>导出工程文件 (.drumai.json)</button>
+              <label className="project-file-import">导入工程文件
+                <input type="file" accept=".json,application/json" onChange={(event) => setProjectFile(event.target.files?.[0] ?? null)} />
+              </label>
+              <button type="button" disabled={saving || !projectFile} onClick={() => void importProjectFile()}>确认导入{projectFile ? `：${projectFile.name}` : ""}</button>
+            </div>
+            <small>工程文件含全部鼓事件、速度图与标注状态，不含音频；导入只接受音频与本项目一致的文件，导入后可撤销。</small>
+            <div className="annotation-toggle">
+              <button type="button" className={annotationMode ? "annotation-on" : ""} aria-pressed={annotationMode} onClick={() => setAnnotationMode((value) => !value)}>
+                {annotationMode ? "标注模式：开" : "标注模式：关"}
+              </button>
+              <small>标注模式：按小节听、逐小节改对，最后导出参考 CSV 直接进评测。</small>
+            </div>
+            {annotationMode && (
+              <>
+                <div className="annotation-bars" aria-label="按小节标注进度">
+                  {waveformBars.map((bar) => {
+                    const done = annotationDoneBars.includes(bar.number);
+                    return (
+                      <button
+                        key={bar.number}
+                        type="button"
+                        className={done ? "annotation-bar done" : "annotation-bar"}
+                        title={`第 ${bar.number} 小节 ${bar.start.toFixed(2)}s–${bar.end.toFixed(2)}s，点击跳到小节开头并标记完成`}
+                        onClick={() => {
+                          if (audioRef.current) audioRef.current.currentTime = bar.start;
+                          setAudioTime(bar.start);
+                          setAnnotationDoneBars((current) => done
+                            ? current.filter((item) => item !== bar.number)
+                            : [...current, bar.number]);
+                        }}
+                      >
+                        {bar.number}
+                      </button>
+                    );
+                  })}
+                </div>
+                <small>已标注 {annotationDoneBars.length} / {waveformBars.length} 小节；点小节号跳到该小节开头并标记完成，再点取消。</small>
+                <label className="annotation-note">标注备注
+                  <textarea value={annotationNote} onChange={(event) => setAnnotationNote(event.target.value)} placeholder="例如：第 3 小节军鼓跟打是误报，已删；第 5 小节补了一个底鼓。" />
+                </label>
+                <a className="download-link annotation-link" href={`${API_BASE}/api/projects/${summary.projectId}/annotation.csv`} download>导出参考 CSV（onset_seconds,instrument）</a>
+              </>
+            )}
+          </div>
           <small className="job-id">任务 ID：{summary.jobId} · {saving ? "正在保存…" : "编辑自动保存到标准事件和 MIDI"}</small>
         </section>
       )}
