@@ -1,3 +1,25 @@
+## 2026-11-14 — 手动修正与标注流程全链路落地
+
+- 鼓 lane 钢琴卷帘（`frontend/src/DrumPianoRoll.tsx` +
+  `drumRoll.ts`，@audio-ui/react 0.16.2 MIT）：11 lane（kick 顶→
+  other 底），点空白画音、拖动移音、拖到别的 lane 重分类、
+  力度条、Delete/方向键；提交走现有事件接口，事件表保留为
+  备用视图。映射单测 7 通过。
+- 快捷修正：A/D 跳上一个/下一个鼓点、重分类开关 + 鼓件下拉框、
+  力度条；`manually_corrected` 语义不变。
+- 可再编辑工程文件 `.drumai.json`：导出/导入 + 标注状态随文件走；
+  导入要求音频一致（422 拒绝），可撤销。
+- 标注模式：开关 + 按小节 checklist + 备注 + 参考 CSV 导出
+  （直通 `evaluate_midi.py`）。
+- 验证：后端 175 通过 1 跳过、ruff clean、scripts 19 通过、
+  前端构建通过；真数据（rock 30s，309 事件）上导出/导入往返、
+  CSV 解析、浏览器内删除/重分类/undo、A/D 跳转均已验证。
+- 附带修掉：种子项目 MIDI 缺失导致编辑全线 404（现缺失即从
+  performance JSON 重建，2 回归测试）；标尺空白（补小节号 Mark）。
+- **注意**：@audio-ui/react 要求 React 19，仓库已从 18.3.1 升到
+  19.3.1；Moli 布局引擎对卷帘几何量测不可信，像素级布局与
+  画音/拖动手势仍需真浏览器目检。
+
 ## 2026-11-14 — Exported MIDI tempo now matches the corrected tempo map
 
 - `DrumScriptEngine.analyze` built the corrected tempo map on the
