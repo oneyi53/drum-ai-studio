@@ -60,11 +60,26 @@ events, and corrections carry provenance (`manually_corrected`).
   audio-to-score study.
 - Verdict: keep as a per-stem fallback, not a drum engine.
 
-### Beat This! (candidate — tempo/beat tracking)
-- Neural beat and tempo estimation. The project already has a tempo-map
-  metronome; Beat This! is a candidate to improve tempo estimation on
-  full mixes.
-- Verdict: evaluate when tempo-map accuracy is next measured.
+### Beat This! (integrated — tempo/beat tracking)
+- Neural beat and tempo estimation (CPJKU, ISMIR 2024, MIT code +
+  weights, `final0.ckpt` ~81 MB). Evaluated 2026-11-14: the stock
+  tempogram estimator octave-errors on real songs (rock 69.8 vs true
+  ~140, electronic 215.3 vs ~108); Beat This! + a longest-strong-IOI-mode
+  derivation is within 5% of the reference tempo on 18/18 tracks (6 real
+  songs + 12 IDMT), vs 10/18 for the stock estimator.
+- Integrated as the tempo source in `backend/app/beat_this_tempo.py`:
+  `DrumScriptEngine` replaces the tempo map with the fused Beat This!
+  tempo (single change at t=0) when the checkpoint is available, and
+  falls back to the stock tempo — octave-folded into [60, 180] when Beat
+  This! runs but finds no beat track — otherwise. The checkpoint is
+  optional and never committed: set `BEAT_THIS_CHECKPOINT` to the
+  `final0.ckpt` path. Weights provenance: the official CPJKU Nextcloud
+  link is server-throttled, so the checkpoint used for evaluation came
+  from the Hugging Face mirror `oulianov/beat_this` (verified by size
+  and load test; not the official release).
+- Verdict: adopted for tempo correction. The MIDI file on disk still
+  carries DrumScript's own tempo (only the performance tempo map is
+  corrected) — a follow-up if MIDI tempo matters to users.
 
 ## Adjacent projects (reference only, do not copy)
 
