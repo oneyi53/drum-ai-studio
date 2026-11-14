@@ -1,0 +1,81 @@
+# Fetch the single Demucs HTDemucs weight file into an Actions artifact.
+#
+# Manual-only workflow (workflow_dispatch). It exists because the local
+# full-song transcription path needs `955717e8.safetensors` (~84 MB,
+# repo `adefossez/HTDemucs`) and that file is not cached on the
+# development machine. The download happens inside the GitHub runner,
+# so no local network approval is involved; the artifact is then
+# retrieved once and placed into the local Hugging Face cache by hand
+# (see the sha256 printed by the verify step).
+#
+# After downloading the artifact, place it at:
+#   ~/.cache/huggingface/hub/models--adefossez--HTDemucs/blobs/<sha256>
+# and link it from the snapshot dir:
+#   ~/.cache/huggingface/hub/models--adefossez--HTDemucs/snapshots/<commit>/955717e8.safetensors
+# (commit currently cbc8a9b1a87023b7fd74e7b3412e6321c0eab003; keep refs/main
+# as-is). Remove any stale `*.incomplete` partials in blobs/ afterwards.
+
+name: Fetch HTDemucs weights
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  fetch-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download 955717e8.safetensors from Hugging Face Hub
+        run: |
+          set -euo pipefail
+          curl -L --retry 3 --fail \
+            -o 955717e8.safetensors \
+            https://huggingface.co/adefossez/HTDemucs/resolve/main/955717e8.safetensors
+
+      - name: Verify safetensors file and print sha256
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import struct
+          import sys
+
+          path = "955717e8.safetensors"
+          size = os.path.getsize(path)
+          print(f"size_bytes={size}")
+          if size < 80_000_000 or size > 90_000_000:
+              sys.exit(f"unexpected size: {size} bytes (expected ~84 MB)")
+
+          with open(path, "rb") as f:
+              first = f.read(16)
+              if first.lstrip().startswith(b"<"):
+                  sys.exit("file looks like an HTML error page, not weights")
+              f.seek(0)
+              (header_len,) = struct.unpack("<Q", f.read(8))
+              if header_len <= 0 or header_len > 10_000_000:
+                  sys.exit(f"implausible safetensors header length: {header_len}")
+              header = json.loads(f.read(header_len))
+              keys = sorted(header.keys())
+              print(f"header_keys={keys[:10]} (total {len(keys)})")
+              if "__metadata__" not in header and not any(
+                  k.endswith(".weight") or k.endswith(".bias") for k in keys
+              ):
+                  sys.exit("header does not look like a safetensors weight file")
+
+          sha = hashlib.sha256()
+          with open(path, "rb") as f:
+              for chunk in iter(lambda: f.read(1 << 20), b""):
+                  sha.update(chunk)
+          print(f"sha256={sha.hexdigest()}")
+          PY
+
+      - name: Upload weights artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: htdemucs-weights
+          path: 955717e8.safetensors
+          retention-days: 7
