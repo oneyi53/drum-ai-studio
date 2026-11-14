@@ -1,3 +1,28 @@
+## 2026-11-14 — Beat This! F1 lift: measured, NO lift (structure win only)
+
+- Re-ran the app path on rock + electronic with the Beat This!
+  checkpoint and evaluated @100 ms vs first-pass references. Rock
+  exact F1 0.310→0.305 (hat-merged 0.504→0.481); electronic
+  0.186→0.180 (hat-merged 0.277→0.252). Both deltas within
+  run-to-run noise (re-running the identical pipeline moves
+  electronic raw MIDI notes by 4.7%); no measurable lift on the
+  independent metrics either (hats/crash flat).
+- Mechanism: the correction arrives too late — upstream MIDI is
+  already snapped to the stock grid before the correction exists
+  (stock rock onsets are exact multiples of 0.2149 s).
+  `quantize_performance` only re-snaps already-snapped times,
+  moving each note by at most half a corrected 16th step — inside
+  the ±100 ms tolerance. The full lift would need the correct
+  tempo inside upstream quantization, but `transcribe()` only
+  returns the already-snapped MIDI; raw onsets aren't exposed.
+- What DID improve: score structure. Rock MusicXML: 86 measures
+  (true ~84) vs 42.0 at the stock grid; electronic 68 vs 134.6.
+  Barlines now fall on the true downbeats.
+- Follow-up: the on-disk MIDI still carries DrumScript's own
+  tempo (rock 69.8 vs performance 142.9) — rewrite `set_tempo`
+  in the exported MIDI. Full report (local only):
+  .ds-scratch/beat-this-eval/f1_lift/F1_LIFT.md.
+
 ## 2026-11-14 — Beat This! tempo correction adopted
 
 - Stock tempogram estimator octave-errors on real songs (rock 69.8
