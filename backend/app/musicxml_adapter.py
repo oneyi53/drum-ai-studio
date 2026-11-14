@@ -5,6 +5,7 @@ instrument, tempo directions, time signatures, and absolute event placement.
 """
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections import defaultdict
 from fractions import Fraction
 from math import gcd
@@ -73,6 +74,7 @@ def _add_note(
     dots: int = 0,
     actual_notes: int = 1,
     normal_notes: int = 1,
+    ties: tuple[str, ...] = (),
 ) -> None:
     step, octave, notehead = DISPLAY[instrument]
     note = ET.SubElement(measure, "note")
@@ -83,6 +85,11 @@ def _add_note(
     _add_text(unpitched, "display-octave", octave)
     ET.SubElement(note, "instrument", id=f"P1-{instrument.value}")
     _add_text(note, "duration", duration)
+    # Per the MusicXML schema, <tie> (sound) follows <duration> and
+    # precedes <voice>; <tied> (notation) lives in <notations>, which
+    # follows <notehead> and precedes <play>.
+    for tie_type in ties:
+        ET.SubElement(note, "tie", type=tie_type)
     _add_text(note, "voice", list(DrumInstrument).index(instrument) + 1)
     _add_text(note, "type", note_type)
     for _ in range(dots):
@@ -93,6 +100,10 @@ def _add_note(
         _add_text(modification, "normal-notes", normal_notes)
     _add_text(note, "stem", "up")
     _add_text(note, "notehead", notehead)
+    if ties:
+        notations = ET.SubElement(note, "notations")
+        for tie_type in ties:
+            ET.SubElement(notations, "tied", type=tie_type)
     play = ET.SubElement(note, "play")
     midi_velocity = ET.SubElement(play, "other-play", type="midi-velocity")
     midi_velocity.text = str(velocity)
@@ -247,6 +258,52 @@ def _choose_hit_duration(
     return gap, smallest_type, 0, actual_notes, normal_notes
 
 
+def _tie_markers(position: int, total: int) -> tuple[str, ...]:
+    """Tie types for one fragment of a tie chain, by position in the chain.
+
+    The first fragment starts the tie, the last stops it, and a middle
+    fragment both stops the previous one and starts the next. A chain
+    needs at least two fragments (one on each side of the barline).
+    """
+    if total < 2:
+        raise ValueError("a tie chain needs at least two fragments")
+    if position == 0:
+        return ("start",)
+    if position == total - 1:
+        return ("stop",)
+    return ("stop", "start")
+
+
+#: (duration, type, dots) fragments on each side of a barline tie split.
+TieFragments = tuple[list[tuple[int, str, int]], list[tuple[int, str, int]]]
+
+
+def _split_duration_at_barline(
+    duration: int, first_segment: int, divisions: int = DIVISIONS
+) -> TieFragments | None:
+    """Split a note duration at the barline into tied fragments, or None.
+
+    Both sides must decompose into exact standard/dotted note values;
+    when either side is not exactly representable the caller keeps the
+    old truncated duration instead of emitting an inexact tie, so total
+    duration is always conserved by the returned fragments.
+    """
+    if first_segment <= 0 or first_segment >= duration:
+        return None
+    try:
+        first = decompose_rhythmic_duration(first_segment, divisions)
+        second = decompose_rhythmic_duration(duration - first_segment, divisions)
+    except ValueError:
+        return None
+    return first, second
+
+
+def _next_voice_beat(beats: list[float], beat: float) -> float | None:
+    """Next hit beat in a voice after the given beat, or None."""
+    index = bisect_right(beats, beat)
+    return beats[index] if index < len(beats) else None
+
+
 _BEAM_LEVELS = {
     "eighth": 1,
     "16th": 2,
@@ -267,14 +324,17 @@ def _beam_level(note_type: str | None) -> int | None:
 
 
 def _insert_beams(note_element: ET.Element, beams: list[tuple[int, str]]) -> None:
-    """Insert <beam> children before <play>, in MusicXML note order.
+    """Insert <beam> children before <notations> or <play>, in MusicXML note order.
 
     In a <note>, beams sit after stem/notehead and before notations/play.
     The exporter always writes <play> last, so inserting before it keeps
-    the schema order without re-serializing the whole note.
+    the schema order without re-serializing the whole note; tied notes
+    carry <notations>, which beams must precede.
     """
-    play = _musicxml_child(note_element, "play")
-    index = list(note_element).index(play) if play is not None else len(note_element)
+    anchor = _musicxml_child(note_element, "notations")
+    if anchor is None:
+        anchor = _musicxml_child(note_element, "play")
+    index = list(note_element).index(anchor) if anchor is not None else len(note_element)
     for offset, (number, value) in enumerate(beams):
         beam = ET.Element("beam", {"number": str(number)})
         beam.text = value
@@ -484,6 +544,17 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
 
     part = ET.SubElement(root, "part", id="P1")
     ordered_events = sorted(event_beats, key=lambda item: (item[1], item[0].instrument.value))
+    # Per-voice hit beats across the whole performance, for the cross-measure
+    # gap a barline-crossing hit needs. Ties are decided at fragment-generation
+    # time (when the hit duration is chosen), never by patching the tree.
+    voice_beats: dict[DrumInstrument, list[float]] = defaultdict(list)
+    for event, beat in event_beats:
+        voice_beats[event.instrument].append(beat)
+    for beats in voice_beats.values():
+        beats.sort()
+    # Continuation fragments a tied hit leaves for the next measure, keyed by
+    # voice: (velocity, [(duration, type, dots, tie markers), ...]).
+    pending_ties: dict[DrumInstrument, tuple[int, list[tuple[int, str, int, tuple[str, ...]]]]] = {}
     for measure_number, (start, end, numerator, denominator) in enumerate(measures, 1):
         measure_attributes = {"number": str(measure_number)}
         nominal_measure_beats = numerator * 4.0 / denominator
@@ -527,7 +598,8 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
         cursor = 0
         for instrument in DrumInstrument:
             notes = by_instrument.get(instrument, [])
-            if not notes:
+            continuation = pending_ties.pop(instrument, None)
+            if not notes and continuation is None:
                 continue
             voice_number += 1
             instrument_voice = list(DrumInstrument).index(instrument) + 1
@@ -539,6 +611,22 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                 backup = ET.SubElement(measure, "backup")
                 _add_text(backup, "duration", cursor)
             cursor = 0
+            if continuation is not None:
+                # A tied hit from the previous measure continues here at
+                # onset 0; the hit loop below fills any gap to the next hit.
+                velocity, fragments = continuation
+                for frag_duration, frag_type, frag_dots, frag_ties in fragments:
+                    _add_note(
+                        measure,
+                        instrument,
+                        velocity,
+                        frag_duration,
+                        frag_type,
+                        chord=False,
+                        dots=frag_dots,
+                        ties=frag_ties,
+                    )
+                    cursor += frag_duration
             index = 0
             while index < len(notes):
                 event, beat = notes[index]
@@ -572,11 +660,21 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                     index += 1
 
                 has_next_hit = index < len(notes)
-                next_onset = (
-                    round((notes[index][1] - start) * DIVISIONS)
-                    if has_next_hit
-                    else measure_duration
-                )
+                if has_next_hit:
+                    next_onset = round((notes[index][1] - start) * DIVISIONS)
+                else:
+                    # Last hit of this voice in the measure: the gap runs to
+                    # the next hit of the same voice anywhere, so a duration
+                    # chosen from it may cross the barline (and be tied).
+                    # The group is beat-ordered, so the last member's beat
+                    # is the right lookup point for "after this group".
+                    group_end_beat = notes[index - 1][1]
+                    next_beat = _next_voice_beat(voice_beats[instrument], group_end_beat)
+                    next_onset = (
+                        round((next_beat - start) * DIVISIONS)
+                        if next_beat is not None
+                        else measure_duration
+                    )
                 available_gap = next_onset - onset
                 (
                     note_duration,
@@ -585,19 +683,77 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                     actual_notes,
                     normal_notes,
                 ) = _choose_hit_duration(available_gap, DIVISIONS)
-                for chord_index, grouped_event in enumerate(group):
-                    _add_note(
-                        measure,
-                        instrument,
-                        grouped_event.velocity,
-                        note_duration,
-                        note_type,
-                        chord=chord_index > 0,
-                        dots=note_dots,
-                        actual_notes=actual_notes,
-                        normal_notes=normal_notes,
+                tie_split: TieFragments | None = None
+                if (
+                    not has_next_hit
+                    and next_onset > measure_duration
+                    and onset + note_duration > measure_duration
+                ):
+                    tie_split = _split_duration_at_barline(
+                        note_duration, measure_duration - onset, DIVISIONS
                     )
-                cursor = onset + note_duration
+                    if tie_split is None:
+                        # Either side is not exactly representable: keep the
+                        # old truncated duration instead of an inexact tie.
+                        (
+                            note_duration,
+                            note_type,
+                            note_dots,
+                            actual_notes,
+                            normal_notes,
+                        ) = _choose_hit_duration(measure_duration - onset, DIVISIONS)
+                if tie_split is not None:
+                    first_fragments, second_fragments = tie_split
+                    all_fragments = first_fragments + second_fragments
+                    for frag_index, (frag_duration, frag_type, frag_dots) in enumerate(
+                        first_fragments
+                    ):
+                        frag_ties = _tie_markers(frag_index, len(all_fragments))
+                        for chord_index, grouped_event in enumerate(group):
+                            # Only the parent pitch is tied; chord tones end
+                            # at the barline, as with beaming (parent only).
+                            _add_note(
+                                measure,
+                                instrument,
+                                grouped_event.velocity,
+                                frag_duration,
+                                frag_type,
+                                chord=chord_index > 0,
+                                dots=frag_dots,
+                                ties=frag_ties if chord_index == 0 else (),
+                            )
+                    cursor = measure_duration
+                    pending_ties[instrument] = (
+                        group[0].velocity,
+                        [
+                            (
+                                frag_duration,
+                                frag_type,
+                                frag_dots,
+                                _tie_markers(
+                                    len(first_fragments) + frag_index,
+                                    len(all_fragments),
+                                ),
+                            )
+                            for frag_index, (frag_duration, frag_type, frag_dots) in enumerate(
+                                second_fragments
+                            )
+                        ],
+                    )
+                else:
+                    for chord_index, grouped_event in enumerate(group):
+                        _add_note(
+                            measure,
+                            instrument,
+                            grouped_event.velocity,
+                            note_duration,
+                            note_type,
+                            chord=chord_index > 0,
+                            dots=note_dots,
+                            actual_notes=actual_notes,
+                            normal_notes=normal_notes,
+                        )
+                    cursor = onset + note_duration
 
                 if has_next_hit:
                     if cursor < next_onset:
@@ -624,6 +780,12 @@ def performance_to_musicxml(performance: DrumPerformance) -> str:
                 forward = ET.SubElement(measure, "forward")
                 _add_text(forward, "duration", measure_duration - cursor)
                 cursor = measure_duration
+
+    if pending_ties:
+        raise ValueError(
+            "tied continuations were never emitted: "
+            + ", ".join(sorted(item.value for item in pending_ties))
+        )
 
     _apply_beams(part)
 
