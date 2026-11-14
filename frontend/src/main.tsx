@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./style.css";
 import DrumPianoRoll from "./DrumPianoRoll";
+import DrumStaff from "./DrumStaff";
 import type { RollCommit } from "./drumRoll";
 import WaveformPanel, { type WaveformPanelHandle } from "./WaveformPanel";
 
@@ -134,6 +135,8 @@ function App() {
   const [metronomeEnabled, setMetronomeEnabled] = React.useState(false);
   const [activeEventId, setActiveEventId] = React.useState<string | null>(null);
   const [hiddenLanes, setHiddenLanes] = React.useState<string[]>([]);
+  const [soloLane, setSoloLane] = React.useState<string | null>(null);
+  const [eventTableOpen, setEventTableOpen] = React.useState(false);
   const [selectedEventIds, setSelectedEventIds] = React.useState<string[]>([]);
   const [batchTimeOffset, setBatchTimeOffset] = React.useState("0.010");
   const [duplicateInterval, setDuplicateInterval] = React.useState("1.000");
@@ -183,6 +186,23 @@ function App() {
   }, [summary, timelineBeats]);
   const activeLoopEnd = loopEnd || audioDuration || summary?.durationSeconds || 0;
   const loopRangeValid = activeLoopEnd > loopStart;
+  /** Lanes actually shown in the roll, timeline and waveform markers.
+   * Solo wins over hidden; the model (events, table, exports) is untouched. */
+  const effectiveVisibleLanes = React.useMemo(
+    () => (soloLane ? [soloLane] : TIMELINE_LANES.filter((lane) => !hiddenLanes.includes(lane))),
+    [soloLane, hiddenLanes],
+  );
+  const visibleEvents = React.useMemo(
+    () => (summary ? summary.events.filter((event) => effectiveVisibleLanes.includes(event.instrument)) : []),
+    [summary, effectiveVisibleLanes],
+  );
+  /** Open the (collapsed) event table and scroll to one event row. */
+  const revealEvent = (eventId: string) => {
+    setEventTableOpen(true);
+    window.setTimeout(() => {
+      document.getElementById(`event-${eventId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 0);
+  };
 
   React.useEffect(() => {
     if (!audioPlaying || !loopEnabled || !loopRangeValid) return;
@@ -995,6 +1015,24 @@ function App() {
             <button disabled={saving || !history.can_redo} onClick={() => void moveHistory("redo")}>↷ 重做</button>
             <small>历史版本 {history.current_revision}</small>
           </div>
+          <div className="transport-bar" aria-label="走带控制">
+            <button
+              type="button"
+              onClick={() => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                if (audio.paused) void audio.play();
+                else audio.pause();
+              }}
+            >
+              {audioPlaying ? "⏸ 暂停" : "▶ 播放"}
+            </button>
+            <span className="transport-time">{audioTime.toFixed(2)}s / {(audioDuration || summary.durationSeconds).toFixed(2)}s</span>
+            <span className="transport-bpm">{summary.bpm.toFixed(1)} BPM</span>
+            <button type="button" className={metronomeEnabled ? "metronome-on" : ""} onClick={toggleMetronome}>{metronomeEnabled ? "节拍器：开" : "节拍器：关"}</button>
+            <label className="loop-toggle"><input type="checkbox" checked={loopEnabled} disabled={!loopRangeValid} onChange={(event) => setLoopEnabled(event.target.checked)} /> A–B 循环</label>
+            <small>走带条常驻顶部；跳转滑块与 A/B 点在下方播放器里。</small>
+          </div>
           <div className="metrics">
             <div><strong>{summary.totalEvents.toLocaleString()}</strong><small>鼓事件</small></div>
             <div><strong>{summary.durationSeconds.toFixed(1)}s</strong><small>音频时长</small></div>
@@ -1004,195 +1042,6 @@ function App() {
             {Object.entries(summary.instruments).sort((a, b) => b[1] - a[1]).map(([name, count]) => (
               <span key={name}><strong>{name}</strong><small>{count}</small></span>
             ))}
-          </div>
-          <div className="quantize-panel">
-            <div><p className="eyebrow">RHYTHM TOOLS</p><h3>节奏网格量化</h3><small>按速度变化分段对齐鼓点；预览不会修改原始事件。</small></div>
-            <label>网格<select value={quantizeSubdivision} onChange={(event) => { setQuantizeSubdivision(event.target.value); setQuantizePreview(null); }}>
-              <option value="1/4">1/4 · 四分音符</option>
-              <option value="1/8">1/8 · 八分音符</option>
-              <option value="1/16">1/16 · 十六分音符</option>
-              <option value="1/32">1/32 · 三十二分音符</option>
-            </select></label>
-            <label className="strength-control">量化强度 <strong>{quantizeStrength}%</strong>
-              <input type="range" min="0" max="100" step="5" value={quantizeStrength} onChange={(event) => { setQuantizeStrength(Number(event.target.value)); setQuantizePreview(null); }} />
-            </label>
-            <button disabled={saving || quantizeStrength === 0} onClick={previewQuantization}>预览量化</button>
-            <button disabled={saving || !quantizePreview} onClick={applyQuantization}>确认应用并同步 MIDI</button>
-            {quantizePreview && <small className="quantize-preview-status">
-              预览：{quantizePreview.events.filter((event) => {
-                const original = summary.events.find((item) => item.id === event.id);
-                return original !== undefined && Math.abs(original.time_seconds - event.time_seconds) > 0.001;
-              }).length} / {summary.totalEvents} 个鼓点将移动；确认后才写入历史记录。
-            </small>}
-          </div>
-          <div className="editor-heading">
-            <div><p className="eyebrow">EVENT EDITOR</p><h3>添加鼓点</h3></div>
-          </div>
-          <div className="event-add">
-            <label>时间（秒）<input type="number" min="0" max={summary.durationSeconds} step="0.001" value={newTime} onChange={(event) => setNewTime(event.target.value)} /></label>
-            <label>鼓件<select value={newInstrument} onChange={(event) => setNewInstrument(event.target.value)}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
-            <label>力度<input type="number" min="1" max="127" value={newVelocity} onChange={(event) => setNewVelocity(event.target.value)} /></label>
-            <button disabled={saving} onClick={addEvent}>添加事件</button>
-          </div>
-          <section className="audio-player">
-            <div className="audio-player-heading">
-              <div><p className="eyebrow">AUDIO PLAYBACK</p><h3>原音频同步播放</h3></div>
-              <span>{audioTime.toFixed(2)}s / {(audioDuration || summary.durationSeconds).toFixed(2)}s</span>
-            </div>
-            <audio ref={audioRef} controls preload="metadata"
-              src={API_BASE + "/api/projects/" + summary.projectId + "/audio"}
-              onPlay={() => { waveformRef.current?.pause(); setAudioPlaying(true); }}
-              onPause={() => setAudioPlaying(false)}
-              onEnded={() => setAudioPlaying(false)}
-              onLoadedMetadata={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
-              onDurationChange={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
-              onTimeUpdate={(event) => {
-                const time = event.currentTarget.currentTime;
-                setAudioTime(time);
-                let nearest: DrumEvent | null = null;
-                let distance = Number.POSITIVE_INFINITY;
-                for (const item of summary.events) {
-                  const delta = Math.abs(item.time_seconds - time);
-                  if (delta < distance) { distance = delta; nearest = item; }
-                }
-                setActiveEventId(nearest && distance <= 0.14 ? nearest.id : null);
-              }}
-            />
-            <input className="audio-seek" aria-label="音频播放位置" type="range" min="0"
-              max={audioDuration || summary.durationSeconds} step="0.01"
-              value={Math.min(audioTime, audioDuration || summary.durationSeconds)}
-              onChange={(event) => {
-                const nextTime = Number(event.target.value);
-                if (audioRef.current) audioRef.current.currentTime = nextTime;
-                setAudioTime(nextTime);
-              }}
-            />
-            <div className="loop-controls">
-              <label className="loop-toggle"><input type="checkbox" checked={loopEnabled} disabled={!loopRangeValid} onChange={(event) => setLoopEnabled(event.target.checked)} /> A–B 循环</label>
-              <button type="button" className={metronomeEnabled ? "metronome-on" : ""} onClick={toggleMetronome}>{metronomeEnabled ? "关闭节拍器" : "开启节拍器"}</button>
-              <span>A：{loopStart.toFixed(2)}s</span>
-              <button type="button" onClick={() => {
-                const point = audioRef.current?.currentTime ?? audioTime;
-                setLoopStart(point);
-                if (loopEnd > 0 && loopEnd <= point) setLoopEnd(audioDuration || summary.durationSeconds);
-              }}>设为 A 点</button>
-              <span>B：{activeLoopEnd.toFixed(2)}s</span>
-              <button type="button" disabled={(audioRef.current?.currentTime ?? audioTime) <= loopStart} onClick={() => setLoopEnd(audioRef.current?.currentTime ?? audioTime)}>设为 B 点</button>
-              <button type="button" onClick={() => { setLoopStart(0); setLoopEnd(audioDuration || summary.durationSeconds); setLoopEnabled(false); }}>重置</button>
-            </div>
-            <small>播放时播放头会跟随时间轴移动；点击任一鼓点可跳转音频位置。设置 A/B 点可循环练习指定段落。</small>
-          </section>
-          <WaveformPanel
-            ref={waveformRef}
-            audioUrl={API_BASE + "/api/projects/" + summary.projectId + "/audio"}
-            durationSeconds={summary.durationSeconds}
-            bars={waveformBars}
-            events={summary.events}
-            selectedEventId={selectedEventId}
-            onSelectEvent={(eventId) => {
-              setSelectedEventId(eventId);
-              document.getElementById(`event-${eventId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-            }}
-            onWaveformPlay={() => { audioRef.current?.pause(); }}
-          />
-          <DrumPianoRoll
-            events={summary.events}
-            durationSeconds={summary.durationSeconds}
-            gridStepSeconds={60 / summary.bpm / 4}
-            barMarks={waveformBars.map((bar) => ({ value: bar.start, label: String(bar.number) }))}
-            playheadSeconds={audioTime}
-            selectedEventId={selectedEventId}
-            selectedEventIds={selectedEventIds}
-            onSelectEvent={(eventId) => {
-              setSelectedEventId(eventId);
-              if (eventId) document.getElementById(`event-${eventId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-            }}
-            onSelectEvents={(eventIds) => {
-              setSelectedEventIds(eventIds);
-              if (eventIds.length === 0) setSelectedEventId(null);
-            }}
-            onCommit={(commit) => void handleRollCommit(commit)}
-            onSeek={(timeSeconds) => {
-              if (audioRef.current) audioRef.current.currentTime = timeSeconds;
-              setAudioTime(timeSeconds);
-            }}
-          />
-          <div className="timeline-panel">
-            <div className="timeline-heading">
-              <div><p className="eyebrow">ARRANGEMENT VIEW</p><h3>鼓点时间轴</h3></div>
-              <span>{summary.bpm.toFixed(1)} BPM · {summary.durationSeconds.toFixed(1)} 秒</span>
-            </div>
-            <div className="tempo-map-labels">
-              {(summary.tempoMap.length ? summary.tempoMap : [{ time_seconds: 0, bpm: 120, numerator: 4, denominator: 4 }]).map((change, index) => (
-                <span key={change.time_seconds + "-" + index} style={{ left: (change.time_seconds / summary.durationSeconds) * 100 + "%" }}>
-                  {change.bpm.toFixed(1)} BPM
-                </span>
-              ))}
-            </div>
-            <div className="timeline-ruler"><span>0:00</span><span>{(summary.durationSeconds * 0.25).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.5).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.75).toFixed(1)}s</span><span>{summary.durationSeconds.toFixed(1)}s</span></div>
-            <div className="timeline-lane-filters" aria-label="时间轴轨道显示筛选">
-              <span>显示轨道</span>
-              <button type="button" onClick={() => setHiddenLanes([])} disabled={hiddenLanes.length === 0}>全部显示</button>
-              <button type="button" onClick={() => setHiddenLanes(TIMELINE_LANES)} disabled={hiddenLanes.length === TIMELINE_LANES.length}>全部隐藏</button>
-              {TIMELINE_LANES.map((lane) => <label key={lane}>
-                <input type="checkbox" checked={!hiddenLanes.includes(lane)} onChange={(event) => setHiddenLanes((current) => event.target.checked ? current.filter((item) => item !== lane) : [...current, lane])} />
-                {lane.replace(/_/g, " ")}
-              </label>)}
-            </div>
-            <div className="timeline-scroll"><div className="timeline-grid" onPointerDown={timelinePointerDown} onPointerMove={timelinePointerMove} onPointerUp={timelinePointerUp} onPointerCancel={timelinePointerCancel}>
-              {TIMELINE_LANES.filter((lane) => !hiddenLanes.includes(lane)).map((lane) => {
-                const laneEvents = summary.events.filter((event) => event.instrument === lane);
-                return <div className="timeline-lane" data-lane={lane} key={lane}><span className="timeline-lane-name">{lane.replace(/_/g, " ")}</span><div className="timeline-track">
-                  {loopEnabled && loopRangeValid && <span className="timeline-loop-range" style={{ left: (loopStart / summary.durationSeconds) * 100 + "%", width: ((activeLoopEnd - loopStart) / summary.durationSeconds) * 100 + "%" }} />}
-                  {timelineBeats.map((beat, index) => <span key={beat.time + "-" + index} className={"timeline-beat " + (beat.isBar ? "bar" : "")} style={{ left: (beat.time / summary.durationSeconds) * 100 + "%" }} />)}
-                  {summary.tempoMap.filter((change) => change.time_seconds > 0).map((change) => <span key={"tempo-" + change.time_seconds} className="timeline-tempo-change" style={{ left: (change.time_seconds / summary.durationSeconds) * 100 + "%" }} />)}
-                  <span className="timeline-playhead" style={{ left: `${(audioTime / summary.durationSeconds) * 100}%` }} />
-                  {timelineSelectionBox && visibleLanesForBox(timelineSelectionBox, hiddenLanes, TIMELINE_LANES).includes(lane) && <span className="timeline-marquee" style={{ left: `${Math.min(timelineSelectionBox.startTime, timelineSelectionBox.endTime) / summary.durationSeconds * 100}%`, width: `${Math.abs(timelineSelectionBox.endTime - timelineSelectionBox.startTime) / summary.durationSeconds * 100}%` }} />}
-                  {laneEvents.map((event) => {
-                    const basePercent = event.time_seconds / summary.durationSeconds * 100;
-                    const previewLeft = selectedEventIds.includes(event.id) && timelineDragDelta
-                      ? `calc(${basePercent}% + ${timelineDragDelta / summary.durationSeconds * 100}%)`
-                      : `${basePercent}%`;
-                    return <button key={event.id} data-event-id={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id || selectedEventIds.includes(event.id) ? "selected" : ""} ${activeEventId === event.id ? "active" : ""}`} style={{ left: previewLeft, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { if (suppressTimelineClickRef.current) { suppressTimelineClickRef.current = false; return; } setSelectedEventId(event.id); if (audioRef.current) audioRef.current.currentTime = event.time_seconds; setAudioTime(event.time_seconds); document.getElementById(`event-${event.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }} />;
-                  })}
-                </div></div>;
-              })}
-            </div></div>
-            <small className="timeline-help">拖动空白区域可跨鼓件框选鼓点；拖动已选鼓点可整体移动选区。点击鼓点可跳转音频；标记亮度反映力度。</small>
-          </div>
-          <div className="event-batch-controls">
-            <label><input type="checkbox" checked={selectedEventIds.length === summary.events.length && summary.events.length > 0} onChange={(event) => setSelectedEventIds(event.target.checked ? summary.events.map((item) => item.id) : [])} /> 全选</label>
-            <span>已选 {selectedEventIds.length} 个</span>
-            <label>时间偏移（秒）<input type="number" step="0.001" value={batchTimeOffset} onChange={(event) => setBatchTimeOffset(event.target.value)} /></label>
-            <button type="button" disabled={saving || selectedEventIds.length === 0 || !Number.isFinite(Number(batchTimeOffset)) || Number(batchTimeOffset) === 0} onClick={() => void batchEditEvents()}>批量移动</button>
-            <button type="button" className="delete-event" disabled={saving || selectedEventIds.length === 0} onClick={() => void batchDeleteEvents()}>批量删除</button>
-            <label>重复间隔（秒）<input type="number" min="0.001" step="0.001" value={duplicateInterval} onChange={(event) => setDuplicateInterval(event.target.value)} /></label>
-            <label>重复次数<input type="number" min="1" max="16" step="1" value={duplicateRepeatCount} onChange={(event) => setDuplicateRepeatCount(event.target.value)} /></label>
-            <button type="button" disabled={saving || selectedEventIds.length === 0 || Number(duplicateInterval) <= 0 || !Number.isInteger(Number(duplicateRepeatCount)) || Number(duplicateRepeatCount) < 1 || Number(duplicateRepeatCount) > 16} onClick={() => void duplicateSelectedEvents()}>复制/重复所选</button>
-          </div>
-          <div className="event-batch-controls bar-copy-controls">
-            <strong>小节段落复制</strong>
-            <label>源小节<input type="number" min="1" max={Math.max(1, timelineBeats.filter((beat) => beat.isBar).length)} step="1" value={sourceBarNumber} onChange={(event) => setSourceBarNumber(event.target.value)} /></label>
-            <label>目标小节<input type="number" min="1" max={Math.max(1, timelineBeats.filter((beat) => beat.isBar).length)} step="1" value={targetBarNumber} onChange={(event) => setTargetBarNumber(event.target.value)} /></label>
-            <button type="button" disabled={saving || !Number.isInteger(Number(sourceBarNumber)) || !Number.isInteger(Number(targetBarNumber)) || Number(sourceBarNumber) < 1 || Number(targetBarNumber) < 1 || Number(sourceBarNumber) > timelineBeats.filter((beat) => beat.isBar).length || Number(targetBarNumber) > timelineBeats.filter((beat) => beat.isBar).length} onClick={() => void copyBarToTarget()}>复制小节到目标位置</button>
-            <small>按当前速度与拍号网格定位小节；保留鼓点相对位置、鼓件和力度。</small>
-          </div>
-          <div className="event-table-wrap">
-            <table className="event-table">
-              <thead><tr><th>选择</th><th>时间（秒）</th><th>鼓件</th><th>力度</th><th>来源</th><th>操作</th></tr></thead>
-              <tbody>
-                {summary.events.map((event) => (
-                  <tr id={`event-${event.id}`} key={`${event.id}-${event.time_seconds}-${event.instrument}-${event.velocity}`} className={selectedEventId === event.id ? "selected-event-row" : ""}>
-                    <td><input aria-label={`选择 ${event.instrument} 事件`} type="checkbox" checked={selectedEventIds.includes(event.id)} onChange={(input) => setSelectedEventIds((current) => input.target.checked ? [...current, event.id] : current.filter((id) => id !== event.id))} /></td>
-                    <td><input aria-label="事件时间" type="number" min="0" max={summary.durationSeconds} step="0.001" defaultValue={event.time_seconds} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.time_seconds) void editEvent(event.id, { time_seconds: value }); }} /></td>
-                    <td><select aria-label="鼓件" defaultValue={event.instrument} onChange={(input) => void editEvent(event.id, { instrument: input.target.value })}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></td>
-                    <td><input aria-label="力度" type="number" min="1" max="127" defaultValue={event.velocity} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.velocity) void editEvent(event.id, { velocity: value }); }} /></td>
-                    <td>{event.manually_corrected ? "人工修订" : "模型"}</td>
-                    <td><button className="delete-event" disabled={saving} onClick={() => void removeEvent(event.id)}>删除</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
           <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/midi`} download>下载最新鼓谱 MIDI</a>
           <label className="pdf-layout-control">每行小节数
@@ -1252,6 +1101,237 @@ function App() {
               </>
             )}
           </div>
+          <div className="quantize-panel">
+            <div><p className="eyebrow">RHYTHM TOOLS</p><h3>节奏网格量化</h3><small>按速度变化分段对齐鼓点；预览不会修改原始事件。</small></div>
+            <label>网格<select value={quantizeSubdivision} onChange={(event) => { setQuantizeSubdivision(event.target.value); setQuantizePreview(null); }}>
+              <option value="1/4">1/4 · 四分音符</option>
+              <option value="1/8">1/8 · 八分音符</option>
+              <option value="1/16">1/16 · 十六分音符</option>
+              <option value="1/32">1/32 · 三十二分音符</option>
+            </select></label>
+            <label className="strength-control">量化强度 <strong>{quantizeStrength}%</strong>
+              <input type="range" min="0" max="100" step="5" value={quantizeStrength} onChange={(event) => { setQuantizeStrength(Number(event.target.value)); setQuantizePreview(null); }} />
+            </label>
+            <button disabled={saving || quantizeStrength === 0} onClick={previewQuantization}>预览量化</button>
+            <button disabled={saving || !quantizePreview} onClick={applyQuantization}>确认应用并同步 MIDI</button>
+            {quantizePreview && <small className="quantize-preview-status">
+              预览：{quantizePreview.events.filter((event) => {
+                const original = summary.events.find((item) => item.id === event.id);
+                return original !== undefined && Math.abs(original.time_seconds - event.time_seconds) > 0.001;
+              }).length} / {summary.totalEvents} 个鼓点将移动；确认后才写入历史记录。
+            </small>}
+          </div>
+          <section className="audio-player">
+            <div className="audio-player-heading">
+              <div><p className="eyebrow">AUDIO PLAYBACK</p><h3>原音频同步播放</h3></div>
+              <span>{audioTime.toFixed(2)}s / {(audioDuration || summary.durationSeconds).toFixed(2)}s</span>
+            </div>
+            <audio ref={audioRef} controls preload="metadata"
+              src={API_BASE + "/api/projects/" + summary.projectId + "/audio"}
+              onPlay={() => { waveformRef.current?.pause(); setAudioPlaying(true); }}
+              onPause={() => setAudioPlaying(false)}
+              onEnded={() => setAudioPlaying(false)}
+              onLoadedMetadata={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
+              onDurationChange={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
+              onTimeUpdate={(event) => {
+                const time = event.currentTarget.currentTime;
+                setAudioTime(time);
+                let nearest: DrumEvent | null = null;
+                let distance = Number.POSITIVE_INFINITY;
+                for (const item of summary.events) {
+                  const delta = Math.abs(item.time_seconds - time);
+                  if (delta < distance) { distance = delta; nearest = item; }
+                }
+                setActiveEventId(nearest && distance <= 0.14 ? nearest.id : null);
+              }}
+            />
+            <input className="audio-seek" aria-label="音频播放位置" type="range" min="0"
+              max={audioDuration || summary.durationSeconds} step="0.01"
+              value={Math.min(audioTime, audioDuration || summary.durationSeconds)}
+              onChange={(event) => {
+                const nextTime = Number(event.target.value);
+                if (audioRef.current) audioRef.current.currentTime = nextTime;
+                setAudioTime(nextTime);
+              }}
+            />
+            <div className="loop-controls">
+              <label className="loop-toggle"><input type="checkbox" checked={loopEnabled} disabled={!loopRangeValid} onChange={(event) => setLoopEnabled(event.target.checked)} /> A–B 循环</label>
+              <button type="button" className={metronomeEnabled ? "metronome-on" : ""} onClick={toggleMetronome}>{metronomeEnabled ? "关闭节拍器" : "开启节拍器"}</button>
+              <span>A：{loopStart.toFixed(2)}s</span>
+              <button type="button" onClick={() => {
+                const point = audioRef.current?.currentTime ?? audioTime;
+                setLoopStart(point);
+                if (loopEnd > 0 && loopEnd <= point) setLoopEnd(audioDuration || summary.durationSeconds);
+              }}>设为 A 点</button>
+              <span>B：{activeLoopEnd.toFixed(2)}s</span>
+              <button type="button" disabled={(audioRef.current?.currentTime ?? audioTime) <= loopStart} onClick={() => setLoopEnd(audioRef.current?.currentTime ?? audioTime)}>设为 B 点</button>
+              <button type="button" onClick={() => { setLoopStart(0); setLoopEnd(audioDuration || summary.durationSeconds); setLoopEnabled(false); }}>重置</button>
+            </div>
+            <small>播放时播放头会跟随时间轴移动；点击任一鼓点可跳转音频位置。设置 A/B 点可循环练习指定段落。</small>
+          </section>
+          <WaveformPanel
+            ref={waveformRef}
+            audioUrl={API_BASE + "/api/projects/" + summary.projectId + "/audio"}
+            durationSeconds={summary.durationSeconds}
+            bars={waveformBars}
+            events={visibleEvents}
+            selectedEventId={selectedEventId}
+            onSelectEvent={(eventId) => {
+              setSelectedEventId(eventId);
+              revealEvent(eventId);
+            }}
+            onWaveformPlay={() => { audioRef.current?.pause(); }}
+          />
+          <DrumPianoRoll
+            events={summary.events}
+            durationSeconds={summary.durationSeconds}
+            gridStepSeconds={60 / summary.bpm / 4}
+            barMarks={waveformBars.map((bar) => ({ value: bar.start, label: String(bar.number) }))}
+            playheadSeconds={audioTime}
+            selectedEventId={selectedEventId}
+            selectedEventIds={selectedEventIds}
+            onSelectEvent={(eventId) => {
+              setSelectedEventId(eventId);
+              if (eventId) revealEvent(eventId);
+            }}
+            onSelectEvents={(eventIds) => {
+              setSelectedEventIds(eventIds);
+              if (eventIds.length === 0) setSelectedEventId(null);
+            }}
+            onCommit={(commit) => void handleRollCommit(commit)}
+            onSeek={(timeSeconds) => {
+              if (audioRef.current) audioRef.current.currentTime = timeSeconds;
+              setAudioTime(timeSeconds);
+            }}
+            hiddenLanes={hiddenLanes}
+            soloLane={soloLane}
+            onToggleLaneVisibility={(instrument) => setHiddenLanes((current) =>
+              current.includes(instrument)
+                ? current.filter((item) => item !== instrument)
+                : [...current, instrument])}
+            onToggleLaneSolo={(instrument) => setSoloLane((current) =>
+              current === instrument ? null : instrument)}
+          />
+          <DrumStaff
+            events={summary.events}
+            bars={waveformBars}
+            visibleInstruments={effectiveVisibleLanes}
+            selectedEventId={selectedEventId}
+            selectedEventIds={selectedEventIds}
+            onSelectEvent={(eventId) => {
+              setSelectedEventId(eventId);
+              if (eventId) revealEvent(eventId);
+            }}
+            onSelectEvents={(eventIds) => {
+              setSelectedEventIds(eventIds);
+              if (eventIds.length === 0) setSelectedEventId(null);
+            }}
+            onCommit={(commit) => void handleRollCommit(commit)}
+            onSeek={(timeSeconds) => {
+              if (audioRef.current) audioRef.current.currentTime = timeSeconds;
+              setAudioTime(timeSeconds);
+            }}
+          />
+          <div className="timeline-panel">
+            <div className="timeline-heading">
+              <div><p className="eyebrow">ARRANGEMENT VIEW</p><h3>鼓点时间轴</h3></div>
+              <span>{summary.bpm.toFixed(1)} BPM · {summary.durationSeconds.toFixed(1)} 秒</span>
+            </div>
+            <div className="tempo-map-labels">
+              {(summary.tempoMap.length ? summary.tempoMap : [{ time_seconds: 0, bpm: 120, numerator: 4, denominator: 4 }]).map((change, index) => (
+                <span key={change.time_seconds + "-" + index} style={{ left: (change.time_seconds / summary.durationSeconds) * 100 + "%" }}>
+                  {change.bpm.toFixed(1)} BPM
+                </span>
+              ))}
+            </div>
+            <div className="timeline-ruler"><span>0:00</span><span>{(summary.durationSeconds * 0.25).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.5).toFixed(1)}s</span><span>{(summary.durationSeconds * 0.75).toFixed(1)}s</span><span>{summary.durationSeconds.toFixed(1)}s</span></div>
+            <div className="timeline-lane-filters" aria-label="时间轴轨道显示筛选">
+              <span>显示轨道</span>
+              <button type="button" onClick={() => setHiddenLanes([])} disabled={hiddenLanes.length === 0}>全部显示</button>
+              <button type="button" onClick={() => setHiddenLanes(TIMELINE_LANES)} disabled={hiddenLanes.length === TIMELINE_LANES.length}>全部隐藏</button>
+              {soloLane && (
+                <button type="button" onClick={() => setSoloLane(null)}>取消独奏：{soloLane}</button>
+              )}
+              {TIMELINE_LANES.map((lane) => <label key={lane}>
+                <input type="checkbox" checked={!hiddenLanes.includes(lane)} onChange={(event) => setHiddenLanes((current) => event.target.checked ? current.filter((item) => item !== lane) : [...current, lane])} />
+                {lane.replace(/_/g, " ")}
+                <button
+                  type="button"
+                  className={soloLane === lane ? "timeline-solo-on" : ""}
+                  aria-pressed={soloLane === lane}
+                  title={soloLane === lane ? `取消独奏 ${lane}` : `独奏 ${lane}（只看这一轨）`}
+                  onClick={(event) => { event.preventDefault(); setSoloLane((current) => current === lane ? null : lane); }}
+                >
+                  S
+                </button>
+              </label>)}
+            </div>
+            <div className="timeline-scroll"><div className="timeline-grid" onPointerDown={timelinePointerDown} onPointerMove={timelinePointerMove} onPointerUp={timelinePointerUp} onPointerCancel={timelinePointerCancel}>
+              {effectiveVisibleLanes.map((lane) => {
+                const laneEvents = summary.events.filter((event) => event.instrument === lane);
+                return <div className="timeline-lane" data-lane={lane} key={lane}><span className="timeline-lane-name">{lane.replace(/_/g, " ")}</span><div className="timeline-track">
+                  {loopEnabled && loopRangeValid && <span className="timeline-loop-range" style={{ left: (loopStart / summary.durationSeconds) * 100 + "%", width: ((activeLoopEnd - loopStart) / summary.durationSeconds) * 100 + "%" }} />}
+                  {timelineBeats.map((beat, index) => <span key={beat.time + "-" + index} className={"timeline-beat " + (beat.isBar ? "bar" : "")} style={{ left: (beat.time / summary.durationSeconds) * 100 + "%" }} />)}
+                  {summary.tempoMap.filter((change) => change.time_seconds > 0).map((change) => <span key={"tempo-" + change.time_seconds} className="timeline-tempo-change" style={{ left: (change.time_seconds / summary.durationSeconds) * 100 + "%" }} />)}
+                  <span className="timeline-playhead" style={{ left: `${(audioTime / summary.durationSeconds) * 100}%` }} />
+                  {timelineSelectionBox && visibleLanesForBox(timelineSelectionBox, hiddenLanes, TIMELINE_LANES).includes(lane) && <span className="timeline-marquee" style={{ left: `${Math.min(timelineSelectionBox.startTime, timelineSelectionBox.endTime) / summary.durationSeconds * 100}%`, width: `${Math.abs(timelineSelectionBox.endTime - timelineSelectionBox.startTime) / summary.durationSeconds * 100}%` }} />}
+                  {laneEvents.map((event) => {
+                    const basePercent = event.time_seconds / summary.durationSeconds * 100;
+                    const previewLeft = selectedEventIds.includes(event.id) && timelineDragDelta
+                      ? `calc(${basePercent}% + ${timelineDragDelta / summary.durationSeconds * 100}%)`
+                      : `${basePercent}%`;
+                    return <button key={event.id} data-event-id={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id || selectedEventIds.includes(event.id) ? "selected" : ""} ${activeEventId === event.id ? "active" : ""}`} style={{ left: previewLeft, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { if (suppressTimelineClickRef.current) { suppressTimelineClickRef.current = false; return; } setSelectedEventId(event.id); if (audioRef.current) audioRef.current.currentTime = event.time_seconds; setAudioTime(event.time_seconds); revealEvent(event.id); }} />;
+                  })}
+                </div></div>;
+              })}
+            </div></div>
+            <small className="timeline-help">拖动空白区域可跨鼓件框选鼓点；拖动已选鼓点可整体移动选区。点击鼓点可跳转音频；标记亮度反映力度。</small>
+          </div>
+          <div className="event-batch-controls">
+            <label><input type="checkbox" checked={selectedEventIds.length === summary.events.length && summary.events.length > 0} onChange={(event) => setSelectedEventIds(event.target.checked ? summary.events.map((item) => item.id) : [])} /> 全选</label>
+            <span>已选 {selectedEventIds.length} 个</span>
+            <label>时间偏移（秒）<input type="number" step="0.001" value={batchTimeOffset} onChange={(event) => setBatchTimeOffset(event.target.value)} /></label>
+            <button type="button" disabled={saving || selectedEventIds.length === 0 || !Number.isFinite(Number(batchTimeOffset)) || Number(batchTimeOffset) === 0} onClick={() => void batchEditEvents()}>批量移动</button>
+            <button type="button" className="delete-event" disabled={saving || selectedEventIds.length === 0} onClick={() => void batchDeleteEvents()}>批量删除</button>
+            <label>重复间隔（秒）<input type="number" min="0.001" step="0.001" value={duplicateInterval} onChange={(event) => setDuplicateInterval(event.target.value)} /></label>
+            <label>重复次数<input type="number" min="1" max="16" step="1" value={duplicateRepeatCount} onChange={(event) => setDuplicateRepeatCount(event.target.value)} /></label>
+            <button type="button" disabled={saving || selectedEventIds.length === 0 || Number(duplicateInterval) <= 0 || !Number.isInteger(Number(duplicateRepeatCount)) || Number(duplicateRepeatCount) < 1 || Number(duplicateRepeatCount) > 16} onClick={() => void duplicateSelectedEvents()}>复制/重复所选</button>
+          </div>
+          <div className="event-batch-controls bar-copy-controls">
+            <strong>小节段落复制</strong>
+            <label>源小节<input type="number" min="1" max={Math.max(1, timelineBeats.filter((beat) => beat.isBar).length)} step="1" value={sourceBarNumber} onChange={(event) => setSourceBarNumber(event.target.value)} /></label>
+            <label>目标小节<input type="number" min="1" max={Math.max(1, timelineBeats.filter((beat) => beat.isBar).length)} step="1" value={targetBarNumber} onChange={(event) => setTargetBarNumber(event.target.value)} /></label>
+            <button type="button" disabled={saving || !Number.isInteger(Number(sourceBarNumber)) || !Number.isInteger(Number(targetBarNumber)) || Number(sourceBarNumber) < 1 || Number(targetBarNumber) < 1 || Number(sourceBarNumber) > timelineBeats.filter((beat) => beat.isBar).length || Number(targetBarNumber) > timelineBeats.filter((beat) => beat.isBar).length} onClick={() => void copyBarToTarget()}>复制小节到目标位置</button>
+            <small>按当前速度与拍号网格定位小节；保留鼓点相对位置、鼓件和力度。</small>
+          </div>
+          <div className="editor-heading">
+            <div><p className="eyebrow">EVENT EDITOR</p><h3>添加鼓点</h3></div>
+          </div>
+          <div className="event-add">
+            <label>时间（秒）<input type="number" min="0" max={summary.durationSeconds} step="0.001" value={newTime} onChange={(event) => setNewTime(event.target.value)} /></label>
+            <label>鼓件<select value={newInstrument} onChange={(event) => setNewInstrument(event.target.value)}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+            <label>力度<input type="number" min="1" max="127" value={newVelocity} onChange={(event) => setNewVelocity(event.target.value)} /></label>
+            <button disabled={saving} onClick={addEvent}>添加事件</button>
+          </div>
+          <details className="event-table-details" open={eventTableOpen} onToggle={(event) => setEventTableOpen(event.currentTarget.open)}><summary>事件表（备用视图）· {summary.totalEvents} 个鼓点</summary>
+          <div className="event-table-wrap">
+            <table className="event-table">
+              <thead><tr><th>选择</th><th>时间（秒）</th><th>鼓件</th><th>力度</th><th>来源</th><th>操作</th></tr></thead>
+              <tbody>
+                {summary.events.map((event) => (
+                  <tr id={`event-${event.id}`} key={`${event.id}-${event.time_seconds}-${event.instrument}-${event.velocity}`} className={selectedEventId === event.id ? "selected-event-row" : ""}>
+                    <td><input aria-label={`选择 ${event.instrument} 事件`} type="checkbox" checked={selectedEventIds.includes(event.id)} onChange={(input) => setSelectedEventIds((current) => input.target.checked ? [...current, event.id] : current.filter((id) => id !== event.id))} /></td>
+                    <td><input aria-label="事件时间" type="number" min="0" max={summary.durationSeconds} step="0.001" defaultValue={event.time_seconds} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.time_seconds) void editEvent(event.id, { time_seconds: value }); }} /></td>
+                    <td><select aria-label="鼓件" defaultValue={event.instrument} onChange={(input) => void editEvent(event.id, { instrument: input.target.value })}>{INSTRUMENTS.map((name) => <option key={name} value={name}>{name}</option>)}</select></td>
+                    <td><input aria-label="力度" type="number" min="1" max="127" defaultValue={event.velocity} onBlur={(input) => { const value = Number(input.currentTarget.value); if (value !== event.velocity) void editEvent(event.id, { velocity: value }); }} /></td>
+                    <td>{event.manually_corrected ? "人工修订" : "模型"}</td>
+                    <td><button className="delete-event" disabled={saving} onClick={() => void removeEvent(event.id)}>删除</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          </details>
           <small className="job-id">任务 ID：{summary.jobId} · {saving ? "正在保存…" : "编辑自动保存到标准事件和 MIDI"}</small>
         </section>
       )}
