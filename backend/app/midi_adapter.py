@@ -39,6 +39,12 @@ def midi_to_performance(
     Times are converted to absolute seconds while applying tempo changes.
     By default only MIDI channel 10 (zero-based channel 9) is considered.
     Unmapped percussion pitches are retained as OTHER unless disabled.
+
+    Exact duplicate note-ons — the same instrument at the same instant —
+    are collapsed to a single event: upstream DrumScript emits them (136
+    extra notes, 11%, on the rock pilot MIDI), and two identical hits at
+    the same instant are one hit, not two. The first occurrence is kept;
+    observed duplicates are byte-identical (same velocity and duration).
     """
     path = Path(midi_path)
     if not path.is_file():
@@ -53,6 +59,7 @@ def midi_to_performance(
     elapsed = 0.0
     tempo_map = [TempoChange(time_seconds=0.0, bpm=120.0, numerator=4, denominator=4)]
     events: list[DrumEvent] = []
+    seen: set[tuple[int, DrumInstrument, float]] = set()
 
     for message in mido.merge_tracks(midi.tracks):
         elapsed += mido.tick2second(message.time, midi.ticks_per_beat, tempo)
@@ -95,6 +102,10 @@ def midi_to_performance(
         if instrument == DrumInstrument.OTHER and not include_unmapped_notes:
             continue
 
+        key = (message.channel, instrument, elapsed)
+        if key in seen:
+            continue
+        seen.add(key)
         events.append(
             DrumEvent(
                 time_seconds=elapsed,
@@ -137,7 +148,13 @@ def performance_to_midi(
     *,
     ticks_per_beat: int = 480,
 ) -> Path:
-    """Write canonical events to a GM percussion MIDI file on channel 10."""
+    """Write canonical events to a GM percussion MIDI file on channel 10.
+
+    Two events that quantize to the same tick with the same pitch are
+    written once: they are the same hit, and a second identical note-on
+    at the same tick reads as an exact-duplicate false positive downstream.
+    Different pitches at the same tick (chords) are all kept.
+    """
     if ticks_per_beat <= 0:
         raise ValueError("ticks_per_beat must be positive")
     destination = Path(midi_path)
@@ -201,15 +218,21 @@ def performance_to_midi(
                 ),
             )
         )
+    emitted: set[tuple[int, int]] = set()
     for event in performance.events:
+        tick = seconds_to_ticks(event.time_seconds)
+        note = INSTRUMENT_TO_GM_NOTE[event.instrument]
+        if (tick, note) in emitted:
+            continue
+        emitted.add((tick, note))
         messages.append(
             (
-                seconds_to_ticks(event.time_seconds),
+                tick,
                 2,
                 mido.Message(
                     "note_on",
                     channel=9,
-                    note=INSTRUMENT_TO_GM_NOTE[event.instrument],
+                    note=note,
                     velocity=event.velocity,
                 ),
             )
