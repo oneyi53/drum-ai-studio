@@ -1,3 +1,29 @@
+## 2026-11-14 — MusicXML ties (Phase 2)
+
+- Ties split at barlines only (decision: within-bar beat-group crossings
+  stay single notes, standard drum-score practice). Fragment-first per
+  the 2026-11-12 review boundary: the gap now runs to the next hit of
+  the same voice globally (`_next_voice_beat`), so `_choose_hit_duration`
+  may pick a duration crossing the barline; `_split_duration_at_barline`
+  splits it via `decompose_rhythmic_duration` on each side and returns
+  `None` when either side isn't exactly representable (falls back to the
+  old truncated duration, no inexact tie). Segments carry paired
+  `<tie>`/`<tied>` (first `start`, last `stop`, middle both); chord
+  tones tie the parent pitch only. Continuation fragments are carried
+  to the next measure (`pending_ties`, loud `ValueError` if ever left
+  unemitted). Non-crossing durations are byte-identical to before.
+- Tests: 8 new in `backend/tests/test_musicxml_adapter.py` (crossing
+  split with conserved duration, no tie in-measure or ending exactly on
+  the barline, unrepresentable-split fallback, continuation-only voice,
+  multi-fragment chain, chord tie). Backend suite 149 passed, ruff
+  clean. Independent check: tie/`tied` mirror exactly, no unclosed
+  chains; Verovio render inspected by eye — the tie arc visibly crosses
+  the barline, hats beamed, no collisions. Dotted notes verified
+  read-only: dotted-eighth hats in a beamed group validate strictly and
+  beam correctly, no defect found. Untested edge: a tie spanning a meter
+  change (tick-based fragments + strict validator on every export, so a
+  bad case fails loudly).
+
 ## 2026-11-14 — MusicXML beaming generation (Phase 1)
 
 - Beaming now computed from the shared-cursor reconstruction (the
