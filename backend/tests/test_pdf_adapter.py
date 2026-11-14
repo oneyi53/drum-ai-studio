@@ -200,12 +200,14 @@ def test_prepare_print_score_keeps_time_signature_only_in_first_measure():
     performance = _groove_performance(8)
     score_root = pdf_adapter._prepare_print_score(performance, 4)
     assert _timed_measures(score_root) == [("1", "4")]
-    # The canonical MusicXML export is untouched by the print-only strip.
+    # The canonical MusicXML export now carries <time> only in measure 1
+    # (and where the meter changes), so the print-only strip has nothing
+    # left to remove on a single-meter groove.
     from app.musicxml_adapter import performance_to_musicxml
 
     exported = ET.fromstring(performance_to_musicxml(performance))
-    measures = exported.findall("./part/measure")
-    assert len(exported.findall("./part/measure/attributes/time")) == len(measures)
+    assert len(exported.findall("./part/measure/attributes/time")) == 1
+    assert exported.findall("./part/measure/attributes/time")[0].findtext("beats") == "4"
 
 
 def test_prepare_print_score_keeps_time_signature_on_meter_change():
