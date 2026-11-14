@@ -1,3 +1,35 @@
+## 2026-11-14 — MusicXML beaming generation (Phase 1)
+
+- Beaming now computed from the shared-cursor reconstruction (the
+  2026-11-12 review boundary held up): `_apply_beams` runs on the
+  finished MusicXML tree in `backend/app/musicxml_adapter.py`, groups
+  are maximal runs of beamable notes (eighth or shorter) contiguous in
+  time inside one beat group; rests, forwards, tuplets, longer notes
+  and beat-group boundaries break a run; single notes stay flagged.
+  Secondary beams break per eighth-note unit, lone ones become forward /
+  backward hooks. `_beat_group_boundaries` is the single source of truth
+  for beat-group ticks (4/4 halves, compound dotted-quarter pulses,
+  7/8 as 3+2+2); `decompose_meter_aware_gap` now uses it (6/8 and 7/8
+  rest decompositions verified unchanged). Hooked into
+  `performance_to_musicxml`, so the MusicXML download and the PDF print
+  path share the same beamed output. Strict validation still runs on
+  every export.
+- Tests: 7 new in `backend/tests/test_musicxml_adapter.py` (8th group,
+  16th group + second beam, no beam across rest / beat-group boundary /
+  barline, secondary hooks, 7/8 rest decomposition). Backend suite 141
+  passed, ruff clean. Independent check: 25 beam elements on a mixed
+  2-bar 4/4 + 16th fill + 3/4 groove, strict validator accepts, Verovio
+  render inspected by eye — hats beamed in half-measure groups, fill
+  double-beamed, no collisions.
+- Pre-existing follow-up found, not fixed here: the exporter writes
+  `<instrument>` before `<duration>` in every note, while the MusicXML
+  XSD requires duration first. Verovio accepts it; fixing it touches
+  every note, so it stays a separate small task.
+- Phase 2 (ties, dotted notes) still open: ties split at barlines only
+  (decision: within-bar beat-group crossings stay single notes, standard
+  drum-score practice); dotted values already emitted, need verification
+  that they survive shared-cursor validation and beam correctly.
+
 ## 2026-11-14 — Issue #6: PDF engraving fixed after first visual inspection (3 blocking defects)
 
 - First rendered score ever inspected by eye (16-bar groove, 237 events):
