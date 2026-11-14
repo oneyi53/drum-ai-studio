@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./style.css";
+import WaveformPanel, { type WaveformPanelHandle } from "./WaveformPanel";
 
 type DrumEvent = {
   id: string;
@@ -148,6 +149,7 @@ function App() {
   } | null>(null);
   const suppressTimelineClickRef = React.useRef(false);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const waveformRef = React.useRef<WaveformPanelHandle | null>(null);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const lastMetronomeBeatRef = React.useRef(-1);
   const visibleLanesForBox = (box: { startLane: string; endLane: string }, hidden: string[], lanes: string[]) => {
@@ -160,6 +162,19 @@ function App() {
     () => summary ? buildTimelineBeats(summary.durationSeconds, summary.tempoMap) : [],
     [summary],
   );
+  // Waveform bar grid: the same bar derivation the copy-bar tool uses —
+  // bar-start beats from the tempo map, plus the duration as final boundary.
+  const waveformBars = React.useMemo(() => {
+    if (!summary) return [];
+    const starts = timelineBeats.filter((beat) => beat.isBar).map((beat) => beat.time);
+    if (!starts.length || starts[0] > 0.000001) starts.unshift(0);
+    const boundaries = [...starts, summary.durationSeconds];
+    return boundaries.slice(0, -1).map((start, index) => ({
+      number: index + 1,
+      start,
+      end: boundaries[index + 1],
+    }));
+  }, [summary, timelineBeats]);
   const activeLoopEnd = loopEnd || audioDuration || summary?.durationSeconds || 0;
   const loopRangeValid = activeLoopEnd > loopStart;
 
@@ -858,7 +873,7 @@ function App() {
             </div>
             <audio ref={audioRef} controls preload="metadata"
               src={API_BASE + "/api/projects/" + summary.projectId + "/audio"}
-              onPlay={() => setAudioPlaying(true)}
+              onPlay={() => { waveformRef.current?.pause(); setAudioPlaying(true); }}
               onPause={() => setAudioPlaying(false)}
               onEnded={() => setAudioPlaying(false)}
               onLoadedMetadata={(event) => setAudioDuration(event.currentTarget.duration || summary.durationSeconds)}
@@ -899,6 +914,19 @@ function App() {
             </div>
             <small>播放时播放头会跟随时间轴移动；点击任一鼓点可跳转音频位置。设置 A/B 点可循环练习指定段落。</small>
           </section>
+          <WaveformPanel
+            ref={waveformRef}
+            audioUrl={API_BASE + "/api/projects/" + summary.projectId + "/audio"}
+            durationSeconds={summary.durationSeconds}
+            bars={waveformBars}
+            events={summary.events}
+            selectedEventId={selectedEventId}
+            onSelectEvent={(eventId) => {
+              setSelectedEventId(eventId);
+              document.getElementById(`event-${eventId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            }}
+            onWaveformPlay={() => { audioRef.current?.pause(); }}
+          />
           <div className="timeline-panel">
             <div className="timeline-heading">
               <div><p className="eyebrow">ARRANGEMENT VIEW</p><h3>鼓点时间轴</h3></div>
