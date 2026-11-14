@@ -1,3 +1,21 @@
+## 2026-11-14 — MusicXML note element order fixed (XSD)
+
+- The exporter wrote `<instrument>` before `<duration>` in every note;
+  the MusicXML XSD (`note` complexType) requires `duration`, `tie*`,
+  `instrument?`, `voice`, … — fixed with one move in `_add_note`
+  (`backend/app/musicxml_adapter.py`): `<instrument>` now emits after
+  `<duration>`/`<tie>`, before `<voice>`. Rests were already in the
+  correct order; `_add_note`/`_add_rest` are the only note emitters
+  (no grace/cue notes). 1 new test
+  (`test_note_children_follow_xsd_element_order`) asserts the full XSD
+  child order for every note in a mixed export. Backend suite 150
+  passed, ruff clean. Independent stdlib checker: 32 order problems
+  before, 0 after; Verovio render unchanged.
+- Pre-existing follow-up found, not fixed here: `<play>` is not in the
+  XSD `note` sequence at all. It carries the MIDI velocity and an
+  existing test asserts it — dropping it loses velocity, so it needs
+  its own decision (drop vs move velocity somewhere schema-legal).
+
 ## 2026-11-14 — MusicXML ties (Phase 2)
 
 - Ties split at barlines only (decision: within-bar beat-group crossings
