@@ -1,3 +1,27 @@
+## 2026-11-14 — Beat This! tempo correction adopted
+
+- Stock tempogram estimator octave-errors on real songs (rock 69.8
+  vs ~140, electronic 215.3 vs ~108). Beat This! (MIT, code +
+  weights, ISMIR 2024 SOTA Transformer beat/downbeat tracker) +
+  longest-strong-IOI-mode derivation is within 5% on 18/18 tracks
+  (6 real + 12 IDMT) vs 10/18 stock.
+- Integrated in `backend/app/beat_this_tempo.py`, wired into
+  `DrumScriptEngine` (optional checkpoint via `BEAT_THIS_CHECKPOINT`,
+  stock tempo kept when unavailable — fail-closed). E2E on rock:
+  tempo_map 142.86, 85.8 bars vs 41.9 at stock tempo. 12 new tests;
+  backend suite 163 passed. `beat_this` NOT added to
+  pyproject.toml (optional engine extra, like DrumScript).
+- Checkpoint provenance caveat: GitHub releases have no assets;
+  official CPJKU Nextcloud link is server-throttled (HTTP 500).
+  The evaluated checkpoint came from the Hugging Face mirror
+  `oulianov/beat_this` (`final0.ckpt`, 81 MB, verified as a valid
+  checkpoint) — unofficial mirror, flagged as such; deployment
+  must resolve an official source before relying on it. No weights
+  committed.
+- Follow-ups: F1 lift unmeasured (re-evaluate rock/electronic at
+  the corrected grid); MIDI file still carries DrumScript's own
+  tempo (only the performance tempo map is corrected).
+
 ## 2026-11-14 — ADTOF-pytorch ceiling: measured, verdict DO NOT SWAP
 
 - License (verified): weights CC BY-NC-SA 4.0 (non-commercial) —
