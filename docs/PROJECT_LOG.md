@@ -1,3 +1,52 @@
+## 2026-11-14 — Salvaged real-audio evaluation toolchain from `feat/real-audio-evaluation-harness` (PR #1 closed as do-not-merge)
+
+- Content merge onto main, no merge commit (same snapshot pattern as the
+  PR #10/#11/#15 landings). Branch deleted after salvage; only `main`
+  remains besides this work.
+- Taken as-is: `scripts/evaluate_midi.py` (CSV-reference vs MIDI-prediction
+  evaluator, one-to-one onset matching, per-instrument P/R/F1),
+  `scripts/audit_prediction_csv.py` (structural prediction diagnostics),
+  and their tests (`scripts/tests/test_evaluate_midi.py`,
+  `test_audit_prediction_csv.py`, `test_repository_audio_export.py`).
+  The file evaluator complements the in-app canonical evaluator
+  (`drum_events.evaluate_performance` / `drumai-evaluate`): it works from
+  hand-annotated CSVs and DrumScript MIDI files, the canonical one from
+  `DrumPerformance` JSON.
+- Adapted: `scripts/validate_repository_audio.py` — the hardcoded
+  copyrighted MP3 filenames are gone; audio paths are now CLI arguments
+  and the run skips cleanly (`REAL_AUDIO_VALIDATION_SKIPPED`, exit 0)
+  when no audio is given or found, following the `engine_smoke.py` skip
+  pattern. `docs/REAL_AUDIO_EVALUATION.md` rewritten to match: no
+  workflow/MP3 references, and the accuracy gate now applies to reporting
+  metrics (the analysis API is enabled since the EQ landing).
+- CI: `ci.yml` gains the branch's `evaluation` job (`pytest scripts/tests`
+  with pretty-midi). The branch's `browser-e2e` job was not taken (heavy
+  Playwright + MuseScore run tied to the dropped old-frontend spec).
+- Dropped deliberately: `backend/app/main.py` reference-events
+  table/endpoints and `test_reference_events.py` — superseded by main's
+  canonical `DrumEvent` (`source: model/manual/imported`,
+  `manually_corrected`) and its events API; `test_project_library.py` —
+  covered by `test_analysis_api.py` (list + audio); `frontend/src/main.tsx`
+  / `style.css` / `e2e/project-library.spec.ts` /
+  `playwright.config.ts` — old reference-annotation/grid UI, superseded by
+  main's canonical editor; `docs/MUSICXML_EXPORT.md` — describes the old
+  frontend exporter, main's backend `musicxml_adapter` is authoritative;
+  `docs/ARCHITECTURE.md` hunks — predates main's canonical model;
+  `.github/workflows/real-audio-validation.yml` — fetched the deleted
+  copyrighted MP3s from main history; `engine-validation.yml` branch
+  trigger — dead branch name; the branch's `PROJECT_LOG.md` content —
+  stale (PR #1 draft, HTTP 501); the README status/notation/limitations
+  hunks — stale vs current main (only the doc link was taken).
+- Verification: backend suite 129 passed, ruff clean (backend `app` +
+  `tests` and the salvaged scripts); scripts tests 11 passed
+  (6 evaluate + 3 audit + 2 export); `validate_repository_audio.py`
+  with no args and with a missing path both skip with exit 0;
+  `evaluate_midi.py` CLI smoke on synthetic CSV+MIDI gives F1 1.0.
+  No Hugging Face or other downloads; `pretty_midi` for the local
+  scripts-test run came from the existing local `.scorepipe` env
+  (CI installs it via pip in the evaluation job).
+- No human-annotated benchmark exists yet; no accuracy claim is made.
+
 ## 2026-11-14 — EQ preprocessing integrated into production adapter; local API e2e passes
 
 - EQ (from the 2026-11-14 experiment, ADOPT): 2nd-order Butterworth
