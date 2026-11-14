@@ -59,6 +59,12 @@ type DrumPianoRollProps = {
   onCommit: (commit: RollCommit) => void;
   /** Seek the audio (and the waveform) to a time. */
   onSeek: (timeSeconds: number) => void;
+  /** Lanes hidden by the track-header eye toggles (notes stay in the model). */
+  hiddenLanes: string[];
+  /** The soloed lane, if any (solo wins over hidden). */
+  soloLane: string | null;
+  onToggleLaneVisibility: (instrument: string) => void;
+  onToggleLaneSolo: (instrument: string) => void;
 };
 
 export default function DrumPianoRoll({
@@ -73,6 +79,10 @@ export default function DrumPianoRoll({
   onSelectEvents,
   onCommit,
   onSeek,
+  hiddenLanes,
+  soloLane,
+  onToggleLaneVisibility,
+  onToggleLaneSolo,
 }: DrumPianoRollProps) {
   const [draftNotes, setDraftNotes] = React.useState<RollNote[]>(() =>
     notesFromEvents(events),
@@ -82,6 +92,22 @@ export default function DrumPianoRoll({
   const playheadDragRef = React.useRef(false);
   const [playhead, setPlayhead] = React.useState(playheadSeconds);
   const [reclassify, setReclassify] = React.useState(false);
+  /** Zoom in px per second; null = fit the whole song in the viewport. */
+  const [zoom, setZoom] = React.useState<number | null>(null);
+  const bodyRef = React.useRef<HTMLDivElement | null>(null);
+
+  /** px/s that fits the whole song in the visible grid width. */
+  const fitZoom = () => {
+    const width = bodyRef.current?.clientWidth ?? 0;
+    return width > 0 ? width / Math.max(1, durationSeconds) : 8;
+  };
+  const zoomIn = () =>
+    setZoom((current) => Math.min(240, (current ?? fitZoom()) * 1.5));
+  const zoomOut = () =>
+    setZoom((current) => Math.max(1, (current ?? fitZoom()) / 1.5));
+
+  const isLaneVisible = (instrument: string) =>
+    soloLane ? soloLane === instrument : !hiddenLanes.includes(instrument);
 
   React.useEffect(() => {
     const next = notesFromEvents(events);
@@ -160,6 +186,17 @@ export default function DrumPianoRoll({
         <small>
           方向键微调选中鼓点，Delete 删除；A / D 跳到上一个 / 下一个鼓点。
         </small>
+        <span className="drum-roll-zoom" role="group" aria-label="卷帘缩放">
+          <button type="button" onClick={zoomOut} title="缩小（看到更长一段）">− 缩小</button>
+          <button type="button" onClick={() => setZoom(null)} title="整首适配到窗口宽度">适应宽度</button>
+          <button type="button" onClick={zoomIn} title="放大（看清单个鼓点）">放大 +</button>
+          <small>{zoom === null ? "适应宽度" : `${zoom.toFixed(0)} px/s`}</small>
+        </span>
+        {soloLane && (
+          <small className="drum-roll-solo-note">
+            独奏中：{soloLane}（点 lane 头的 S 取消）
+          </small>
+        )}
       </div>
       <div className="drum-roll-main">
         <Timeline.Root
@@ -167,6 +204,10 @@ export default function DrumPianoRoll({
           duration={durationSeconds}
           snapStep={gridStepSeconds}
           position={playhead}
+          zoom={zoom ?? undefined}
+          minZoom={1}
+          maxZoom={240}
+          onZoomChange={(value) => setZoom(value)}
           onPositionChange={(value) => {
             playheadDragRef.current = true;
             setPlayhead(value);
@@ -177,82 +218,125 @@ export default function DrumPianoRoll({
           }}
         >
           <div className="drum-roll-corner" aria-hidden="true" />
-          <Timeline.Ruler className="drum-roll-ruler">
-            {barMarks.map((mark) => (
-              <Timeline.Mark key={mark.value} value={mark.value} className="drum-roll-mark">
-                {mark.label}
-              </Timeline.Mark>
-            ))}
-          </Timeline.Ruler>
-          <div className="drum-roll-labels" aria-hidden="true">
-            {DRUM_LANES.map((lane) => (
-              <div key={lane.instrument} className="drum-roll-label">
-                <i style={{ background: INSTRUMENT_COLORS[lane.instrument] ?? "#94a3b8" }} />
-                {lane.label}
-              </div>
-            ))}
-          </div>
-          <div className="drum-roll-body">
-            <PianoRoll.Root
-              value={draftNotes}
-              onValueChange={(value) => setDraftNotes([...value])}
-              onValueCommitted={handleCommitted}
-              onSelectionChange={(selection) => {
-                const ids = selection
-                  .map((id) => String(id))
-                  .filter((id) => events.some((event) => event.id === id));
-                onSelectEvents(ids);
-                onSelectEvent(ids[0] ?? null);
-              }}
-              selection={selectedEventIds}
-              mode="draw"
-              minPitch={MIN_PITCH}
-              maxPitch={MAX_PITCH}
-              minLength={HIT_NOTE_LENGTH}
-              createNoteId={() => `draft-${Date.now()}-${draftIdRef.current++}`}
-              getNoteLabel={(note) =>
-                `${pitchToInstrument(note.pitch)} · ${note.start.toFixed(2)}s`
-              }
-            >
-              <PianoRoll.Grid className="drum-roll-grid">
-                <PianoRoll.Rows>
-                  {(pitch) => <PianoRoll.Row key={pitch} pitch={pitch} />}
-                </PianoRoll.Rows>
-                <PianoRoll.Notes>
-                  {(note) => (
-                    <PianoRoll.Note key={note.id} note={note}>
-                      <span
-                        className="drum-note-fill"
+          <Timeline.Viewport className="drum-roll-viewport">
+            <Timeline.Ruler className="drum-roll-ruler">
+              {barMarks.map((mark) => (
+                <Timeline.Mark key={mark.value} value={mark.value} className="drum-roll-mark">
+                  {mark.label}
+                </Timeline.Mark>
+              ))}
+            </Timeline.Ruler>
+            <div className="drum-roll-body" ref={bodyRef}>
+              <PianoRoll.Root
+                value={draftNotes}
+                onValueChange={(value) => setDraftNotes([...value])}
+                onValueCommitted={handleCommitted}
+                onSelectionChange={(selection) => {
+                  const ids = selection
+                    .map((id) => String(id))
+                    .filter((id) => events.some((event) => event.id === id));
+                  onSelectEvents(ids);
+                  onSelectEvent(ids[0] ?? null);
+                }}
+                selection={selectedEventIds}
+                mode="draw"
+                minPitch={MIN_PITCH}
+                maxPitch={MAX_PITCH}
+                minLength={HIT_NOTE_LENGTH}
+                createNoteId={() => `draft-${Date.now()}-${draftIdRef.current++}`}
+                getNoteLabel={(note) =>
+                  `${pitchToInstrument(note.pitch)} · ${note.start.toFixed(2)}s`
+                }
+              >
+                <PianoRoll.Grid className="drum-roll-grid">
+                  <PianoRoll.Rows>
+                    {(pitch) => <PianoRoll.Row key={pitch} pitch={pitch} />}
+                  </PianoRoll.Rows>
+                  <PianoRoll.Notes>
+                    {(note) => {
+                      const instrument = pitchToInstrument(note.pitch);
+                      return (
+                        <PianoRoll.Note
+                          key={note.id}
+                          note={note}
+                          className={isLaneVisible(instrument) ? undefined : "drum-roll-hidden"}
+                        >
+                          <span
+                            className="drum-note-fill"
+                            style={{
+                              background:
+                                INSTRUMENT_COLORS[instrument] ?? "#94a3b8",
+                            }}
+                            title={`${instrument} · ${note.start.toFixed(3)}s`}
+                          />
+                          <PianoRoll.NoteHandle edge="start" />
+                          <PianoRoll.NoteHandle edge="end" />
+                        </PianoRoll.Note>
+                      );
+                    }}
+                  </PianoRoll.Notes>
+                  <PianoRoll.Marquee />
+                  <Timeline.Playhead className="drum-roll-playhead" />
+                </PianoRoll.Grid>
+                <PianoRoll.VelocityLane className="drum-roll-velocity">
+                  {draftNotes.map((note) => {
+                    const instrument = pitchToInstrument(note.pitch);
+                    return (
+                      <PianoRoll.Velocity
+                        key={note.id}
+                        note={note}
+                        className={
+                          isLaneVisible(instrument)
+                            ? "drum-velocity-bar"
+                            : "drum-velocity-bar drum-roll-hidden"
+                        }
                         style={{
                           background:
-                            INSTRUMENT_COLORS[pitchToInstrument(note.pitch)] ??
-                            "#94a3b8",
+                            INSTRUMENT_COLORS[instrument] ?? "#94a3b8",
                         }}
-                        title={`${pitchToInstrument(note.pitch)} · ${note.start.toFixed(3)}s`}
                       />
-                      <PianoRoll.NoteHandle edge="start" />
-                      <PianoRoll.NoteHandle edge="end" />
-                    </PianoRoll.Note>
-                  )}
-                </PianoRoll.Notes>
-                <PianoRoll.Marquee />
-                <Timeline.Playhead className="drum-roll-playhead" />
-              </PianoRoll.Grid>
-              <PianoRoll.VelocityLane className="drum-roll-velocity">
-                {draftNotes.map((note) => (
-                  <PianoRoll.Velocity
-                    key={note.id}
-                    note={note}
-                    className="drum-velocity-bar"
-                    style={{
-                      background:
-                        INSTRUMENT_COLORS[pitchToInstrument(note.pitch)] ??
-                        "#94a3b8",
-                    }}
-                  />
-                ))}
-              </PianoRoll.VelocityLane>
-            </PianoRoll.Root>
+                    );
+                  })}
+                </PianoRoll.VelocityLane>
+              </PianoRoll.Root>
+            </div>
+          </Timeline.Viewport>
+          <div className="drum-roll-labels">
+            {DRUM_LANES.map((lane) => {
+              const visible = isLaneVisible(lane.instrument);
+              const solo = soloLane === lane.instrument;
+              return (
+                <div
+                  key={lane.instrument}
+                  className={
+                    "drum-roll-label" +
+                    (visible ? "" : " drum-roll-label-hidden") +
+                    (solo ? " drum-roll-label-solo" : "")
+                  }
+                >
+                  <i style={{ background: INSTRUMENT_COLORS[lane.instrument] ?? "#94a3b8" }} />
+                  <span className="drum-roll-label-name">{lane.label}</span>
+                  <button
+                    type="button"
+                    className="drum-roll-lane-toggle"
+                    aria-pressed={visible}
+                    title={visible ? `隐藏 ${lane.label}` : `显示 ${lane.label}`}
+                    onClick={() => onToggleLaneVisibility(lane.instrument)}
+                  >
+                    {visible ? "👁" : "🚫"}
+                  </button>
+                  <button
+                    type="button"
+                    className={"drum-roll-lane-toggle" + (solo ? " drum-roll-lane-solo-on" : "")}
+                    aria-pressed={solo}
+                    title={solo ? `取消独奏 ${lane.label}` : `独奏 ${lane.label}（只看这一轨）`}
+                    onClick={() => onToggleLaneSolo(lane.instrument)}
+                  >
+                    S
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </Timeline.Root>
       </div>
