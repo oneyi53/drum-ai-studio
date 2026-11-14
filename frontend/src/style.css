@@ -172,15 +172,22 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .drum-roll-toolbar label{display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1}
 .drum-roll-toolbar select{background:#1a2740;color:#e5edf7;border:1px solid #2b3d61;border-radius:6px;padding:5px}
 .drum-roll-toolbar small{color:#748096;font-size:11px}
-.drum-roll-timeline{display:grid;grid-template-columns:96px minmax(0,1fr);grid-template-rows:22px auto;margin-top:12px;border:1px solid #22304d;border-radius:8px;overflow:hidden;background:#0b1220}
-.drum-roll-corner{background:#0f1626}
+.drum-roll-timeline{display:grid;grid-template-columns:152px minmax(0,1fr);grid-template-rows:22px auto;margin-top:12px;border:1px solid #22304d;border-radius:8px;overflow:hidden;background:#0b1220}
+.drum-roll-corner{grid-column:1;grid-row:1;background:#0f1626}
+.drum-roll-viewport{grid-column:2;grid-row:1/3;overflow-x:auto;overflow-y:hidden;min-width:0}
 .drum-roll-ruler{height:22px;background:#0f1626;color:#94a3b8;font-size:10px;overflow:hidden;border-bottom:1px solid #22304d}
 .drum-roll-mark{height:100%;padding:2px 0 0 4px;border-left:1px solid #2b3d61;color:#94a3b8;font-size:10px;line-height:1;white-space:nowrap}
-.drum-roll-labels{display:flex;flex-direction:column;background:#0f1626}
-.drum-roll-label{height:28px;display:flex;align-items:center;gap:6px;padding:0 8px 0 10px;font-size:11px;color:#cbd5e1;white-space:nowrap;overflow:hidden;border-bottom:1px solid #1a2740}
+.drum-roll-labels{grid-column:1;grid-row:2;display:flex;flex-direction:column;background:#0f1626}
+.drum-roll-label{height:36px;display:flex;align-items:center;gap:5px;padding:0 4px 0 10px;font-size:11px;color:#cbd5e1;white-space:nowrap;overflow:hidden;border-bottom:1px solid #1a2740}
 .drum-roll-label i{display:inline-block;width:8px;height:8px;border-radius:2px;flex:none}
+.drum-roll-label-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.drum-roll-lane-toggle{flex:none;border:1px solid #2b3d61;background:#1a2740;color:#cbd5e1;border-radius:5px;padding:1px 3px;font-size:9px;line-height:1.4;cursor:pointer}
+.drum-roll-lane-toggle:hover{border-color:#c9f36b88}
+.drum-roll-lane-solo-on{background:#c9f36b;color:#141a0e;border-color:#c9f36b;font-weight:700}
+.drum-roll-label-hidden{opacity:.45}
+.drum-roll-label-solo{box-shadow:inset 2px 0 0 #c9f36b}
 .drum-roll-body{min-width:0}
-.drum-roll-grid{height:308px;background:repeating-linear-gradient(to bottom,transparent 0 28px,rgba(148,163,184,.05) 28px 56px)}
+.drum-roll-grid{height:396px;background:repeating-linear-gradient(to bottom,transparent 0 36px,rgba(148,163,184,.05) 36px 72px)}
 .drum-roll-grid:focus-visible{outline:2px solid #c9f36b;outline-offset:-2px}
 .drum-note-fill{position:absolute;inset:2px 1px;border-radius:3px;opacity:calc(.45 + .55 * var(--piano-roll-velocity,1))}
 /* Hits are points in time (0.2s display length). On a long song the fitted
@@ -190,6 +197,11 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
    visible; zooming in will give them real width. */
 .drum-roll-grid [role="button"]{min-width:6px}
 .drum-velocity-bar{width:6px}
+.drum-roll-hidden{visibility:hidden}
+.drum-roll-zoom{display:flex;align-items:center;gap:6px;margin-left:auto}
+.drum-roll-zoom button{background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer}
+.drum-roll-zoom small{color:#748096;font-size:11px}
+.drum-roll-solo-note{color:#c9f36b!important}
 .drum-roll-grid [aria-pressed="true"] .drum-note-fill{outline:2px solid #fff;outline-offset:1px}
 .drum-roll-playhead{height:100%;width:2px;background:#f43f5e;pointer-events:none;z-index:5}
 .drum-roll-velocity{height:56px;background:#0b1220;border-top:1px solid #22304d}
@@ -215,3 +227,43 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .annotation-note{display:block;margin-top:12px;font-size:12px;color:#cbd5e1}
 .annotation-note textarea{display:block;width:100%;margin-top:6px;min-height:56px;background:#0b1220;color:#e5edf7;border:1px solid #2b3d61;border-radius:8px;padding:8px;font-size:12px;line-height:1.6;resize:vertical}
 .annotation-link{margin-top:12px}
+
+/* --- DAW transport bar (sticky, reuses the audio player state) --- */
+.transport-bar{position:sticky;top:8px;z-index:20;display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:14px 0;padding:10px 12px;background:#0f1626;border:1px solid #c9f36b55;border-radius:10px}
+.transport-bar>button{border:1px solid #c9f36b55;border-radius:7px;background:#202a26;color:#c9f36b;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.transport-bar>button.metronome-on{background:#c9f36b;color:#141a0e;border-color:#c9f36b}
+.transport-time{font:12px "DM Mono",monospace;color:#edf0f7}
+.transport-bpm{font:12px "DM Mono",monospace;color:#c9f36b}
+.transport-bar small{color:#748096;font-size:10px;margin-left:auto}
+
+/* --- Editable drum staff (VexFlow) --- */
+.drum-staff-panel{margin-top:22px;border:1px solid #22304d;border-radius:12px;background:#0f1626;padding:16px}
+.drum-staff-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.drum-staff-heading h3{margin:4px 0 0;font-size:15px}
+.drum-staff-heading>span{color:#748096;font-size:11px;text-align:right;max-width:46%}
+.drum-staff-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px}
+.drum-staff-toolbar button{background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer}
+.drum-staff-toolbar button:disabled{opacity:.4;cursor:not-allowed}
+.drum-staff-toolbar span{font-size:12px;color:#cbd5e1}
+.drum-staff-toolbar small{color:#748096;font-size:11px}
+.drum-staff-page{position:relative;margin-top:12px;border:1px solid #22304d;border-radius:8px;background:#0b1220;overflow:hidden;touch-action:none}
+.drum-staff-page:focus-visible{outline:2px solid #c9f36b;outline-offset:-2px}
+.drum-staff-svg svg{display:block}
+.drum-staff-selected{position:absolute;width:18px;height:20px;border:2px solid #fff;border-radius:4px;opacity:.85;pointer-events:none;z-index:3}
+.drum-staff-ghost{position:absolute;z-index:4;pointer-events:none;transform:translate(-4px,-26px);background:#c9f36b;color:#141a0e;font:700 10px "DM Mono",monospace;padding:3px 6px;border-radius:5px;white-space:nowrap}
+.drum-staff-note{display:block;margin-top:10px;color:#748096;font-size:11px;line-height:1.6}
+.drum-staff-empty{color:#748096;font-size:12px;padding:18px 0}
+@media(max-width:640px){.drum-staff-panel{padding:12px}.drum-staff-heading{align-items:flex-start;flex-direction:column}.drum-staff-heading>span{text-align:left;max-width:none}}
+
+/* --- Collapsible event table (fallback view) --- */
+.event-table-details{margin-top:14px;border:1px solid #ffffff16;border-radius:11px;padding:4px 10px 10px}
+.event-table-details>summary{cursor:pointer;padding:10px 4px 6px;font-size:12px;color:#cbd5e1}
+.event-table-details .event-table-wrap{margin-top:6px}
+
+/* --- Downloads row controls --- */
+.pdf-layout-control{display:inline-flex;align-items:center;gap:6px;margin:18px 0 0 8px;color:#aeb6c5;font-size:11px}
+.pdf-layout-control select{border:1px solid #ffffff24;border-radius:7px;background:#1b2230;color:#edf0f7;padding:8px;font:11px "DM Mono",monospace}
+
+/* --- Timeline solo toggle --- */
+.timeline-lane-filters label button{border:1px solid #ffffff24;border-radius:4px;background:#222b39;color:#c9f36b;padding:1px 5px;font-size:9px;cursor:pointer;margin-left:2px}
+.timeline-solo-on{background:#c9f36b!important;color:#141a0e!important;border-color:#c9f36b!important;font-weight:700}
