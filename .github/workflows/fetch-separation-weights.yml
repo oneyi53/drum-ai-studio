@@ -1,0 +1,132 @@
+# Fetch separation-model weights for evaluation only (BS-RoFormer-SW + DrumSep).
+#
+# Manual-only workflow (workflow_dispatch). The separation evaluation
+# (2026-11-14) found no swappable separator among HTDemucs / HTDemucs FT /
+# SCNet XL IHF / MDX23C on our own 6 real tracks, but two models still
+# need a run: BS-RoFormer-SW (the strongest six-stem model in the UVR
+# ecosystem) and DrumSep MDX23C (the only model that directly outputs a
+# kick stem). Their weights live only on Hugging Face mirrors, so they
+# are fetched here inside the GitHub runner and returned as artifacts;
+# the local machine never touches the HF CDN directly.
+#
+# Files (all verified against the HF Hub API file list on 2026-11-14):
+#   BS-RoFormer-SW (enerjazzer/BS-ROFO-SW-Fixed):
+#     BS-Rofo-SW-Fixed.ckpt  699,412,152 bytes
+#     BS-Rofo-SW-Fixed.yaml      4,613 bytes
+#   DrumSep 5-stem (dshdaaf/separation-models):
+#     drumsep_5stems_mdx23c_jarredou.ckpt  437,648,758 bytes
+#     config_mdx23c_drumsep2025.yaml           1,284 bytes
+#   DrumSep 6-stem (dshdaaf/separation-models):
+#     aufr33-jarredou_DrumSep_model_mdx23c_ep_141_sdr_10.8059.ckpt
+#                                              437,652,699 bytes
+#     config_drumsep_mdx23c.yaml                   2,417 bytes
+#
+# License status (evaluation only, never shipped or redistributed):
+# BS-RoFormer-SW weight license unknown; DrumSep weights carry no
+# license statement. Both are for measurement against our own tracks.
+#
+# After downloading the artifacts, place them under:
+#   ~/workspace/.ds-scratch/separation-eval/
+# (bs_roformer_sw/, drumsep_5stem/, drumsep_6stem/) and verify sizes
+# against the numbers above before running the evaluation.
+
+name: Fetch separation weights
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  fetch-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download BS-RoFormer-SW weights + config
+        run: |
+          set -euo pipefail
+          mkdir -p bs_roformer_sw
+          curl -L --retry 3 --fail \
+            -o bs_roformer_sw/BS-Rofo-SW-Fixed.ckpt \
+            https://huggingface.co/enerjazzer/BS-ROFO-SW-Fixed/resolve/main/BS-Rofo-SW-Fixed.ckpt
+          curl -L --retry 3 --fail \
+            -o bs_roformer_sw/BS-Rofo-SW-Fixed.yaml \
+            https://huggingface.co/enerjazzer/BS-ROFO-SW-Fixed/resolve/main/BS-Rofo-SW-Fixed.yaml
+
+      - name: Download DrumSep 5-stem weights + config
+        run: |
+          set -euo pipefail
+          mkdir -p drumsep_5stem
+          curl -L --retry 3 --fail \
+            -o drumsep_5stem/drumsep_5stems_mdx23c_jarredou.ckpt \
+            "https://huggingface.co/dshdaaf/separation-models/resolve/main/DRUMSEP/DRUMSEP-MDX23C_DrumSep_5stem_new_by_jarredou/drumsep_5stems_mdx23c_jarredou.ckpt"
+          curl -L --retry 3 --fail \
+            -o drumsep_5stem/config_mdx23c_drumsep2025.yaml \
+            "https://huggingface.co/dshdaaf/separation-models/resolve/main/DRUMSEP/DRUMSEP-MDX23C_DrumSep_5stem_new_by_jarredou/config_mdx23c_drumsep2025.yaml"
+
+      - name: Download DrumSep 6-stem weights + config
+        run: |
+          set -euo pipefail
+          mkdir -p drumsep_6stem
+          curl -L --retry 3 --fail \
+            -o drumsep_6stem/aufr33-jarredou_DrumSep_model_mdx23c_ep_141_sdr_10.8059.ckpt \
+            "https://huggingface.co/dshdaaf/separation-models/resolve/main/DRUMSEP/DRUMSEP-MDX23C_DrumSep_6stem_by_aufr33_jarredou/aufr33-jarredou_DrumSep_model_mdx23c_ep_141_sdr_10.8059.ckpt"
+          curl -L --retry 3 --fail \
+            -o drumsep_6stem/config_drumsep_mdx23c.yaml \
+            "https://huggingface.co/dshdaaf/separation-models/resolve/main/DRUMSEP/DRUMSEP-MDX23C_DrumSep_6stem_by_aufr33_jarredou/config_drumsep_mdx23c.yaml"
+
+      - name: Verify sizes and print sha256
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import sys
+
+          expected = {
+              "bs_roformer_sw/BS-Rofo-SW-Fixed.ckpt": 699_412_152,
+              "bs_roformer_sw/BS-Rofo-SW-Fixed.yaml": 4_613,
+              "drumsep_5stem/drumsep_5stems_mdx23c_jarredou.ckpt": 437_648_758,
+              "drumsep_5stem/config_mdx23c_drumsep2025.yaml": 1_284,
+              "drumsep_6stem/aufr33-jarredou_DrumSep_model_mdx23c_ep_141_sdr_10.8059.ckpt": 437_652_699,
+              "drumsep_6stem/config_drumsep_mdx23c.yaml": 2_417,
+          }
+          for path, want in expected.items():
+              size = os.path.getsize(path)
+              print(f"{path}: size_bytes={size} expected={want}")
+              if size != want:
+                  sys.exit(f"size mismatch for {path}: got {size}, expected {want}")
+              with open(path, "rb") as f:
+                  head = f.read(16)
+              if path.endswith(".ckpt") and not head.startswith(b"PK"):
+                  sys.exit(f"{path} does not look like a torch checkpoint (no PK zip magic)")
+              if head.lstrip().startswith(b"<"):
+                  sys.exit(f"{path} looks like an HTML error page, not weights")
+              sha = hashlib.sha256()
+              with open(path, "rb") as f:
+                  for chunk in iter(lambda: f.read(1 << 20), b""):
+                      sha.update(chunk)
+              print(f"{path}: sha256={sha.hexdigest()}")
+          print("all files verified")
+          PY
+
+      - name: Upload BS-RoFormer-SW artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bs-roformer-sw-weights
+          path: bs_roformer_sw/
+          retention-days: 7
+
+      - name: Upload DrumSep 5-stem artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: drumsep-5stem-weights
+          path: drumsep_5stem/
+          retention-days: 7
+
+      - name: Upload DrumSep 6-stem artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: drumsep-6stem-weights
+          path: drumsep_6stem/
+          retention-days: 7
