@@ -1,0 +1,110 @@
+# Fetch the ADT_STR setting-tau-0.8 checkpoint for evaluation only.
+#
+# Manual-only workflow (workflow_dispatch). The downstream plan (Phase 2)
+# calls for measuring ADT_STR — a Transformer drum transcriber trained on
+# synthetic data (arXiv:2601.09520) — against our own 6 real tracks, on the
+# same ruler as DrumScript / ADTOF / STRUM. The checkpoint lives only on
+# Hugging Face, so it is fetched here inside the GitHub runner and returned
+# as an artifact; the local machine never touches the HF CDN directly.
+#
+# Files (verified against the HF Hub API file list on 2026-11-16,
+# repo Pierfrancesco/adt-str, HEAD a33c5c6b):
+#   setting-tau-0.8/model.safetensors  289,134,056 bytes
+#     sha256 f94d1773d929166e0a3f63d305975aa6667512f8a71d7706872e1f8b23ca930b
+#     (HF LFS oid)
+#   setting-tau-0.8/config.json            405 bytes
+#   setting-tau-0.8/adt_config.yaml      2,659 bytes
+# The runtime code (adt_transcriber.py, model.py, modules/, utils/) is NOT
+# in this artifact — it comes from the GitHub clone
+# (github.com/pier-maker92/ADT_STR, HEAD 77dbef2).
+#
+# License status (evaluation only, never shipped or redistributed):
+# the repo's LICENSE file and README both state CC BY-SA 4.0, but GitHub's
+# license detector reports NOASSERTION (the LICENSE file is a short
+# statement, not the canonical full license text), and the HF model card
+# declares no license at all. Running the published checkpoint for
+# measurement is evaluation use; any adoption (copying code, distributing
+# weights, shipping a derivative) needs author confirmation first.
+#
+# After downloading the artifact, place it under:
+#   ~/workspace/.ds-scratch/adt-str-eval/checkpoints/setting-tau-0.8/
+# (model.safetensors + config.json + adt_config.yaml) and verify sizes
+# against the numbers above before running the evaluation.
+
+name: Fetch ADT_STR weights
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  fetch-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download setting-tau-0.8 checkpoint + configs
+        run: |
+          set -euo pipefail
+          mkdir -p setting-tau-0.8
+          curl -L --retry 3 --fail \
+            -o setting-tau-0.8/model.safetensors \
+            https://huggingface.co/Pierfrancesco/adt-str/resolve/main/setting-tau-0.8/model.safetensors
+          curl -L --retry 3 --fail \
+            -o setting-tau-0.8/config.json \
+            https://huggingface.co/Pierfrancesco/adt-str/resolve/main/setting-tau-0.8/config.json
+          curl -L --retry 3 --fail \
+            -o setting-tau-0.8/adt_config.yaml \
+            https://huggingface.co/Pierfrancesco/adt-str/resolve/main/setting-tau-0.8/adt_config.yaml
+
+      - name: Verify sizes and sha256
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import struct
+          import sys
+
+          expected = {
+              "setting-tau-0.8/model.safetensors": (
+                  289_134_056,
+                  "f94d1773d929166e0a3f63d305975aa6667512f8a71d7706872e1f8b23ca930b",
+              ),
+              "setting-tau-0.8/config.json": (405, None),
+              "setting-tau-0.8/adt_config.yaml": (2_659, None),
+          }
+          for path, (want_size, want_sha) in expected.items():
+              size = os.path.getsize(path)
+              print(f"{path}: size_bytes={size} expected={want_size}")
+              if size != want_size:
+                  sys.exit(f"size mismatch for {path}: got {size}, expected {want_size}")
+              with open(path, "rb") as f:
+                  head = f.read(16)
+              if head.lstrip().startswith(b"<"):
+                  sys.exit(f"{path} looks like an HTML error page, not weights")
+              sha = hashlib.sha256()
+              with open(path, "rb") as f:
+                  for chunk in iter(lambda: f.read(1 << 20), b""):
+                      sha.update(chunk)
+              print(f"{path}: sha256={sha.hexdigest()}")
+              if want_sha is not None and sha.hexdigest() != want_sha:
+                  sys.exit(f"sha256 mismatch for {path}")
+              if path.endswith(".safetensors"):
+                  with open(path, "rb") as f:
+                      (header_len,) = struct.unpack("<Q", f.read(8))
+                      if header_len <= 0 or header_len > 10_000_000:
+                          sys.exit(f"implausible safetensors header length: {header_len}")
+                      header = json.loads(f.read(header_len))
+                      keys = sorted(header.keys())
+                      print(f"header_keys={keys[:10]} (total {len(keys)})")
+          print("all files verified")
+          PY
+
+      - name: Upload ADT_STR tau-0.8 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: adt-str-tau08-weights
+          path: setting-tau-0.8/
+          retention-days: 7
