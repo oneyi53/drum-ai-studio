@@ -1,3 +1,10 @@
+## 2026-11-16 — Phase 1 下游优化：管线重排 + crash 衰减抑制落地，三条规则被测量证伪回滚
+
+- 管线重排：Demucs 跑原始 mix（EQ 不再进分离），EQ 只加分离后的 drums stem（`drums-eq.wav`），`transcribe(stem, full_song=False)`；顺带消除了旧 `full_song=True` 把 `htdemucs/` 倒进 worker 目录的副作用；输出 MIDI 改由 `performance_to_midi` 从 canonical performance 写。Crash 衰减抑制：纯 1.5 s 锁仓（保留每窗第一个 crash）；"新 HF attack"测试测过后弃用（绝对 flux 与相对 attack_ratio 都不分离）。
+- 被证伪回滚（计划的证伪机制在起作用，代码里无对应实现，各有锁定测试）：Kick 双通道——平坦阈值 1.3 会加 156–385 个假 kick/轨，相对 flux rock AUC 0.426（反向）、电子 0.606（弱），且电子 325 个 unknown onset 里 0 个在参考 kick 附近（漏检根本不是问题）；单标签规则——军鼓数纹丝不动（白名单组合主导），且破 IDMT 门（全版 F1 0.840→0.746，最小版 0.840→0.830，margin 不是置信度）；Tom 门——HFER 分布无分离，不硬凑规则，标为"待学习模型解决"。
+- 数字：IDMT kick F1 0.8395→0.8395（零回归）；电子 kick 4→248（参考 62）；rock 军鼓 539→331；电子 crash 280→41（参考 8）；方向性 F1（100ms，旧 first-pass 参考）rock 0.320→0.334、电子 0.184→0.379。验证：后端 199 通过 1 跳过（+6 新测试），ruff 通过，前端构建通过。
+- 诚实提醒：重排把一种错误换成另一种——kick 现在所有轨都是参考的 3–10 倍（jazz 536 个最离谱），bass flux、decay、margin 三个特征都已证伪不能过滤；不要因此调高全局 lfer 门（会破 IDMT 门）。泛滥与军鼓过火、crash 误认需 Phase 2/3 的学习模型或新特征；以上 F1 仍是方向性数字，真值仍需用户的人工基准。
+
 ## 2026-11-14 — 速度 ×2 / ½ 手动切换按钮
 
 - 用户在 Mac 上转录 Starlight 显示 61.5 BPM，实际应为 123（减半误判）；速度设置处加 ×2 / ½ 切换：走带条速度显示旁与鼓点时间轴标题栏各放一组，共用同一接口。
