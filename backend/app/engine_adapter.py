@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .beat_this_tempo import correct_tempo_map, resolve_checkpoint
-from .drum_events import DrumPerformance
-from .midi_adapter import midi_to_performance, rewrite_midi_tempo
+from .drum_events import DrumInstrument, DrumPerformance
+from .midi_adapter import midi_to_performance, performance_to_midi
 
 
 class EngineUnavailableError(RuntimeError):
@@ -56,8 +56,7 @@ DEFAULT_KICK_LFER_MIN = 0.10
 
 # Kick EQ preprocessing (2026-11-14, IDMT-SMT-Drums V2, 50 ms tolerance):
 # 2nd-order Butterworth high-pass at 30 Hz followed by an RBJ low-shelf
-# +6 dB below 120 Hz, applied to the loaded mix before normalisation /
-# onset detection / classification. Pooled 55-track kick F1 0.792 -> 0.840
+# +6 dB below 120 Hz. Pooled 55-track kick F1 0.792 -> 0.840
 # (recall 0.763 -> 0.919, precision 0.823 -> 0.773) at lfer_min=0.10;
 # held-out WaveDrum 16-30 F1 0.643 -> 0.783. The 3 kHz beater boost was
 # measured and rejected (it dilutes the LFER share, recall collapses).
@@ -65,13 +64,52 @@ DEFAULT_KICK_LFER_MIN = 0.10
 # (~/workspace/.ds-scratch/eq-exp/kick_eq_experiment.py): Butterworth HP
 # via scipy.signal.butter, RBJ cookbook low-shelf with Q=1.0, causal
 # sosfilt, high-pass first, then the shelf.
-# Production insertion point: transcribe() loads the mix itself, so the
-# EQ is applied to the input file before calling it (Demucs path). The
-# direct-path gain above is measured; the Demucs-path gain is verified by
-# CI engine-validation, not locally. See docs/PROJECT_LOG.md (2026-11-14).
+# Production insertion point (Phase 1, 2026-11-16): the EQ is applied to
+# the SEPARATED drums stem, after Demucs runs on the raw mix — never to
+# the mix before separation. EQ on the mix before Demucs was a
+# self-inflicted wound: it destroyed the kick signal Demucs routes, so
+# kicks leaked into the bass stem (electronic: 4 kicks in the old app
+# path). The 55-track numbers above are the direct-path measurement (EQ
+# on the mix, no separation); the app path is measured by the Phase 1
+# harness (~/workspace/.ds-scratch/downstream-plan/): electronic app-path
+# F1 0.184 -> 0.361, rock 0.320 -> 0.329 (direction only, vs circular
+# first-pass references). See docs/PROJECT_LOG.md (2026-11-14) and
+# ~/workspace/.ds-scratch/downstream-plan/PHASE1_IMPLEMENTATION.md.
 EQ_HIGHPASS_HZ = 30.0
 EQ_LOWSHELF_FREQ_HZ = 120.0
 EQ_LOWSHELF_GAIN_DB = 6.0
+
+# Phase 1 downstream rules (2026-11-16, measured in
+# ~/workspace/.ds-scratch/downstream-plan/; full numbers in
+# PHASE1_IMPLEMENTATION.md). Only the crash rule below ships as a rule;
+# the other two Phase 1 candidates were measured and ROLLED BACK, and the
+# code deliberately contains no trace of them — do not re-add without
+# re-measuring:
+#   * Kick dual-channel (bass-stem LF flux): FALSIFIED. The absolute
+#     flux threshold 1.3 (guard calibration) would add 156-385 bogus
+#     kicks per track, and the relative-flux variant is anti-informative
+#     on rock (AUC 0.426) and weak on electronic (0.606). The addition
+#     direction is dead: 0 of 325 "unknown" electronic onsets sit near a
+#     reference kick, and the classifier already recalls 90% of
+#     reference kicks there — the problem is precision, not recall.
+#     The downgrade direction (zero bass flux) is a no-op (0-2 kicks per
+#     track). The bass stem is therefore NOT used for kick judgment; it
+#     is still separated by Demucs and left in the temp dir for future
+#     rules. The kick flooding the reorder exposes (rock 331, jazz 536,
+#     electronic 248) needs a learned model or a new feature (Phase 2/3).
+#   * One main label per onset (margin-strength argmax + whitelist):
+#     FALSIFIED. It does not move snare counts at all (rock 331 -> 331,
+#     electronic 253 -> 253 — snare+hat is whitelisted and dominant) and
+#     it breaks the IDMT gate: kick F1 0.840 -> 0.746 (recall 0.919 ->
+#     0.664). Even the minimal kick+snare-only variant drops the gate to
+#     0.830. Rule margins are not calibrated confidences: on IDMT, snare
+#     false positives have HIGHER hfer margins than true positives
+#     (median 0.575 vs 0.530). Multi-label onsets are kept as-is.
+#   * Tom gate: NO CHANGE. The HFER distribution does not separate
+#     tom-shaped onsets (median 0.47-0.58 vs 0.569 pooled); tom is marked
+#     "to be solved by a learned model".
+#   * Crash decay suppression (SHIPPED): see CRASH_DECAY_WINDOW_SECONDS.
+CRASH_DECAY_WINDOW_SECONDS = 1.5
 
 
 @dataclass(frozen=True)
@@ -86,9 +124,9 @@ class KickClassificationConfig:
     upstream rule.
 
     ``eq_preprocessing`` applies the measured kick EQ curve (30 Hz
-    high-pass + 120 Hz low-shelf +6 dB) to the input audio before
-    transcription; it is on by default. Pass ``False`` to restore the
-    pre-EQ behaviour. Stock upstream behaviour is ``lfer_min=0.32`` with
+    high-pass + 120 Hz low-shelf +6 dB) to the separated drums stem
+    before transcription; it is on by default. Pass ``False`` to restore
+    the pre-EQ behaviour. Stock upstream behaviour is ``lfer_min=0.32`` with
     ``eq_preprocessing=False``.
     """
 
@@ -232,9 +270,87 @@ def _apply_kick_eq(audio: object, sample_rate_hz: float) -> object:
     return numpy.asarray(filtered, dtype=numpy.float32)
 
 
+def _extract_drum_stem(audio_path: Path, work_dir: Path) -> Path:
+    """Run Demucs on the RAW mix and return the separated drums stem.
+
+    Separation runs inside ``work_dir`` (``work_dir/htdemucs/<stem>/``),
+    so nothing is written to the worker's current directory — the old
+    ``transcribe(full_song=True)`` path called ``extract_drum_stem`` with
+    no output directory, which dumped ``htdemucs/`` into the CWD.
+    The un-EQ'd bass stem is left alongside the drums stem
+    (``<same dir>/bass.wav``) for future rules; Phase 1 measured the
+    bass-flux kick channel and rolled it back, so nothing reads it yet.
+    Fail-closed: a missing upstream splitter interface or a missing
+    drums stem raises :class:`EngineUnavailableError` / ``EngineOutputError``
+    instead of silently transcribing the mix.
+    """
+    try:
+        splitter_module = importlib.import_module("drumscript.audio_processor.stem_splitter")
+        extract_drum_stem = splitter_module.extract_drum_stem
+    except (ImportError, AttributeError) as exc:
+        raise EngineUnavailableError(
+            "stem separation requires drumscript.audio_processor.stem_splitter, "
+            "which is not available in this worker; install the engine runtime"
+        ) from exc
+    try:
+        drums_stem = Path(extract_drum_stem(str(audio_path), output_dir=str(work_dir)))
+    except (TypeError, ValueError, OSError) as exc:
+        raise EngineOutputError(
+            f"Demucs stem separation failed for {audio_path.name}: {exc}"
+        ) from exc
+    if not drums_stem.is_file() or drums_stem.stat().st_size == 0:
+        raise EngineOutputError(f"Demucs produced no usable drums stem for {audio_path.name}")
+    return drums_stem
+
+
+def apply_crash_decay_suppression(
+    performance: DrumPerformance,
+    *,
+    window_seconds: float = CRASH_DECAY_WINDOW_SECONDS,
+) -> DrumPerformance:
+    """Drop crash hits that re-trigger inside a kept crash's decay window.
+
+    Measured (Phase 1, 2026-11-16, 6 real tracks): the crash rule fires
+    on sustained high-frequency energy, so one real crash produces a
+    chain of candidates — electronic 247 crash labels for 8 reference
+    crashes, rock 48 for 4. A plain 1.5 s lockout (keep the first crash,
+    drop later crash labels within the window) cuts electronic 247 -> 41
+    and rock 48 -> 9, and lifts app-path F1 on both tracks (electronic
+    0.361 -> 0.379, rock 0.329 -> 0.334, direction only vs circular
+    first-pass references). Non-crash events are untouched, and a crash
+    that is an onset's only label removes that onset entirely (it was a
+    false trigger, not a hit).
+
+    The plan's "new HF attack" test for candidates inside the window was
+    measured and NOT used: neither absolute HF flux nor the relative HF
+    attack ratio separates first-in-chain from later candidates
+    (electronic medians 1.75 vs 1.51; jazz/latin inverted), so the window
+    itself is the mechanism. A crash exactly ``window_seconds`` after a
+    kept crash is dropped (the window is inclusive).
+    """
+    if window_seconds <= 0:
+        raise ValueError(f"window_seconds must be positive, got {window_seconds}")
+    kept: list = []
+    last_crash_time: float | None = None
+    for event in sorted(performance.events, key=lambda e: e.time_seconds):
+        if event.instrument is DrumInstrument.CRASH:
+            if (
+                last_crash_time is not None
+                and event.time_seconds - last_crash_time <= window_seconds
+            ):
+                continue
+            last_crash_time = event.time_seconds
+        kept.append(event)
+    return performance.model_copy(update={"events": kept})
+
+
 def _prepare_eq_audio(audio_path: Path, work_dir: Path) -> Path:
     """Load audio at the DrumScript sample rate, apply the kick EQ curve,
     and write an EQ'd WAV for :func:`transcribe`.
+
+    The input is the separated drums stem (Phase 1 reorder), not the mix:
+    the EQ is applied after Demucs, never before it. Output is
+    ``drums-eq.wav`` in ``work_dir``.
 
     Fail-closed: a missing or changed upstream loader/constants interface
     raises :class:`EngineUnavailableError` instead of silently
@@ -278,7 +394,7 @@ def _prepare_eq_audio(audio_path: Path, work_dir: Path) -> Path:
     if size == 0:
         return audio_path
     eq_audio = _apply_kick_eq(audio, float(loaded_sr))
-    eq_path = work_dir / "source-eq.wav"
+    eq_path = work_dir / "drums-eq.wav"
     scipy_wavfile.write(str(eq_path), int(loaded_sr), eq_audio)
     return eq_path
 
@@ -319,8 +435,17 @@ class DrumScriptEngine:
     engine instance only (module attributes are restored after each call).
     The default applies the measured ``lfer_min=0.10`` gate and the
     measured kick EQ preprocessing (30 Hz high-pass + 120 Hz low-shelf
-    +6 dB, applied to the input file before ``transcribe``); pass an
+    +6 dB, applied to the separated drums stem after Demucs); pass an
     explicit upstream config for stock DrumScript behaviour.
+
+    Pipeline (Phase 1, 2026-11-16): Demucs runs on the raw mix, the EQ
+    goes only on the drums stem, ``transcribe`` runs on that stem with
+    ``full_song=False`` (no second separation, no ``htdemucs/`` dump in
+    the worker directory), and the crash decay suppression is applied to
+    the canonical performance before the output MIDI is written from it.
+    No bass-stem kick channel and no one-label rule are applied — both
+    were measured and rolled back (see the Phase 1 comment above
+    ``CRASH_DECAY_WINDOW_SECONDS``).
 
     ``beat_this_checkpoint`` enables the Beat This! tempo correction: the
     stock tempogram tempo is replaced with the fused Beat This! tempo
@@ -354,15 +479,23 @@ class DrumScriptEngine:
             work_dir = Path(temp)
             isolated_audio = work_dir / f"source{audio_path.suffix.lower()}"
             shutil.copy2(audio_path, isolated_audio)
-            transcribe_audio = isolated_audio
+            # Phase 1 reorder: Demucs runs on the RAW mix (the EQ no
+            # longer goes into separation), then the EQ is applied only
+            # to the separated drums stem, and transcribe runs on that
+            # stem with full_song=False. The old full_song=True call let
+            # transcribe run Demucs itself with no output directory,
+            # which dumped htdemucs/ into the worker's CWD.
+            drums_stem = _extract_drum_stem(isolated_audio, work_dir)
+            transcribe_audio = drums_stem
             if self.kick_config.eq_preprocessing:
-                transcribe_audio = _prepare_eq_audio(isolated_audio, work_dir)
+                transcribe_audio = _prepare_eq_audio(drums_stem, work_dir)
             with _override_kick_thresholds(self.kick_config):
                 result = engine.transcribe(
                     str(transcribe_audio),
-                    full_song=True,
+                    full_song=False,
                     midi_only=True,
                     verbose=False,
+                    output_dir=str(work_dir / "transcribe_out"),
                 )
             if not isinstance(result, dict) or not result.get("midi_path"):
                 keys = sorted(result) if isinstance(result, dict) else []
@@ -372,7 +505,13 @@ class DrumScriptEngine:
             reported_path = Path(result["midi_path"])
             candidates = [reported_path]
             if not reported_path.is_absolute():
-                candidates.extend([work_dir / reported_path, isolated_audio.parent / reported_path])
+                candidates.extend(
+                    [
+                        work_dir / reported_path,
+                        work_dir / "transcribe_out" / reported_path,
+                        isolated_audio.parent / reported_path,
+                    ]
+                )
             midi_source = next((path for path in candidates if path.is_file()), None)
             if midi_source is None or midi_source.stat().st_size == 0:
                 raise EngineOutputError("DrumScript MIDI output is missing or empty")
@@ -382,6 +521,11 @@ class DrumScriptEngine:
                 raise EngineOutputError(
                     "DrumScript MIDI contains no GM percussion events on channel 10"
                 )
+            # Phase 1 rule: crash decay suppression on the canonical
+            # performance (see apply_crash_decay_suppression). The output
+            # MIDI is written from this performance, not from the
+            # upstream file, so suppressed crashes do not leak back in.
+            normalized = apply_crash_decay_suppression(normalized)
             # Tempo correction runs on the original audio (pre-EQ) inside
             # the temp dir. Without a Beat This! checkpoint this is a
             # no-op: the stock tempo map is returned unchanged.
@@ -396,13 +540,15 @@ class DrumScriptEngine:
                     "duration_seconds": max(duration, event_end + 0.001, tempo_end + 0.001),
                 }
             )
-            # The on-disk MIDI is the upstream file re-ticked under the
-            # (possibly corrected) performance tempo map: a verbatim copy
-            # would keep DrumScript's own set_tempo (e.g. rock 69.8 vs the
-            # corrected 142.9), so a DAW's bar grid would be off by 2x.
-            # With no tempo correction the rewrite is a round-trip under
-            # the stock tempo, so note times are unchanged.
+            # The on-disk MIDI is written from the canonical performance
+            # under the (possibly corrected) tempo map: a verbatim copy
+            # of the upstream file would keep DrumScript's own set_tempo
+            # (e.g. rock 69.8 vs the corrected 142.9), so a DAW's bar
+            # grid would be off by 2x, and it would keep crashes the
+            # decay suppression removed. With no tempo correction the
+            # write is a round-trip under the stock tempo, so note times
+            # are unchanged.
             midi_destination = output_dir / "performance.mid"
-            rewrite_midi_tempo(midi_source, midi_destination, performance.tempo_map)
+            performance_to_midi(performance, midi_destination)
 
         return performance, midi_destination
