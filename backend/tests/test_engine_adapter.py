@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from app import engine_adapter
-from app.drum_events import DrumInstrument
+from app.drum_events import DrumEvent, DrumInstrument, DrumPerformance
 from app.engine_adapter import KickClassificationConfig
 
 
@@ -32,7 +32,61 @@ def _write_percussion_midi(path: Path) -> None:
     midi.save(path)
 
 
-def test_engine_adapter_runs_full_song_and_persists_canonical_midi(tmp_path, monkeypatch):
+def _fake_extract_drum_stem(stem_path: Path, calls: dict):
+    """Fake Demucs: record the separated input, return an existing stem."""
+    stem_path.write_bytes(b"fake drums stem")
+
+    def extract(audio_path, output_dir=None):
+        calls["stem_input"] = audio_path
+        calls["stem_output_dir"] = output_dir
+        return str(stem_path)
+
+    return extract
+
+
+def _fake_engine_namespace(transcribe, stem_path: Path, calls: dict):
+    """Fake ``drumscript`` module: transcribe + stem splitter + thresholds."""
+    return SimpleNamespace(
+        KICK_LFER_MIN=0.32,
+        KICK_FREQ_MIN=40.0,
+        KICK_FREQ_MAX=140.0,
+        transcribe=transcribe,
+        extract_drum_stem=_fake_extract_drum_stem(stem_path, calls),
+    )
+
+
+def _write_midi_with_notes(path: Path, notes) -> None:
+    """Write a percussion MIDI with (time_seconds, gm_note, velocity) hits.
+
+    Default tempo (120 BPM, 480 ticks/beat) so 1 s == 960 ticks.
+    """
+    midi = mido.MidiFile()
+    track = mido.MidiTrack()
+    midi.tracks.append(track)
+    previous_tick = 0
+    for time_seconds, note, velocity in sorted(notes):
+        tick = round(time_seconds * 960)
+        track.append(
+            mido.Message(
+                "note_on",
+                channel=9,
+                note=note,
+                velocity=velocity,
+                time=tick - previous_tick,
+            )
+        )
+        previous_tick = tick
+    track.append(mido.MetaMessage("end_of_track", time=480))
+    midi.save(path)
+
+
+def test_engine_adapter_separates_raw_mix_and_transcribes_stem(tmp_path, monkeypatch):
+    """Phase 1 reorder: Demucs on the raw mix, transcribe on the stem.
+
+    transcribe must run with full_song=False (no second separation, no
+    htdemucs/ dump in the worker directory), and the stem splitter must
+    receive the raw source — never an EQ'd file.
+    """
     calls = {}
 
     def fake_transcribe(audio_path, **kwargs):
@@ -45,14 +99,10 @@ def test_engine_adapter_runs_full_song_and_persists_canonical_midi(tmp_path, mon
     monkeypatch.setattr(
         engine_adapter.importlib,
         "import_module",
-        lambda name: SimpleNamespace(
-            KICK_LFER_MIN=0.32,
-            KICK_FREQ_MIN=40.0,
-            KICK_FREQ_MAX=140.0,
-            transcribe=fake_transcribe,
-        ),
+        lambda name: _fake_engine_namespace(fake_transcribe, tmp_path / "drums.wav", calls),
     )
     monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 4.0)
+    monkeypatch.chdir(tmp_path)
 
     source = tmp_path / "source.wav"
     source.write_bytes(b"fake audio")
@@ -62,9 +112,16 @@ def test_engine_adapter_runs_full_song_and_persists_canonical_midi(tmp_path, mon
     )
     performance, midi_path = engine.analyze(source, output_dir)
 
-    assert calls["full_song"] is True
+    assert calls["full_song"] is False
     assert calls["midi_only"] is True
     assert calls["verbose"] is False
+    # Demucs ran on the raw source copy (name "source.wav"), inside a
+    # work dir (output_dir given, so nothing lands in the CWD).
+    assert Path(calls["stem_input"]).name == "source.wav"
+    assert calls["stem_output_dir"] is not None
+    assert not (tmp_path / "htdemucs").exists()
+    # With EQ off, transcribe gets the unmodified drums stem.
+    assert Path(calls["audio_path"]).name == "drums.wav"
     assert performance.duration_seconds >= 4.0
     assert performance.events[0].instrument == DrumInstrument.KICK
     assert performance.events[0].velocity == 101
@@ -90,12 +147,7 @@ def test_engine_adapter_rejects_missing_midi_output(tmp_path, monkeypatch):
     monkeypatch.setattr(
         engine_adapter.importlib,
         "import_module",
-        lambda name: SimpleNamespace(
-            KICK_LFER_MIN=0.32,
-            KICK_FREQ_MIN=40.0,
-            KICK_FREQ_MAX=140.0,
-            transcribe=lambda *args, **kwargs: {},
-        ),
+        lambda name: _fake_engine_namespace(lambda *args, **kwargs: {}, tmp_path / "drums.wav", {}),
     )
     monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 1.0)
     source = tmp_path / "source.wav"
@@ -147,12 +199,7 @@ def test_engine_adapter_applies_custom_kick_thresholds_and_restores(tmp_path, mo
         _write_percussion_midi(midi_path)
         return {"midi_path": str(midi_path)}
 
-    fake = SimpleNamespace(
-        KICK_LFER_MIN=0.32,
-        KICK_FREQ_MIN=40.0,
-        KICK_FREQ_MAX=140.0,
-        transcribe=fake_transcribe,
-    )
+    fake = _fake_engine_namespace(fake_transcribe, tmp_path / "drums.wav", {})
     monkeypatch.setattr(engine_adapter.importlib, "import_module", lambda name: fake)
     monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 4.0)
 
@@ -181,12 +228,7 @@ def test_engine_adapter_default_config_applies_measured_gate(tmp_path, monkeypat
         _write_percussion_midi(midi_path)
         return {"midi_path": str(midi_path)}
 
-    fake = SimpleNamespace(
-        KICK_LFER_MIN=0.32,
-        KICK_FREQ_MIN=40.0,
-        KICK_FREQ_MAX=140.0,
-        transcribe=fake_transcribe,
-    )
+    fake = _fake_engine_namespace(fake_transcribe, tmp_path / "drums.wav", {})
     monkeypatch.setattr(engine_adapter.importlib, "import_module", lambda name: fake)
     monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 4.0)
 
@@ -207,12 +249,7 @@ def test_engine_adapter_upstream_config_does_not_touch_thresholds(tmp_path, monk
         _write_percussion_midi(midi_path)
         return {"midi_path": str(midi_path)}
 
-    fake = SimpleNamespace(
-        KICK_LFER_MIN=0.32,
-        KICK_FREQ_MIN=40.0,
-        KICK_FREQ_MAX=140.0,
-        transcribe=fake_transcribe,
-    )
+    fake = _fake_engine_namespace(fake_transcribe, tmp_path / "drums.wav", {})
     monkeypatch.setattr(engine_adapter.importlib, "import_module", lambda name: fake)
     monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 4.0)
 
@@ -231,10 +268,15 @@ def test_engine_adapter_upstream_config_does_not_touch_thresholds(tmp_path, monk
 def test_engine_adapter_fails_closed_when_threshold_override_unsupported(tmp_path, monkeypatch):
     # Fake engine without the upstream threshold attributes: a non-default
     # config must fail loudly instead of silently running unmodified.
+    # The stem splitter is present (separation runs before the override),
+    # so the failure must come from the threshold check itself.
     monkeypatch.setattr(
         engine_adapter.importlib,
         "import_module",
-        lambda name: SimpleNamespace(transcribe=lambda *args, **kwargs: {}),
+        lambda name: SimpleNamespace(
+            transcribe=lambda *args, **kwargs: {},
+            extract_drum_stem=_fake_extract_drum_stem(tmp_path / "drums.wav", {}),
+        ),
     )
     monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 1.0)
     source = tmp_path / "source.wav"
@@ -288,6 +330,8 @@ def _eq_import_dispatcher(monkeypatch, fake_engine, fake_load_audio, fail_names=
             return fake_engine
         if name == "drumscript.drum_classifier.classify":
             return fake_engine
+        if name == "drumscript.audio_processor.stem_splitter":
+            return fake_engine
         if name == "drumscript.audio_processor.audio_loader":
             return SimpleNamespace(load_audio=fake_load_audio)
         if name == "drumscript.notation_generator.constants":
@@ -297,23 +341,26 @@ def _eq_import_dispatcher(monkeypatch, fake_engine, fake_load_audio, fail_names=
     monkeypatch.setattr(engine_adapter.importlib, "import_module", fake_import)
 
 
-def _eq_fake_engine(transcribe):
+def _eq_fake_engine(transcribe, stem_path: Path, calls: dict):
     return SimpleNamespace(
         KICK_LFER_MIN=0.32,
         KICK_FREQ_MIN=40.0,
         KICK_FREQ_MAX=140.0,
         transcribe=transcribe,
+        extract_drum_stem=_fake_extract_drum_stem(stem_path, calls),
     )
 
 
-def test_engine_adapter_default_config_applies_eq_before_transcribe(tmp_path, monkeypatch):
+def test_engine_adapter_default_config_applies_eq_to_drums_stem(tmp_path, monkeypatch):
+    """Phase 1 reorder: the EQ goes on the separated drums stem, never on
+    the mix — Demucs sees the raw source, transcribe sees drums-eq.wav."""
     seen = {}
 
     def fake_transcribe(audio_path, **kwargs):
         seen["audio_path"] = audio_path
         seen["lfer_min"] = fake.KICK_LFER_MIN
         wav_path = Path(audio_path)
-        assert wav_path.name == "source-eq.wav"
+        assert wav_path.name == "drums-eq.wav"
         assert wav_path.is_file()
         from scipy.io import wavfile
 
@@ -324,10 +371,11 @@ def test_engine_adapter_default_config_applies_eq_before_transcribe(tmp_path, mo
         _write_percussion_midi(midi_path)
         return {"midi_path": str(midi_path)}
 
-    fake = _eq_fake_engine(fake_transcribe)
+    fake = _eq_fake_engine(fake_transcribe, tmp_path / "drums.wav", seen)
 
     def fake_load_audio(path, sr=None):
         seen["load_audio_called"] = True
+        seen["load_audio_path"] = path
         return _sine_signal(60.0, seconds=0.5), 44100
 
     _eq_import_dispatcher(monkeypatch, fake, fake_load_audio)
@@ -338,11 +386,16 @@ def test_engine_adapter_default_config_applies_eq_before_transcribe(tmp_path, mo
     engine_adapter.DrumScriptEngine().analyze(source, tmp_path / "output")
 
     assert seen["load_audio_called"] is True
+    # The EQ loaded the drums stem (not the mix).
+    assert Path(seen["load_audio_path"]).name == "drums.wav"
+    # Demucs separated the raw source (not an EQ'd file).
+    assert Path(seen["stem_input"]).name == "source.wav"
+    assert seen["stem_output_dir"] is not None
     assert seen["lfer_min"] == 0.10
-    assert Path(seen["audio_path"]).name == "source-eq.wav"
+    assert Path(seen["audio_path"]).name == "drums-eq.wav"
 
 
-def test_engine_adapter_eq_disabled_passes_original_audio(tmp_path, monkeypatch):
+def test_engine_adapter_eq_disabled_transcribes_unmodified_drums_stem(tmp_path, monkeypatch):
     seen = {}
 
     def fake_transcribe(audio_path, **kwargs):
@@ -354,7 +407,11 @@ def test_engine_adapter_eq_disabled_passes_original_audio(tmp_path, monkeypatch)
     def fake_load_audio(path, sr=None):
         raise AssertionError("load_audio must not be called when EQ is disabled")
 
-    _eq_import_dispatcher(monkeypatch, _eq_fake_engine(fake_transcribe), fake_load_audio)
+    _eq_import_dispatcher(
+        monkeypatch,
+        _eq_fake_engine(fake_transcribe, tmp_path / "drums.wav", seen),
+        fake_load_audio,
+    )
     monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 4.0)
 
     source = tmp_path / "source.wav"
@@ -364,7 +421,9 @@ def test_engine_adapter_eq_disabled_passes_original_audio(tmp_path, monkeypatch)
     )
     engine.analyze(source, tmp_path / "output")
 
-    assert Path(seen["audio_path"]).name == "source.wav"
+    # With EQ off, transcribe gets the unmodified drums stem — never the mix.
+    assert Path(seen["audio_path"]).name == "drums.wav"
+    assert Path(seen["stem_input"]).name == "source.wav"
 
 
 def test_engine_adapter_eq_fails_closed_when_loader_missing(tmp_path, monkeypatch):
@@ -373,7 +432,7 @@ def test_engine_adapter_eq_fails_closed_when_loader_missing(tmp_path, monkeypatc
 
     _eq_import_dispatcher(
         monkeypatch,
-        _eq_fake_engine(never_transcribe),
+        _eq_fake_engine(never_transcribe, tmp_path / "drums.wav", {}),
         lambda *args, **kwargs: None,
         fail_names={"drumscript.audio_processor.audio_loader"},
     )
@@ -394,7 +453,7 @@ def test_engine_adapter_eq_fails_closed_when_scipy_missing(tmp_path, monkeypatch
 
     _eq_import_dispatcher(
         monkeypatch,
-        _eq_fake_engine(never_transcribe),
+        _eq_fake_engine(never_transcribe, tmp_path / "drums.wav", {}),
         fake_load_audio,
         fail_names={"scipy.signal"},
     )
@@ -466,12 +525,7 @@ def _run_engine_with_tempo(monkeypatch, tmp_path, corrected_bpm):
     monkeypatch.setattr(
         engine_adapter.importlib,
         "import_module",
-        lambda name: SimpleNamespace(
-            KICK_LFER_MIN=0.32,
-            KICK_FREQ_MIN=40.0,
-            KICK_FREQ_MAX=140.0,
-            transcribe=fake_transcribe,
-        ),
+        lambda name: _fake_engine_namespace(fake_transcribe, tmp_path / "drums.wav", {}),
     )
     monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 4.0)
     monkeypatch.setattr(
@@ -514,3 +568,139 @@ def test_engine_adapter_keeps_stock_tempo_when_uncorrected(tmp_path, monkeypatch
     assert performance.tempo_map[0].bpm == pytest.approx(69.8)
     assert _exported_tempo_bpm(midi_path) == pytest.approx(69.8)
     assert performance.events[0].time_seconds == pytest.approx(1.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 (2026-11-16): crash decay suppression + rolled-back rules.
+# Measurements: ~/workspace/.ds-scratch/downstream-plan/PHASE1_IMPLEMENTATION.md
+# ---------------------------------------------------------------------------
+
+
+def _crash_performance(times, other=()):
+    events = [
+        DrumEvent(time_seconds=t, instrument=DrumInstrument.CRASH, velocity=100) for t in times
+    ]
+    events.extend(DrumEvent(time_seconds=t, instrument=inst, velocity=100) for t, inst in other)
+    return DrumPerformance(duration_seconds=10.0, events=events, tempo_map=[])
+
+
+def test_crash_decay_suppression_keeps_first_crash_in_window():
+    # Crashes at 0.0, 0.5, 1.0 fall in one 1.5 s window (only 0.0 kept);
+    # 2.0 opens a new window; 3.6 opens another. A snare inside a window
+    # is untouched — the rule only drops crash labels.
+    performance = _crash_performance(
+        [0.0, 0.5, 1.0, 2.0, 3.6],
+        other=[(0.5, DrumInstrument.SNARE)],
+    )
+    suppressed = engine_adapter.apply_crash_decay_suppression(performance)
+    crashes = [e.time_seconds for e in suppressed.events if e.instrument is DrumInstrument.CRASH]
+    assert crashes == [0.0, 2.0, 3.6]
+    snares = [e.time_seconds for e in suppressed.events if e.instrument is DrumInstrument.SNARE]
+    assert snares == [0.5]
+    assert len(suppressed.events) == 4
+
+
+def test_crash_decay_suppression_window_is_inclusive():
+    # A crash exactly 1.5 s after a kept crash is inside the window.
+    performance = _crash_performance([0.0, 1.5])
+    suppressed = engine_adapter.apply_crash_decay_suppression(performance)
+    assert len(suppressed.events) == 1
+    # Just past the window it is a new attack and is kept.
+    performance = _crash_performance([0.0, 1.5001])
+    suppressed = engine_adapter.apply_crash_decay_suppression(performance)
+    assert len(suppressed.events) == 2
+
+
+def test_crash_decay_suppression_rejects_non_positive_window():
+    performance = _crash_performance([0.0])
+    with pytest.raises(ValueError, match="window_seconds"):
+        engine_adapter.apply_crash_decay_suppression(performance, window_seconds=0)
+
+
+def _run_engine_with_notes(monkeypatch, tmp_path, notes):
+    """Run analyze() with a fake engine whose MIDI holds ``notes``.
+
+    ``notes`` is a list of (time_seconds, GM percussion note, velocity).
+    Returns (performance, midi_path).
+    """
+
+    def fake_transcribe(audio_path, **kwargs):
+        midi_path = Path(audio_path).with_suffix(".mid")
+        _write_midi_with_notes(midi_path, notes)
+        return {"midi_path": str(midi_path)}
+
+    monkeypatch.setattr(
+        engine_adapter.importlib,
+        "import_module",
+        lambda name: _fake_engine_namespace(fake_transcribe, tmp_path / "drums.wav", {}),
+    )
+    monkeypatch.setattr(engine_adapter, "audio_duration_seconds", lambda path: 4.0)
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"fake audio")
+    engine = engine_adapter.DrumScriptEngine(
+        kick_config=KickClassificationConfig(eq_preprocessing=False)
+    )
+    return engine.analyze(source, tmp_path / "output")
+
+
+def test_engine_adapter_suppresses_crash_retriggers_end_to_end(tmp_path, monkeypatch):
+    # Crashes at 0.0, 0.5 (re-trigger), 2.0 (new window) + a kick at 0.5.
+    # The output performance and the written MIDI must both lose the 0.5 s
+    # crash and keep everything else.
+    performance, midi_path = _run_engine_with_notes(
+        monkeypatch,
+        tmp_path,
+        [(0.0, 49, 100), (0.5, 49, 100), (0.5, 36, 100), (2.0, 49, 100)],
+    )
+    crashes = [e.time_seconds for e in performance.events if e.instrument is DrumInstrument.CRASH]
+    assert crashes == [0.0, 2.0]
+    kicks = [e.time_seconds for e in performance.events if e.instrument is DrumInstrument.KICK]
+    assert kicks == [0.5]
+    from app.midi_adapter import midi_to_performance
+
+    exported = midi_to_performance(midi_path)
+    exported_crashes = [
+        e.time_seconds for e in exported.events if e.instrument is DrumInstrument.CRASH
+    ]
+    assert exported_crashes == [0.0, 2.0]
+
+
+def test_engine_adapter_keeps_simultaneous_hits(tmp_path, monkeypatch):
+    """One-label rule ROLLED BACK (Phase 1): simultaneous hits are the norm.
+
+    A kick + snare + closed hihat at the same onset must all survive
+    analyze() — the margin-strength argmax that would drop two of them
+    broke the IDMT gate (kick F1 0.840 -> 0.746) and moved no snare count.
+    """
+    performance, _midi_path = _run_engine_with_notes(
+        monkeypatch,
+        tmp_path,
+        [(1.0, 36, 100), (1.0, 38, 100), (1.0, 42, 100)],
+    )
+    at_one_second = sorted(
+        e.instrument for e in performance.events if e.time_seconds == pytest.approx(1.0)
+    )
+    assert at_one_second == [
+        DrumInstrument.CLOSED_HIHAT,
+        DrumInstrument.KICK,
+        DrumInstrument.SNARE,
+    ]
+
+
+def test_engine_adapter_adds_no_kicks_from_bass_channel(tmp_path, monkeypatch):
+    """Kick dual-channel ROLLED BACK (Phase 1): no bass-flux kick channel.
+
+    The performance kick set must equal the classifier's kick set exactly
+    — no added kicks, no downgraded kicks. The bass-flux addition would
+    have added 156-385 bogus kicks per track (measured), and the
+    downgrade was a no-op.
+    """
+    performance, _midi_path = _run_engine_with_notes(
+        monkeypatch,
+        tmp_path,
+        [(0.5, 36, 100), (1.0, 38, 100), (1.5, 36, 100)],
+    )
+    kicks = sorted(
+        e.time_seconds for e in performance.events if e.instrument is DrumInstrument.KICK
+    )
+    assert kicks == [0.5, 1.5]
