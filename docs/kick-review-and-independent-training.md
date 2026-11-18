@@ -51,3 +51,17 @@ Use `scripts/evaluate_kick_bass_confusions.py` with reviewed CSV annotations and
 Only rows with `decision=accept` enter the reference set. Rejected and uncertain rows do not count as ground truth. The test suite explicitly checks that the three error categories remain separate.
 
 The independent trainer now also requires every class to occur in both the train and track-held-out validation partitions. It writes a validation confusion matrix and per-class precision/recall/F1, in addition to the previous track-grouped split and source hashes. This prevents an apparently good aggregate accuracy from hiding an absent class in the holdout set.
+
+
+## Wider open-song discovery and technical screening (2026-11-18)
+
+The SoundSafari CC0 discovery pass now samples up to 120 full-song candidates (10 per each of 12 filename-derived style buckets), rather than 60. Each downloaded candidate records the immutable repository commit, path, blob SHA, local SHA-256, file size and duration. FFmpeg adds a non-destructive technical screen for peak/RMS level and long silence; these flags identify files needing review, not musical genre or instrument presence. A technical pass never means a song is accepted as a kick reference.
+
+Rights remain a separate gate: SoundSafari's repository-level CC0 statement is recorded as discovery evidence, but `license_verified_per_track` remains false until original track provenance is checked. No candidate may enter supervised training on this basis alone.
+
+Additional source leads screened for the next ingestion pass:
+- Sound Atlas Stems (Hugging Face `kvnloo/sound-atlas-stems`): 2,740 stem-layer rows; dataset card describes source tracks as CC0 or CC BY and points to a per-track `CREDITS.md`. It includes separated drums and bass layers, useful for paired mixture/stem work, but the drum layer is not kick-isolated. Preserve artist credit for CC BY and verify each original track's credit/license before use.
+- MTG-Jamendo: 55k+ full tracks with genre/instrument tags and individual Creative Commons audio licenses, but the dataset page restricts use to non-commercial research/academic use unless Jamendo grants written authorization. Therefore it is not treated as commercial-training-cleared material.
+- MUSDB18: useful mix/drums/bass stem benchmark, but it has academic-use and non-commercial restrictions in its component sources; excluded from commercial-training data absent separate permission.
+
+The ingestion policy is now explicit: source discovery -> per-track rights/provenance -> file integrity/duration/technical screen -> actual genre and instrument review -> event annotation. These are independent gates and cannot be collapsed into a single "CC0" label.
