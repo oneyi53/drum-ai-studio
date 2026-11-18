@@ -18,6 +18,7 @@ import json
 import re
 import sys
 import time
+from datetime import datetime, timezone
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,12 @@ ONAIR_FILES = [
 ONAIR_LICENSE = "CC BY-SA 4.0"
 KAINO_ENDPOINT = "https://kaino.dev/mcp"
 KAINO_LICENSE = "CC0 1.0"
+
+
+def audio_metadata(path: Path) -> dict[str, Any]:
+    import soundfile as sf
+    info = sf.info(str(path))
+    return {"sample_rate": int(info.samplerate), "duration_seconds": float(info.duration), "channels": int(info.channels)}
 
 
 def sha256(path: Path) -> str:
@@ -147,6 +154,7 @@ def inspect_onair(root: Path, wavs: list[Path]) -> list[dict[str, Any]]:
             "tier": spec["tier"],
             "reason": spec["reason"],
             "source_url": "https://github.com/sevagh/OnAir-Music-Dataset",
+            "downloaded_at_utc": datetime.now(timezone.utc).isoformat(),
             "mix_path": None,
             "mix_sha256": None,
             "kick_stem_path": None,
@@ -158,22 +166,24 @@ def inspect_onair(root: Path, wavs: list[Path]) -> list[dict[str, Any]]:
         if mix:
             row["mix_path"] = str(mix)
             row["mix_sha256"] = sha256(mix)
+            row["mix_audio_metadata"] = audio_metadata(mix)
         if spec["kick"]:
             kick = track_files.get(normalize_name(spec["kick"]))
             if kick:
                 row["kick_stem_path"] = str(kick)
                 row["kick_stem_sha256"] = sha256(kick)
+                row["kick_audio_metadata"] = audio_metadata(kick)
             else:
                 row["tier"] = "unusable_missing_expected_kick"
                 row["reason"] += " Expected Kick.wav not found in extracted track folder."
         for name in spec["bass"]:
             item = track_files.get(normalize_name(name))
             if item:
-                row["bass_stem_paths"].append(str(item))
+                row["bass_stem_paths"].append({"path": str(item), "sha256": sha256(item), **audio_metadata(item)})
         for name in spec["drums"]:
             item = track_files.get(normalize_name(name))
             if item:
-                row["drum_stem_paths"].append(str(item))
+                row["drum_stem_paths"].append({"path": str(item), "sha256": sha256(item), **audio_metadata(item)})
         if not mix:
             row["tier"] = "unusable_missing_mix"
         results.append(row)
