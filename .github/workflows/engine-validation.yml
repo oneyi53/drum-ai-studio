@@ -122,10 +122,14 @@ jobs:
         run: |
           python scripts/prepare_cc0_song_pool.py \
             --output /tmp/cc0-song-pool \
-            --max-per-genre 5 \
-            --max-total 60
+            --max-per-genre 10 \
+            --max-total 120
           python -m pytest scripts/test_prepare_cc0_song_pool.py -q
-      - name: Discover Sound Atlas drum and bass stem candidates (metadata only)\n        run: |\n          python scripts/discover_sound_atlas_stems.py --output /tmp/sound-atlas-discovery --max-tracks 250\n          python -m pytest scripts/test_discover_sound_atlas_stems.py -q\n      - name: Compare CNN and DrumScript on identical licensed real-song mixes
+      - name: Discover Sound Atlas drum and bass stem candidates (metadata only)
+        run: |
+          python scripts/discover_sound_atlas_stems.py --output /tmp/sound-atlas-discovery --max-tracks 250
+          python -m pytest scripts/test_discover_sound_atlas_stems.py -q
+      - name: Compare CNN and DrumScript on identical licensed real-song mixes
         run: |
           python scripts/score_real_song_kick.py \
             --manifest-root /tmp/real-song-corpus \
@@ -143,7 +147,15 @@ jobs:
           python -m pytest scripts/test_kick_review_pack.py scripts/test_train_kick_event_classifier.py scripts/test_evaluate_kick_bass_confusions.py -q
           python scripts/evaluate_kick_bass_confusions.py --help
           python scripts/train_kick_event_classifier.py --help
-      - name: Upload Sound Atlas stem discovery report\n        if: always()\n        uses: actions/upload-artifact@v4\n        with:\n          name: sound-atlas-stem-candidates\n          path: /tmp/sound-atlas-discovery/\n          if-no-files-found: ignore\n          retention-days: 30\n      - name: Upload CC0 genre-balanced song pool
+      - name: Upload Sound Atlas stem discovery report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sound-atlas-stem-candidates
+          path: /tmp/sound-atlas-discovery/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Upload CC0 genre-balanced song pool
         if: always()
         uses: actions/upload-artifact@v4
         with:
