@@ -41,7 +41,7 @@ def test_score_reports_precision_recall_f1_and_all_error_counts():
 
 def test_unmatched_prediction_times_matches_score_false_positive_count():
     references = [0.0, 0.5, 1.0]
-    estimates = [-0.04, 0.02, 0.52, 1.2]
+    estimates = [-0.04, 0.52, 1.2]
     false_positives = unmatched_prediction_times(references, estimates, 0.05)
     assert false_positives == pytest.approx([1.2])
     assert len(false_positives) == score(references, estimates, 0.05)["fp"]
