@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -183,10 +184,12 @@ def main():
             "title": item["title"],
             "source_id": item["id"],
             "source_url": "https://kaino.dev/library/music",
+            "downloaded_at_utc": datetime.now(timezone.utc).isoformat(),
             "license": "CC0 1.0",
             "file": str(destination),
             "sha256": digest,
             "bytes": destination.stat().st_size,
+            "audio_metadata": {"sample_rate": __import__("soundfile").info(str(destination)).samplerate, "duration_seconds": __import__("soundfile").info(str(destination)).duration, "channels": __import__("soundfile").info(str(destination)).channels},
             "role": "full_mix_robustness_only_until_human_kick_annotation",
             "status": "downloaded",
         })
