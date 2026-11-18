@@ -14,6 +14,8 @@ on:
       - "scripts/prepare_real_song_kick_corpus.py"
       - "scripts/download_kaino_cc0_music.py"
       - "scripts/score_real_song_kick.py"
+      - "scripts/test_prepare_cc0_song_pool.py"
+      - "scripts/prepare_cc0_song_pool.py"
       - "docs/kick-review-and-independent-training.md"
       - "scripts/test_kick_review_pack.py"
       - "scripts/train_kick_event_classifier.py"
@@ -113,6 +115,13 @@ jobs:
           else
             echo "Kaino MCP search unavailable; OnAir stem-backed corpus remains available"
           fi
+      - name: Build genre-balanced CC0 full-song candidate pool
+        run: |
+          python scripts/prepare_cc0_song_pool.py \
+            --output /tmp/cc0-song-pool \
+            --max-per-genre 3 \
+            --max-total 36
+          python -m pytest scripts/test_prepare_cc0_song_pool.py -q
       - name: Compare CNN and DrumScript on identical licensed real-song mixes
         run: |
           python scripts/score_real_song_kick.py \
@@ -130,6 +139,14 @@ jobs:
         run: |
           python -m pytest scripts/test_kick_review_pack.py -q
           python scripts/train_kick_event_classifier.py --help
+      - name: Upload CC0 genre-balanced song pool
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc0-genre-song-pool
+          path: /tmp/cc0-song-pool/
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Upload compact human-review worksheet
         if: always()
         uses: actions/upload-artifact@v4
