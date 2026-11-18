@@ -123,8 +123,9 @@ def audio_urls(payload: Any):
                         yield value
     if isinstance(payload, dict):
         raw = payload.get("raw", "")
-        for match in re.findall(r"https://[^\\s\\\"']+", raw):
-            if any(ext in match.lower() for ext in (".wav", ".mp3", "download")) and match not in seen:
+        for token in raw.split():
+            match = token.strip(chr(34) + "'<>),.;")
+            if match.startswith("https://") and any(ext in match.lower() for ext in (".wav", ".mp3", "download")) and match not in seen:
                 yield match
 
 
