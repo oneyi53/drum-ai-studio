@@ -48,9 +48,12 @@ def make_features(items):
         start=max(0,center-length//2); crop=y[start:start+length]
         if len(crop)<length: crop=np.pad(crop,(0,length-len(crop)))
         mel=librosa.feature.melspectrogram(y=crop,sr=22050,n_fft=1024,hop_length=256,n_mels=96,power=2)
-        feat=librosa.power_to_db(mel,ref=np.max)
-        if feat.shape[1]<96: feat=np.pad(feat,((0,0),(0,96-feat.shape[1])))
-        feats.append(feat[:,:96].astype(np.float32)); ys.append(LABELS.index(x["label"])); groups.append(x["track"])
+        log_mel=librosa.power_to_db(mel,ref=np.max)
+        delta=librosa.feature.delta(log_mel)
+        delta2=librosa.feature.delta(log_mel,order=2)
+        features=np.stack((log_mel,delta,delta2),axis=0)
+        if features.shape[2]<96: features=np.pad(features,((0,0),(0,0),(0,96-features.shape[2])))
+        feats.append(features[:,:,:96].astype(np.float32)); ys.append(LABELS.index(x["label"])); groups.append(x["track"])
     return np.stack(feats),np.asarray(ys,dtype=np.int64),np.asarray(groups)
 
 
@@ -130,10 +133,10 @@ def main():
     from torch.utils.data import DataLoader,TensorDataset
     class EventCNN(nn.Module):
         def __init__(self):
-            super().__init__(); self.features=nn.Sequential(nn.Conv2d(1,16,3,padding=1),nn.BatchNorm2d(16),nn.ReLU(),nn.MaxPool2d(2),nn.Conv2d(16,32,3,padding=1),nn.BatchNorm2d(32),nn.ReLU(),nn.MaxPool2d(2),nn.Conv2d(32,64,3,padding=1),nn.ReLU(),nn.AdaptiveAvgPool2d((1,1))); self.head=nn.Linear(64,len(LABELS))
+            super().__init__(); self.features=nn.Sequential(nn.Conv2d(3,16,3,padding=1),nn.BatchNorm2d(16),nn.ReLU(),nn.MaxPool2d(2),nn.Conv2d(16,32,3,padding=1),nn.BatchNorm2d(32),nn.ReLU(),nn.MaxPool2d(2),nn.Conv2d(32,64,3,padding=1),nn.ReLU(),nn.AdaptiveAvgPool2d((1,1))); self.head=nn.Linear(64,len(LABELS))
         def forward(self,x): return self.head(self.features(x).flatten(1))
-    torch.manual_seed(a.seed); model=EventCNN(); ds=TensorDataset(torch.from_numpy(X[tr,None]),torch.from_numpy(y[tr])); loader=DataLoader(ds,batch_size=a.batch_size,shuffle=True)
-    vx,vy=torch.from_numpy(X[va,None]),torch.from_numpy(y[va]); tx,ty=torch.from_numpy(X[te,None]),torch.from_numpy(y[te]); opt=torch.optim.AdamW(model.parameters(),lr=1e-3,weight_decay=1e-4); loss_fn=nn.CrossEntropyLoss(); history=[]
+    torch.manual_seed(a.seed); model=EventCNN(); ds=TensorDataset(torch.from_numpy(X[tr]),torch.from_numpy(y[tr])); loader=DataLoader(ds,batch_size=a.batch_size,shuffle=True)
+    vx,vy=torch.from_numpy(X[va]),torch.from_numpy(y[va]); tx,ty=torch.from_numpy(X[te]),torch.from_numpy(y[te]); opt=torch.optim.AdamW(model.parameters(),lr=1e-3,weight_decay=1e-4); loss_fn=nn.CrossEntropyLoss(); history=[]
     for epoch in range(a.epochs):
         model.train(); total=0
         for xb,yb in loader:
@@ -149,7 +152,7 @@ def main():
     test_confusion,test_per_class=classification_metrics(y[te],test_predictions)
     hashes={path:hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in sorted({x["audio_path"] for x in items})}; licenses=sorted({x["license"] for x in items})
     a.output.parent.mkdir(parents=True,exist_ok=True)
-    torch.save({"state_dict":model.state_dict(),"labels":LABELS,"feature_config":{"sample_rate":22050,"n_fft":1024,"hop_length":256,"n_mels":96,"frames":96,"window_seconds":96*256/22050},"train_tracks":track_splits["train"],"validation_tracks":track_splits["validation"],"test_tracks":track_splits["test"],"source_licenses":licenses,"source_audio_sha256":hashes,"created_at_utc":datetime.now(timezone.utc).isoformat(),"note":"Independent initialization; no STAR/AGPL weights loaded. First-stage classes are kick, bass_guitar and bass_synth_808 only. Experimental; separate licence review required."},a.output)
+    torch.save({"state_dict":model.state_dict(),"labels":LABELS,"feature_config":{"sample_rate":22050,"n_fft":1024,"hop_length":256,"n_mels":96,"frames":96,"channels":["log_mel","delta","delta2"],"window_seconds":96*256/22050},"train_tracks":track_splits["train"],"validation_tracks":track_splits["validation"],"test_tracks":track_splits["test"],"source_licenses":licenses,"source_audio_sha256":hashes,"created_at_utc":datetime.now(timezone.utc).isoformat(),"note":"Independent initialization; no STAR/AGPL weights loaded. First-stage classes are kick, bass_guitar and bass_synth_808 only. Experimental; separate licence review required."},a.output)
     meta={"examples":len(items),"tracks":len(tracks),"class_counts":dict(counts),"class_track_counts":class_track_counts,"track_splits":track_splits,"source_licenses":licenses,"validation_confusion_matrix":validation_confusion,"validation_per_class":validation_per_class,"untouched_test_confusion_matrix":test_confusion,"untouched_test_per_class":test_per_class,"history":history,"checkpoint":str(a.output)}
     a.output.with_suffix(".json").write_text(json.dumps(meta,indent=2),encoding="utf-8"); print(json.dumps(meta,indent=2))
 if __name__=="__main__": main()
