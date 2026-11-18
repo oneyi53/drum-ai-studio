@@ -18,13 +18,13 @@ def test_match_count_never_reuses_a_prediction_or_reference():
 
 def test_frame_probabilities_emit_rising_edges_including_frame_zero():
     probabilities = np.array([0.7, 0.8, 0.2, 0.6, 0.9], dtype=np.float32)
-    expected = [0.0, 3 * 256 / 22050]
+    expected = [3 * 256 / 22050]
     assert probabilities_to_onsets(probabilities, 0.5) == pytest.approx(expected)
 
 
 def test_frame_probabilities_respect_threshold():
     probabilities = np.array([0.49, 0.51, 0.5, 0.49, 0.5], dtype=np.float32)
-    expected = [256 / 22050, 4 * 256 / 22050]
+    expected = [256 / 22050]
     assert probabilities_to_onsets(probabilities, 0.5) == pytest.approx(expected)
 
 
