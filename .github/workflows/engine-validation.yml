@@ -20,6 +20,8 @@ on:
       - "scripts/test_kick_review_pack.py"
       - "scripts/train_kick_event_classifier.py"
       - "scripts/test_train_kick_event_classifier.py"
+      - "scripts/evaluate_kick_bass_confusions.py"
+      - "scripts/test_evaluate_kick_bass_confusions.py"
       - "scripts/build_kick_review_pack.py"
       - "scripts/api_engine_smoke.py"
       - "scripts/score_geometry.py"
@@ -120,8 +122,8 @@ jobs:
         run: |
           python scripts/prepare_cc0_song_pool.py \
             --output /tmp/cc0-song-pool \
-            --max-per-genre 3 \
-            --max-total 36
+            --max-per-genre 5 \
+            --max-total 60
           python -m pytest scripts/test_prepare_cc0_song_pool.py -q
       - name: Compare CNN and DrumScript on identical licensed real-song mixes
         run: |
@@ -138,7 +140,8 @@ jobs:
             --output /tmp/kick-review-pack
       - name: Test human review pack and independent trainer CLI
         run: |
-          python -m pytest scripts/test_kick_review_pack.py scripts/test_train_kick_event_classifier.py -q
+          python -m pytest scripts/test_kick_review_pack.py scripts/test_train_kick_event_classifier.py scripts/test_evaluate_kick_bass_confusions.py -q
+          python scripts/evaluate_kick_bass_confusions.py --help
           python scripts/train_kick_event_classifier.py --help
       - name: Upload CC0 genre-balanced song pool
         if: always()
