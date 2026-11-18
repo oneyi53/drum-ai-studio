@@ -97,6 +97,36 @@ jobs:
             --upstream-root /tmp/kick-model/upstream \
             --output /tmp/kick-model/drum_cnn.onnx \
             --source-commit 32b1c9e43fbaede862116ef6241fa9defba39b90
+      - name: Download and audit OnAir stem-backed real songs; discover Kaino CC0 tracks
+        run: |
+          python scripts/prepare_real_song_kick_corpus.py --output /tmp/real-song-corpus
+      - name: Download selected Kaino CC0 WAV full mixes
+        continue-on-error: true
+        run: |
+          if test -s /tmp/real-song-corpus/kaino-search-results.json; then
+            python scripts/download_kaino_cc0_music.py \
+              --search-json /tmp/real-song-corpus/kaino-search-results.json \
+              --output /tmp/real-song-corpus/kaino \
+              --max-tracks 12
+          else
+            echo "Kaino MCP search unavailable; OnAir stem-backed corpus remains available"
+          fi
+      - name: Compare CNN and DrumScript on identical licensed real-song mixes
+        run: |
+          python scripts/score_real_song_kick.py \
+            --manifest-root /tmp/real-song-corpus \
+            --model /tmp/kick-model/drum_cnn.onnx \
+            --output /tmp/real-song-comparison \
+            --tolerance-ms 50
+      - name: Upload real-song corpus, annotations and comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: licensed-real-song-kick-benchmark
+          path: |
+            /tmp/real-song-corpus/
+            /tmp/real-song-comparison/
+          if-no-files-found: ignore
       - name: Test kick frame-model evaluation helpers
         run: python -m pytest scripts/test_kick_frame_model_diagnostics.py -q
       - name: Score annotated RealDrum mixes
