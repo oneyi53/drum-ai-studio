@@ -35,3 +35,10 @@ def test_audio_screening_is_explicitly_non_semantic():
 def test_raw_download_url_pins_commit_before_repository_path():
     url=m.raw_download_url("abc123", "freesound.org/artist/song name.mp3")
     assert url == "https://raw.githubusercontent.com/SoundSafari/CC0-1.0-Music/abc123/freesound.org/artist/song%20name.mp3"
+
+
+def test_manifest_is_checkpointed_after_each_candidate():
+    import inspect
+    source=inspect.getsource(m.main)
+    assert 'temp_manifest.replace(a.output/"cc0-song-pool-manifest.json")' in source
+    assert source.index('manifest.append(record)') < source.index('temp_manifest.replace')
