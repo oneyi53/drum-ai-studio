@@ -27,7 +27,7 @@ from drumscript.drum_classifier.classify import classify_events
 from drumscript.notation_generator.constants import SAMPLE_RATE
 
 MODEL_SOURCE = "https://github.com/FrancescoZumo/frame_level_drum_classifier"
-MODEL_SOURCE_COMMIT = "ef2a36c062341ab0ea585874259ea396a94ae362"
+MODEL_SOURCE_COMMIT = "32b1c9e43fbaede862116ef6241fa9defba39b90"
 MODEL_LICENSE = "AGPL-3.0; evaluation-only, not a production dependency"
 MODEL_SR = 22050
 HOP_LENGTH = 256
