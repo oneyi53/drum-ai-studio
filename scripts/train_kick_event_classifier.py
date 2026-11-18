@@ -53,6 +53,66 @@ def make_features(items):
         feats.append(feat[:,:96].astype(np.float32)); ys.append(LABELS.index(x["label"])); groups.append(x["track"])
     return np.stack(feats),np.asarray(ys,dtype=np.int64),np.asarray(groups)
 
+
+def split_track_groups(groups, labels, seed=2026, validation_fraction=0.15, test_fraction=0.15):
+    """Return train/validation/test indices with all labels in all song partitions."""
+    tracks=sorted(set(groups.tolist()))
+    all_classes=set(range(len(LABELS)))
+    track_classes={t:set(labels[i] for i,g in enumerate(groups) if g==t) for t in tracks}
+    insufficient={LABELS[c]:sum(c in track_classes[t] for t in tracks) for c in all_classes
+                  if sum(c in track_classes[t] for t in tracks)<3}
+    if insufficient:
+        raise ValueError(f"Each class needs at least three distinct tracks for train/validation/test: {insufficient}")
+    rng=random.Random(seed); shuffled=tracks[:]; rng.shuffle(shuffled)
+
+    def choose_holdout(remaining, fraction, reserve):
+        target=max(1,round(len(tracks)*fraction))
+        chosen=set(); covered=set()
+        while covered!=all_classes:
+            candidates=[]
+            for track in shuffled:
+                if track not in remaining or track in chosen: continue
+                rest=remaining-chosen-{track}
+                if any(sum(c in track_classes[x] for x in rest)<reserve for c in all_classes): continue
+                gain=len(track_classes[track]-covered)
+                if gain: candidates.append((gain,track))
+            if not candidates:
+                raise ValueError("Cannot form three-way song-group split with every class represented in train, validation and test.")
+            best=max(candidates,key=lambda item:(item[0],-shuffled.index(item[1])))[1]
+            chosen.add(best); covered.update(track_classes[best])
+        for track in shuffled:
+            if len(chosen)>=target: break
+            if track not in remaining or track in chosen: continue
+            rest=remaining-chosen-{track}
+            if all(sum(c in track_classes[x] for x in rest)>=reserve for c in all_classes):
+                chosen.add(track)
+        return chosen
+
+    remaining=set(tracks)
+    test_tracks=choose_holdout(remaining,test_fraction,reserve=2)
+    remaining-=test_tracks
+    validation_tracks=choose_holdout(remaining,validation_fraction,reserve=1)
+    train_tracks=remaining-validation_tracks
+    if not train_tracks or not validation_tracks or not test_tracks:
+        raise ValueError("Song-group split produced an empty partition.")
+    def indices(selected):
+        return np.asarray([i for i,t in enumerate(groups) if t in selected],dtype=np.int64)
+    return indices(train_tracks),indices(validation_tracks),indices(test_tracks),{
+        "train":sorted(train_tracks),"validation":sorted(validation_tracks),"test":sorted(test_tracks)
+    }
+
+def classification_metrics(truth, predictions):
+    confusion=np.zeros((len(LABELS),len(LABELS)),dtype=int)
+    for actual,predicted in zip(truth,predictions): confusion[int(actual),int(predicted)]+=1
+    per_class={}
+    for i,label in enumerate(LABELS):
+        tp=int(confusion[i,i]); support=int(confusion[i,:].sum()); predicted=int(confusion[:,i].sum())
+        precision=tp/predicted if predicted else 0.0; recall=tp/support if support else 0.0
+        per_class[label]={"precision":precision,"recall":recall,
+                          "f1":2*precision*recall/(precision+recall) if precision+recall else 0.0,
+                          "support":support}
+    return confusion.tolist(),per_class
+
 def main():
     p=argparse.ArgumentParser(description=__doc__); p.add_argument("--manifest",type=Path,required=True); p.add_argument("--annotations",type=Path,nargs="+",required=True); p.add_argument("--output",type=Path,required=True)
     p.add_argument("--epochs",type=int,default=30); p.add_argument("--batch-size",type=int,default=32); p.add_argument("--min-tracks",type=int,default=8); p.add_argument("--min-per-class",type=int,default=20); p.add_argument("--allow-sharealike",action="store_true"); p.add_argument("--seed",type=int,default=2026); a=p.parse_args()
@@ -60,35 +120,11 @@ def main():
     missing=[k for k in LABELS if counts[k]<a.min_per_class]
     if len(tracks)<a.min_tracks or missing: raise SystemExit(f"Insufficient reviewed data: tracks={len(tracks)}/{a.min_tracks}; counts={dict(counts)}; underrepresented={missing}.")
     class_track_counts={label:len({x["track"] for x in items if x["label"]==label}) for label in LABELS}
-    split_unsafe={label:n for label,n in class_track_counts.items() if n<2}
-    if split_unsafe: raise SystemExit(f"Each class must occur in at least two distinct tracks for track-held-out validation: {split_unsafe}")
-    X,y,groups=make_features(items); # Deterministic group-aware holdout: validation must contain every class,
-    # while at least one distinct track for every class remains in training.
-    rng=random.Random(a.seed); shuffled=tracks[:]; rng.shuffle(shuffled)
-    track_classes={t:set(y[i] for i,g in enumerate(groups) if g==t) for t in tracks}
-    target=max(1,round(len(tracks)*.2)); val=set(); all_classes=set(range(len(LABELS)))
-    while not all_classes.issubset(set().union(*(track_classes[t] for t in val)) if val else set()):
-        covered=set().union(*(track_classes[t] for t in val)) if val else set()
-        candidates=[t for t in shuffled if t not in val and
-                    all(any(c in track_classes[o] for o in tracks if o not in val and o!=t)
-                        for c in all_classes)]
-        if not candidates:
-            raise SystemExit("Cannot form track-held-out validation split with every class in both partitions; add reviewed tracks.")
-        chosen=max(candidates,key=lambda t:(len(track_classes[t]-covered),-shuffled.index(t)))
-        val.add(chosen)
-    for t in shuffled:
-        if len(val)>=target: break
-        if t in val: continue
-        if all(any(c in track_classes[o] for o in tracks if o not in val and o!=t)
-               for c in all_classes):
-            val.add(t)
-    tr=np.asarray([i for i,t in enumerate(groups) if t not in val]); va=np.asarray([i for i,t in enumerate(groups) if t in val])
-    if not len(tr) or not len(va): raise SystemExit("Track-grouped split is empty.")
-    train_classes=set(y[tr].tolist()); validation_classes=set(y[va].tolist())
-    absent_train=[LABELS[i] for i in range(len(LABELS)) if i not in train_classes]
-    absent_validation=[LABELS[i] for i in range(len(LABELS)) if i not in validation_classes]
-    if absent_train or absent_validation:
-        raise SystemExit(f"Track-held-out split must contain every class in both partitions; missing_train={absent_train}; missing_validation={absent_validation}. Add reviewed examples from more tracks.")
+    try:
+        X,y,groups=make_features(items)
+        tr,va,te,track_splits=split_track_groups(groups,y,a.seed)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
     import torch
     from torch import nn
     from torch.utils.data import DataLoader,TensorDataset
@@ -97,7 +133,7 @@ def main():
             super().__init__(); self.features=nn.Sequential(nn.Conv2d(1,16,3,padding=1),nn.BatchNorm2d(16),nn.ReLU(),nn.MaxPool2d(2),nn.Conv2d(16,32,3,padding=1),nn.BatchNorm2d(32),nn.ReLU(),nn.MaxPool2d(2),nn.Conv2d(32,64,3,padding=1),nn.ReLU(),nn.AdaptiveAvgPool2d((1,1))); self.head=nn.Linear(64,len(LABELS))
         def forward(self,x): return self.head(self.features(x).flatten(1))
     torch.manual_seed(a.seed); model=EventCNN(); ds=TensorDataset(torch.from_numpy(X[tr,None]),torch.from_numpy(y[tr])); loader=DataLoader(ds,batch_size=a.batch_size,shuffle=True)
-    vx,vy=torch.from_numpy(X[va,None]),torch.from_numpy(y[va]); opt=torch.optim.AdamW(model.parameters(),lr=1e-3,weight_decay=1e-4); loss_fn=nn.CrossEntropyLoss(); history=[]
+    vx,vy=torch.from_numpy(X[va,None]),torch.from_numpy(y[va]); tx,ty=torch.from_numpy(X[te,None]),torch.from_numpy(y[te]); opt=torch.optim.AdamW(model.parameters(),lr=1e-3,weight_decay=1e-4); loss_fn=nn.CrossEntropyLoss(); history=[]
     for epoch in range(a.epochs):
         model.train(); total=0
         for xb,yb in loader:
@@ -106,17 +142,14 @@ def main():
         with torch.no_grad(): acc=float((model(vx).argmax(1)==vy).float().mean().item())
         history.append({"epoch":epoch+1,"train_loss":total/len(ds),"track_holdout_accuracy":acc})
     model.eval()
-    with torch.no_grad(): validation_predictions=model(vx).argmax(1).cpu().numpy()
-    confusion=np.zeros((len(LABELS),len(LABELS)),dtype=int)
-    for truth,pred in zip(y[va],validation_predictions): confusion[int(truth),int(pred)]+=1
-    per_class={}
-    for i,label in enumerate(LABELS):
-        tp=int(confusion[i,i]); support=int(confusion[i,:].sum()); predicted=int(confusion[:,i].sum())
-        precision=tp/predicted if predicted else 0.0; recall=tp/support if support else 0.0
-        per_class[label]={"precision":precision,"recall":recall,"f1":2*precision*recall/(precision+recall) if precision+recall else 0.0,"support":support}
+    with torch.no_grad():
+        validation_predictions=model(vx).argmax(1).cpu().numpy()
+        test_predictions=model(tx).argmax(1).cpu().numpy()
+    validation_confusion,validation_per_class=classification_metrics(y[va],validation_predictions)
+    test_confusion,test_per_class=classification_metrics(y[te],test_predictions)
     hashes={path:hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in sorted({x["audio_path"] for x in items})}; licenses=sorted({x["license"] for x in items})
     a.output.parent.mkdir(parents=True,exist_ok=True)
-    torch.save({"state_dict":model.state_dict(),"labels":LABELS,"feature_config":{"sample_rate":22050,"n_fft":1024,"hop_length":256,"n_mels":96,"frames":96,"window_seconds":96*256/22050},"train_tracks":sorted(set(groups[tr].tolist())),"validation_tracks":sorted(set(groups[va].tolist())),"source_licenses":licenses,"source_audio_sha256":hashes,"created_at_utc":datetime.now(timezone.utc).isoformat(),"note":"Independent initialization; no STAR/AGPL weights loaded. First-stage classes are kick, bass_guitar and bass_synth_808 only. Experimental; separate licence review required."},a.output)
-    meta={"examples":len(items),"tracks":len(tracks),"class_counts":dict(counts),"class_track_counts":class_track_counts,"train_tracks":sorted(set(groups[tr].tolist())),"validation_tracks":sorted(set(groups[va].tolist())),"source_licenses":licenses,"validation_confusion_matrix":confusion.tolist(),"validation_per_class":per_class,"history":history,"checkpoint":str(a.output)}
+    torch.save({"state_dict":model.state_dict(),"labels":LABELS,"feature_config":{"sample_rate":22050,"n_fft":1024,"hop_length":256,"n_mels":96,"frames":96,"window_seconds":96*256/22050},"train_tracks":track_splits["train"],"validation_tracks":track_splits["validation"],"test_tracks":track_splits["test"],"source_licenses":licenses,"source_audio_sha256":hashes,"created_at_utc":datetime.now(timezone.utc).isoformat(),"note":"Independent initialization; no STAR/AGPL weights loaded. First-stage classes are kick, bass_guitar and bass_synth_808 only. Experimental; separate licence review required."},a.output)
+    meta={"examples":len(items),"tracks":len(tracks),"class_counts":dict(counts),"class_track_counts":class_track_counts,"track_splits":track_splits,"source_licenses":licenses,"validation_confusion_matrix":validation_confusion,"validation_per_class":validation_per_class,"untouched_test_confusion_matrix":test_confusion,"untouched_test_per_class":test_per_class,"history":history,"checkpoint":str(a.output)}
     a.output.with_suffix(".json").write_text(json.dumps(meta,indent=2),encoding="utf-8"); print(json.dumps(meta,indent=2))
 if __name__=="__main__": main()
