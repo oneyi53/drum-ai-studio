@@ -30,6 +30,11 @@ GENRES={
 }
 AUDIO=re.compile(r"\.(mp3|wav|flac|ogg|m4a)$",re.I)
 
+def duration_screen(duration, minimum=60.0):
+ if duration is None: return "metadata_probe_failed"
+ if duration < minimum: return "too_short_for_full_song_benchmark"
+ return "full_song_length_pass"
+
 def main():
  p=argparse.ArgumentParser(description=__doc__)
  p.add_argument("--output",type=Path,required=True); p.add_argument("--max-per-genre",type=int,default=4)
@@ -68,10 +73,11 @@ def main():
   except Exception as exc:
    status="download_failed"; digest=""; size=0; error=str(exc)
   duration=None; duration_screen="metadata_probe_failed"
+  duration_screen_fn=duration_screen
   if status=="downloaded":
    probe=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(dest)],capture_output=True,text=True)
    if probe.returncode==0:
-    try: duration=float(probe.stdout.strip()); duration_screen="full_song_length_pass" if duration>=a.min_duration_seconds else "too_short_for_full_song_benchmark"
+    try: duration=float(probe.stdout.strip()); duration_screen=duration_screen_fn(duration,a.min_duration_seconds)
     except ValueError: duration_screen="invalid_duration"
   record={"dataset":"SoundSafari CC0-1.0-Music","dataset_commit":commit,"repository_path":rel,"blob_sha":item["sha"],"genre_bucket":item["genre_bucket"],"genre_match_is_discovery_hint_only":True,"source_url":f"https://github.com/SoundSafari/CC0-1.0-Music/blob/{commit}/{quote(rel,safe='/')}","license":"CC0 1.0 (repository-declared; retain source provenance and honour takedown requests)","license_verified_per_track":False,"download_url":url,"local_path":str(dest) if status=="downloaded" else None,"sha256":digest,"bytes":size,"duration_seconds":duration,"full_song_length_screening":duration_screen,"eligible_for_full_song_review":status=="downloaded" and duration is not None and duration>=a.min_duration_seconds,"status":status,"audio_screening":"pending_actual_drums_bass_and_genre_review"}
   if status!="downloaded":record["error"]=error
