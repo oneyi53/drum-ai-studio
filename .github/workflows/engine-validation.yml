@@ -130,6 +130,14 @@ jobs:
         run: |
           python -m pytest scripts/test_kick_review_pack.py -q
           python scripts/train_kick_event_classifier.py --help
+      - name: Upload compact human-review worksheet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kick-human-review-pack
+          path: /tmp/kick-review-pack/
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Upload real-song corpus, annotations and comparison
         if: always()
         uses: actions/upload-artifact@v4
