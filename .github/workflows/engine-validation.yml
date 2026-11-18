@@ -113,9 +113,9 @@ jobs:
         working-directory: /tmp/DrumScript
         run: |
           mkdir -p /tmp/kick-model-diagnostics
-          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset RealDrum --model /tmp/kick-model/drum_cnn.onnx --output /tmp/kick-model-diagnostics/realdrum.json
-          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset WaveDrum --model /tmp/kick-model/drum_cnn.onnx --output /tmp/kick-model-diagnostics/wavedrum.json
-          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset TechnoDrum --model /tmp/kick-model/drum_cnn.onnx --output /tmp/kick-model-diagnostics/technodrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset RealDrum --model /tmp/kick-model/drum_cnn.onnx --limit 15 --output /tmp/kick-model-diagnostics/realdrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset WaveDrum --model /tmp/kick-model/drum_cnn.onnx --limit 15 --output /tmp/kick-model-diagnostics/wavedrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset TechnoDrum --model /tmp/kick-model/drum_cnn.onnx --limit 15 --output /tmp/kick-model-diagnostics/technodrum.json
       - name: Upload IDMT benchmark metrics
         if: always()
         uses: actions/upload-artifact@v4
