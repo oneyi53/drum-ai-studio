@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Build a small, genre-balanced CC0 full-song candidate pool from SoundSafari.
+
+Filename genre matches are only discovery hints. The script does not claim a
+track contains drums/bass; every download remains pending audio screening and
+human review. Original repository path, commit, blob SHA and file hash are kept.
+"""
+from __future__ import annotations
+import argparse, hashlib, json, random, re, time
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import quote
+import requests
+
+API="https://api.github.com/repos/SoundSafari/CC0-1.0-Music"
+RAW="https://raw.githubusercontent.com/SoundSafari/CC0-1.0-Music"
+GENRES={
+ "rock":("rock","punk","metal","grunge","alternative"),
+ "funk":("funk","groove","soul"),
+ "jazz":("jazz","swing","bebop","big band"),
+ "blues":("blues","boogie"),
+ "hip_hop":("hip hop","hip-hop","hiphop","rap","beat tape"),
+ "electronic":("electronic","electronica","techno","house","trance","synthwave","electro","edm"),
+ "drum_and_bass":("drum and bass","drum & bass","dnb","jungle","breakbeat"),
+ "reggae":("reggae","dub","ska"),
+ "disco":("disco","nu disco"),
+ "country_folk":("country","folk","bluegrass","americana"),
+ "pop":("pop","indie pop","dance pop"),
+ "latin":("latin","salsa","bossa","reggaeton"),
+}
+AUDIO=re.compile(r"\.(mp3|wav|flac|ogg|m4a)$",re.I)
+
+def main():
+ p=argparse.ArgumentParser(description=__doc__)
+ p.add_argument("--output",type=Path,required=True); p.add_argument("--max-per-genre",type=int,default=4)
+ p.add_argument("--max-total",type=int,default=40); p.add_argument("--max-file-mb",type=float,default=30)
+ p.add_argument("--seed",type=int,default=20261118); p.add_argument("--genres",nargs="*",default=list(GENRES))
+ a=p.parse_args()
+ sess=requests.Session(); sess.headers["User-Agent"]="DrumAI-Studio-CC0-dataset-builder"
+ response=sess.get(API+"/git/trees/main?recursive=1",timeout=90); response.raise_for_status()
+ tree=response.json(); commit=tree["sha"]
+ blobs=[x for x in tree.get("tree",[]) if x.get("type")=="blob" and AUDIO.search(x["path"]) and x.get("size",0)<=a.max_file_mb*1024*1024]
+ rng=random.Random(a.seed); selected=[]; used=set(); counts={}
+ for genre in a.genres:
+  if genre not in GENRES: continue
+  terms=GENRES[genre]
+  candidates=[x for x in blobs if any(t in x["path"].lower().replace("_"," ").replace("-"," ") for t in terms) and x["path"] not in used]
+  rng.shuffle(candidates)
+  picks=candidates[:a.max_per_genre]
+  for item in picks:
+   selected.append({"genre_bucket":genre,**item}); used.add(item["path"])
+  counts[genre]={"available_filename_matches":len(candidates),"selected":len(picks)}
+ if len(selected)>a.max_total: selected=selected[:a.max_total]
+ a.output.mkdir(parents=True,exist_ok=True); manifest=[]
+ for n,item in enumerate(selected,1):
+  rel=item["path"]; dest=a.output/"audio"/rel
+  dest.parent.mkdir(parents=True,exist_ok=True)
+  url=RAW+"/"+quote(rel,safe="/")
+  status="downloaded"
+  try:
+   if not dest.exists():
+    with sess.get(url,stream=True,timeout=(30,180)) as r:
+     r.raise_for_status()
+     with dest.open("wb") as f:
+      for chunk in r.iter_content(1024*1024):
+       if chunk:f.write(chunk)
+   digest=hashlib.sha256(dest.read_bytes()).hexdigest(); size=dest.stat().st_size
+  except Exception as exc:
+   status="download_failed"; digest=""; size=0; error=str(exc)
+  record={"dataset":"SoundSafari CC0-1.0-Music","dataset_commit":commit,"repository_path":rel,"blob_sha":item["sha"],"genre_bucket":item["genre_bucket"],"genre_match_is_discovery_hint_only":True,"source_url":f"https://github.com/SoundSafari/CC0-1.0-Music/blob/{commit}/{quote(rel,safe='/')}","license":"CC0 1.0 (repository-declared; retain source provenance and honour takedown requests)","license_verified_per_track":False,"download_url":url,"local_path":str(dest) if status=="downloaded" else None,"sha256":digest,"bytes":size,"status":status,"audio_screening":"pending"}
+  if status!="downloaded":record["error"]=error
+  manifest.append(record)
+  print(f"[{n}/{len(selected)}] {item['genre_bucket']} {rel} {status}",flush=True)
+ (a.output/"cc0-song-pool-manifest.json").write_text(json.dumps({"created_at_utc":datetime.now(timezone.utc).isoformat(),"dataset_commit":commit,"license_notice":"Repository-level CC0 declaration is discovery evidence, not a substitute for per-track provenance review. No track is assumed to contain drums or bass.","genre_counts":counts,"tracks":manifest},indent=2,ensure_ascii=False),encoding="utf-8")
+ print(json.dumps({"selected":len(selected),"downloaded":sum(x["status"]=="downloaded" for x in manifest),"genre_counts":counts,"manifest":str(a.output/"cc0-song-pool-manifest.json")},indent=2))
+if __name__=="__main__":main()
