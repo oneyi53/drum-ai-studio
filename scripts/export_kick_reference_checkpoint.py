@@ -81,7 +81,7 @@ def main() -> None:
         raise SystemExit(f"exported ONNX shape {actual_shape} != checkpoint shape {expected_shape}")
 
     args.output.with_suffix(".json").write_text(
-        json.dumps(spec, indent=2) + "\\n", encoding="utf-8"
+        json.dumps(spec, indent=2) + "\n", encoding="utf-8"
     )
     print("KICK_CHECKPOINT_CONFIG " + json.dumps(spec, sort_keys=True))
     print(f"KICK_ONNX_INPUT_SHAPE {actual_shape}")
