@@ -98,10 +98,12 @@ def probabilities_to_onsets(probabilities: np.ndarray, threshold: float, hop_len
     return (np.flatnonzero(rising) * hop_length / sample_rate).astype(float).tolist()
 
 
-def _model_features(audio_path: Path, n_mels: int) -> np.ndarray:
-    waveform, _ = librosa.load(str(audio_path), sr=MODEL_SR, mono=True)
+def _model_features(audio_path: Path, model_spec: dict[str, Any]) -> np.ndarray:
+    sample_rate = int(model_spec['sample_rate'])
+    waveform, _ = librosa.load(str(audio_path), sr=sample_rate, mono=True)
     mel = librosa.feature.melspectrogram(
-        y=waveform, sr=MODEL_SR, n_fft=N_FFT, hop_length=HOP_LENGTH, n_mels=n_mels
+        y=waveform, sr=sample_rate, n_fft=int(model_spec['n_fft']),
+        hop_length=int(model_spec['hop_length']), n_mels=int(model_spec['n_mels'])
     )
     log_mel = librosa.power_to_db(mel, ref=np.max)
     delta = librosa.feature.delta(log_mel)
@@ -110,7 +112,7 @@ def _model_features(audio_path: Path, n_mels: int) -> np.ndarray:
 
 
 def infer_frame_model(session: ort.InferenceSession, audio_path: Path, model_spec: dict[str, Any]) -> list[float]:
-    features = _model_features(audio_path, int(model_spec['n_mels']))
+    features = _model_features(audio_path, model_spec)
     frame_count = features.shape[-1]
     context = int(model_spec['context'])
     pad = np.zeros((3, int(model_spec['n_mels']), context), dtype=np.float32)
@@ -209,9 +211,10 @@ def evaluate_subset(
             "subset": subset_of(audio_path),
             "tolerance_ms": tolerance_ms,
         }
+        all_references = reference_onsets_for_file(audio_path)
         other_refs = {
-            "SD": [float(value) for value in reference_onsets_for_file(audio_path).get("SD", [])],
-            "HH": [float(value) for value in reference_onsets_for_file(audio_path).get("HH", [])],
+            "SD": [float(value) for value in all_references.get("SD", [])],
+            "HH": [float(value) for value in all_references.get("HH", [])],
         }
         for prefix, estimates in (
             ("frame_model", model_times),
