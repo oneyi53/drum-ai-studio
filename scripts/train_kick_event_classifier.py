@@ -7,7 +7,8 @@ from datetime import datetime,timezone
 from pathlib import Path
 import numpy as np
 
-LABELS=["kick","bass_guitar","bass_synth_808","snare","hat","percussion","other"]
+# First-stage model: low-frequency discrimination only; full-kit classes come later.
+LABELS=["kick","bass_guitar","bass_synth_808"]
 ALLOW={"CC0 1.0","CC BY 4.0","CC BY 3.0","CC BY 2.0"}
 
 def load_approved(manifest_path,annotation_paths,allow_sharealike):
@@ -61,7 +62,26 @@ def main():
     class_track_counts={label:len({x["track"] for x in items if x["label"]==label}) for label in LABELS}
     split_unsafe={label:n for label,n in class_track_counts.items() if n<2}
     if split_unsafe: raise SystemExit(f"Each class must occur in at least two distinct tracks for track-held-out validation: {split_unsafe}")
-    X,y,groups=make_features(items); random.seed(a.seed); shuffled=tracks[:]; random.shuffle(shuffled); val=set(shuffled[:max(1,round(len(shuffled)*.2))])
+    X,y,groups=make_features(items); # Deterministic group-aware holdout: validation must contain every class,
+    # while at least one distinct track for every class remains in training.
+    rng=random.Random(a.seed); shuffled=tracks[:]; rng.shuffle(shuffled)
+    track_classes={t:set(y[i] for i,g in enumerate(groups) if g==t) for t in tracks}
+    target=max(1,round(len(tracks)*.2)); val=set(); all_classes=set(range(len(LABELS)))
+    while not all_classes.issubset(set().union(*(track_classes[t] for t in val)) if val else set()):
+        covered=set().union(*(track_classes[t] for t in val)) if val else set()
+        candidates=[t for t in shuffled if t not in val and
+                    all(any(c in track_classes[o] for o in tracks if o not in val and o!=t)
+                        for c in all_classes)]
+        if not candidates:
+            raise SystemExit("Cannot form track-held-out validation split with every class in both partitions; add reviewed tracks.")
+        chosen=max(candidates,key=lambda t:(len(track_classes[t]-covered),-shuffled.index(t)))
+        val.add(chosen)
+    for t in shuffled:
+        if len(val)>=target: break
+        if t in val: continue
+        if all(any(c in track_classes[o] for o in tracks if o not in val and o!=t)
+               for c in all_classes):
+            val.add(t)
     tr=np.asarray([i for i,t in enumerate(groups) if t not in val]); va=np.asarray([i for i,t in enumerate(groups) if t in val])
     if not len(tr) or not len(va): raise SystemExit("Track-grouped split is empty.")
     train_classes=set(y[tr].tolist()); validation_classes=set(y[va].tolist())
@@ -96,7 +116,7 @@ def main():
         per_class[label]={"precision":precision,"recall":recall,"f1":2*precision*recall/(precision+recall) if precision+recall else 0.0,"support":support}
     hashes={path:hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in sorted({x["audio_path"] for x in items})}; licenses=sorted({x["license"] for x in items})
     a.output.parent.mkdir(parents=True,exist_ok=True)
-    torch.save({"state_dict":model.state_dict(),"labels":LABELS,"feature_config":{"sample_rate":22050,"n_fft":1024,"hop_length":256,"n_mels":96,"frames":96,"window_seconds":96*256/22050},"train_tracks":sorted(set(groups[tr].tolist())),"validation_tracks":sorted(set(groups[va].tolist())),"source_licenses":licenses,"source_audio_sha256":hashes,"created_at_utc":datetime.now(timezone.utc).isoformat(),"note":"Independent initialization; no STAR/AGPL weights loaded. Experimental only; separate licence review required."},a.output)
+    torch.save({"state_dict":model.state_dict(),"labels":LABELS,"feature_config":{"sample_rate":22050,"n_fft":1024,"hop_length":256,"n_mels":96,"frames":96,"window_seconds":96*256/22050},"train_tracks":sorted(set(groups[tr].tolist())),"validation_tracks":sorted(set(groups[va].tolist())),"source_licenses":licenses,"source_audio_sha256":hashes,"created_at_utc":datetime.now(timezone.utc).isoformat(),"note":"Independent initialization; no STAR/AGPL weights loaded. First-stage classes are kick, bass_guitar and bass_synth_808 only. Experimental; separate licence review required."},a.output)
     meta={"examples":len(items),"tracks":len(tracks),"class_counts":dict(counts),"class_track_counts":class_track_counts,"train_tracks":sorted(set(groups[tr].tolist())),"validation_tracks":sorted(set(groups[va].tolist())),"source_licenses":licenses,"validation_confusion_matrix":confusion.tolist(),"validation_per_class":per_class,"history":history,"checkpoint":str(a.output)}
     a.output.with_suffix(".json").write_text(json.dumps(meta,indent=2),encoding="utf-8"); print(json.dumps(meta,indent=2))
 if __name__=="__main__": main()
