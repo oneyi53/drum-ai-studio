@@ -24,12 +24,7 @@ from drumscript.audio_processor.onset_detector import detect_onsets
 from drumscript.datasets.idmt import find_mix_files, reference_onsets_for_file, subset_of
 from drumscript.drum_classifier import classify as classify_module
 from drumscript.drum_classifier.classify import classify_events
-from drumscript.notation_generator.constants import (
-    KICK_FREQ_MAX,
-    KICK_FREQ_MIN,
-    KICK_LFER_MIN,
-    SAMPLE_RATE,
-)
+from drumscript.notation_generator.constants import SAMPLE_RATE
 
 MODEL_SOURCE = "https://github.com/FrancescoZumo/frame_level_drum_classifier"
 MODEL_SOURCE_COMMIT = "ef2a36c062341ab0ea585874259ea396a94ae362"
