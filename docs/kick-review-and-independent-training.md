@@ -72,3 +72,8 @@ The ingestion policy is now explicit: source discovery -> per-track rights/prove
 Added a metadata-only ingestion path for Hugging Face `kvnloo/sound-atlas-stems`. It reads the source stem index and full `CREDITS.md`, then identifies original track IDs that have both drum and bass layers. It records duration, layer file names and active fractions for prioritizing later downloads. It does not download the 2.61 GB collection in CI.
 
 The dataset card reports 2,740 instrument-layer rows, not 2,740 unique songs. Its original tracks are described as CC0 or CC BY, but the source credit/license must be resolved for each track ID. All discovered rows therefore remain `license_verified_per_track=false`. The drum stem is Demucs-separated drums, not an isolated kick; it is useful for candidate mixes and bass-confusion listening, not direct kick ground truth. This discovery pass writes an auditable report and is not itself a training dataset.
+
+
+## Song-level three-way model split (2026-11-18)
+
+The independent three-class trainer now separates original songs into train, validation and untouched test partitions before any model fitting. The split is group-based by original track ID, requires every class (kick, bass guitar, 808) in all three partitions, and requires at least three distinct source tracks per class. Validation is used for epoch monitoring; the test partition is evaluated once after training and is never used for model selection. Checkpoints and JSON reports preserve all three track lists plus separate validation and untouched-test confusion matrices and per-class precision/recall/F1. This remains blocked until enough accepted, rights-verified event annotations exist.
