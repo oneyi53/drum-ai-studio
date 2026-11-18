@@ -64,6 +64,11 @@ def main():
     X,y,groups=make_features(items); random.seed(a.seed); shuffled=tracks[:]; random.shuffle(shuffled); val=set(shuffled[:max(1,round(len(shuffled)*.2))])
     tr=np.asarray([i for i,t in enumerate(groups) if t not in val]); va=np.asarray([i for i,t in enumerate(groups) if t in val])
     if not len(tr) or not len(va): raise SystemExit("Track-grouped split is empty.")
+    train_classes=set(y[tr].tolist()); validation_classes=set(y[va].tolist())
+    absent_train=[LABELS[i] for i in range(len(LABELS)) if i not in train_classes]
+    absent_validation=[LABELS[i] for i in range(len(LABELS)) if i not in validation_classes]
+    if absent_train or absent_validation:
+        raise SystemExit(f"Track-held-out split must contain every class in both partitions; missing_train={absent_train}; missing_validation={absent_validation}. Add reviewed examples from more tracks.")
     import torch
     from torch import nn
     from torch.utils.data import DataLoader,TensorDataset
@@ -80,9 +85,18 @@ def main():
         model.eval()
         with torch.no_grad(): acc=float((model(vx).argmax(1)==vy).float().mean().item())
         history.append({"epoch":epoch+1,"train_loss":total/len(ds),"track_holdout_accuracy":acc})
+    model.eval()
+    with torch.no_grad(): validation_predictions=model(vx).argmax(1).cpu().numpy()
+    confusion=np.zeros((len(LABELS),len(LABELS)),dtype=int)
+    for truth,pred in zip(y[va],validation_predictions): confusion[int(truth),int(pred)]+=1
+    per_class={}
+    for i,label in enumerate(LABELS):
+        tp=int(confusion[i,i]); support=int(confusion[i,:].sum()); predicted=int(confusion[:,i].sum())
+        precision=tp/predicted if predicted else 0.0; recall=tp/support if support else 0.0
+        per_class[label]={"precision":precision,"recall":recall,"f1":2*precision*recall/(precision+recall) if precision+recall else 0.0,"support":support}
     hashes={path:hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in sorted({x["audio_path"] for x in items})}; licenses=sorted({x["license"] for x in items})
     a.output.parent.mkdir(parents=True,exist_ok=True)
     torch.save({"state_dict":model.state_dict(),"labels":LABELS,"feature_config":{"sample_rate":22050,"n_fft":1024,"hop_length":256,"n_mels":96,"frames":96,"window_seconds":96*256/22050},"train_tracks":sorted(set(groups[tr].tolist())),"validation_tracks":sorted(set(groups[va].tolist())),"source_licenses":licenses,"source_audio_sha256":hashes,"created_at_utc":datetime.now(timezone.utc).isoformat(),"note":"Independent initialization; no STAR/AGPL weights loaded. Experimental only; separate licence review required."},a.output)
-    meta={"examples":len(items),"tracks":len(tracks),"class_counts":dict(counts),"class_track_counts":class_track_counts,"train_tracks":sorted(set(groups[tr].tolist())),"validation_tracks":sorted(set(groups[va].tolist())),"source_licenses":licenses,"history":history,"checkpoint":str(a.output)}
+    meta={"examples":len(items),"tracks":len(tracks),"class_counts":dict(counts),"class_track_counts":class_track_counts,"train_tracks":sorted(set(groups[tr].tolist())),"validation_tracks":sorted(set(groups[va].tolist())),"source_licenses":licenses,"validation_confusion_matrix":confusion.tolist(),"validation_per_class":per_class,"history":history,"checkpoint":str(a.output)}
     a.output.with_suffix(".json").write_text(json.dumps(meta,indent=2),encoding="utf-8"); print(json.dumps(meta,indent=2))
 if __name__=="__main__": main()
