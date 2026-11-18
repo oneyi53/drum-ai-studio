@@ -110,7 +110,13 @@ def main():
    technical=screen_audio(dest,duration)
   record={"dataset":"SoundSafari CC0-1.0-Music","dataset_commit":commit,"repository_path":rel,"blob_sha":item["sha"],"genre_bucket":item["genre_bucket"],"genre_match_is_discovery_hint_only":True,"source_url":f"https://github.com/SoundSafari/CC0-1.0-Music/blob/{commit}/{quote(rel,safe='/')}","license":"CC0 1.0 (repository-declared; retain source provenance and honour takedown requests)","license_verified_per_track":False,"download_url":url,"local_path":str(dest) if status=="downloaded" else None,"sha256":digest,"bytes":size,"duration_seconds":duration,"full_song_length_screening":duration_screen,"technical_audio_screening":technical,"eligible_for_full_song_review":status=="downloaded" and duration is not None and duration>=a.min_duration_seconds,"status":status,"audio_screening":"pending_human_genre_and_instrument_review"}
   if status!="downloaded":record["error"]=error
-  manifest.append(record); print(f"[{n}/{len(selected)}] {item['genre_bucket']} {rel} {status} {duration_screen}",flush=True)
- (a.output/"cc0-song-pool-manifest.json").write_text(json.dumps({"created_at_utc":datetime.now(timezone.utc).isoformat(),"dataset_commit":commit,"license_notice":"Repository-level CC0 declaration is discovery evidence, not a substitute for per-track provenance review. No track is assumed to contain drums or bass. Technical audio flags are not musical labels.","genre_counts":counts,"tracks":manifest},indent=2,ensure_ascii=False),encoding="utf-8")
+  manifest.append(record)
+  # Persist after every candidate so a late download/probe failure never discards
+  # the provenance and screening results for files already processed.
+  manifest_doc={"created_at_utc":datetime.now(timezone.utc).isoformat(),"dataset_commit":commit,"license_notice":"Repository-level CC0 declaration is discovery evidence, not a substitute for per-track provenance review. No track is assumed to contain drums or bass. Technical audio flags are not musical labels.","genre_counts":counts,"tracks":manifest}
+  temp_manifest=a.output/"cc0-song-pool-manifest.json.tmp"
+  temp_manifest.write_text(json.dumps(manifest_doc,indent=2,ensure_ascii=False),encoding="utf-8")
+  temp_manifest.replace(a.output/"cc0-song-pool-manifest.json")
+  print(f"[{n}/{len(selected)}] {item['genre_bucket']} {rel} {status} {duration_screen}",flush=True)
  print(json.dumps({"selected":len(selected),"downloaded":sum(x["status"]=="downloaded" for x in manifest),"full_song_length_pass":sum(x.get("eligible_for_full_song_review",False) for x in manifest),"technical_screen_pass":sum(x.get("technical_audio_screening",{}).get("status")=="technical_screen_pass" for x in manifest),"genre_counts":counts,"manifest":str(a.output/"cc0-song-pool-manifest.json")},indent=2))
 if __name__=="__main__":main()
