@@ -60,3 +60,10 @@ def test_three_way_split_rejects_class_with_only_two_tracks():
     labels=np.array([0,0,0,1,1,1,2,2])
     with pytest.raises(ValueError,match="at least three distinct tracks"):
         m.split_track_groups(groups,labels)
+
+
+def test_trainer_uses_three_channel_temporal_spectral_features():
+    source=p.read_text(encoding="utf-8")
+    assert 'np.stack((log_mel,delta,delta2),axis=0)' in source
+    assert 'nn.Conv2d(3,16' in source
+    assert 'torch.from_numpy(X[tr])' in source
