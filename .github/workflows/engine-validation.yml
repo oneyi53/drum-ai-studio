@@ -10,7 +10,7 @@ on:
       - "scripts/kick_stage_diagnostics.py"
       - "scripts/kick_frame_model_diagnostics.py"
       - "scripts/export_kick_reference_checkpoint.py"
-      - "scripts/test_kick_frame_model_diagnostics.py"
+      - "scripts/test_kick_frame_model_diagnostics.py"\n      - "scripts/prepare_real_song_kick_corpus.py"\n      - "scripts/download_kaino_cc0_music.py"\n      - "scripts/score_real_song_kick.py"
       - "scripts/api_engine_smoke.py"
       - "scripts/score_geometry.py"
       - "backend/app/engine_adapter.py"
