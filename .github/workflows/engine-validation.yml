@@ -14,6 +14,10 @@ on:
       - "scripts/prepare_real_song_kick_corpus.py"
       - "scripts/download_kaino_cc0_music.py"
       - "scripts/score_real_song_kick.py"
+      - "docs/kick-review-and-independent-training.md"
+      - "scripts/test_kick_review_pack.py"
+      - "scripts/train_kick_event_classifier.py"
+      - "scripts/build_kick_review_pack.py"
       - "scripts/api_engine_smoke.py"
       - "scripts/score_geometry.py"
       - "backend/app/engine_adapter.py"
@@ -116,6 +120,16 @@ jobs:
             --model /tmp/kick-model/drum_cnn.onnx \
             --output /tmp/real-song-comparison \
             --tolerance-ms 50
+      - name: Build human kick and bass-transient review pack
+        run: |
+          python scripts/build_kick_review_pack.py \
+            --manifest-root /tmp/real-song-corpus \
+            --comparison-dir /tmp/real-song-comparison \
+            --output /tmp/kick-review-pack
+      - name: Test human review pack and independent trainer CLI
+        run: |
+          python -m pytest scripts/test_kick_review_pack.py -q
+          python scripts/train_kick_event_classifier.py --help
       - name: Upload real-song corpus, annotations and comparison
         if: always()
         uses: actions/upload-artifact@v4
