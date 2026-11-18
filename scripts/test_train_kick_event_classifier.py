@@ -41,3 +41,22 @@ def test_unapproved_licence_is_rejected_even_when_verified(tmp_path):
 
 def test_first_stage_model_is_scoped_to_kick_bass_and_808():
     assert m.LABELS == ["kick", "bass_guitar", "bass_synth_808"]
+
+
+def test_track_group_split_has_three_disjoint_song_partitions():
+    import numpy as np
+    groups=np.array(["a","a","b","b","c","c","d","d","e","e","f","f","g","g","h","h","i","i"])
+    labels=np.array([0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1])
+    tr,va,te,parts=m.split_track_groups(groups,labels,seed=7)
+    assert set(parts["train"]).isdisjoint(parts["validation"])
+    assert set(parts["train"]).isdisjoint(parts["test"])
+    assert set(parts["validation"]).isdisjoint(parts["test"])
+    assert set(labels[tr])==set(labels[va])==set(labels[te])=={0,1}
+
+def test_three_way_split_rejects_class_with_only_two_tracks():
+    import numpy as np
+    groups=np.array(["a","b","c","d","e","f"])
+    labels=np.array([0,0,0,1,1,1])
+    labels[2]=0
+    with pytest.raises(ValueError,match="at least three distinct tracks"):
+        m.split_track_groups(groups,labels)
