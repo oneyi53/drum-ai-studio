@@ -42,14 +42,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install portable FFmpeg and Python PDF renderer
+      - name: Install FFmpeg and Python PDF renderer
         run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
           python -m pip install --upgrade pip
-          python -m pip install ffmpeg-downloader==0.5.3 pypdfium2 pillow
-          mkdir -p "$HOME/.local/bin"
-          ffdl install 7@static
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.local/bin:$PATH"
+          python -m pip install pypdfium2 pillow
           command -v ffmpeg
           command -v ffprobe
           ffmpeg -version
