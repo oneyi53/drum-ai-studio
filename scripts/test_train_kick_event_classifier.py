@@ -37,3 +37,7 @@ def test_unapproved_licence_is_rejected_even_when_verified(tmp_path):
     manifest.write_text(json.dumps(data),encoding="utf-8")
     with pytest.raises(ValueError,match="Non-allowlisted"):
         m.load_approved(manifest,[annotations],False)
+
+
+def test_first_stage_model_is_scoped_to_kick_bass_and_808():
+    assert m.LABELS == ["kick", "bass_guitar", "bass_synth_808"]
