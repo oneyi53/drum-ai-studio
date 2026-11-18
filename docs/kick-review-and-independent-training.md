@@ -36,3 +36,18 @@ The script requires at least 8 tracks and 20 accepted examples per class by defa
 The from-scratch trainer now refuses accepted annotations unless the source manifest explicitly marks `license_verified_per_track: true`, or the annotation row carries `license_verified=true`. A repository-wide CC0 badge is not sufficient. The trainer also checks any recorded audio SHA-256, rejects invalid/out-of-range annotation times, and requires each event class to occur in at least two distinct tracks before track-grouped holdout training.
 
 The event crop was lengthened from 32 to 96 hops (about 1.115 seconds at 22,050 Hz / 256 hop). This gives the classifier more low-frequency sustain/context to distinguish kick transients from bass guitar and 808 notes. It remains an experimental event classifier, not a full-song deployed transcription model. A dedicated test file covers the per-track rights gate and is run in CI.
+
+
+## Full-song corpus expansion and separated error accounting (2026-11-18)
+
+The CI discovery pool is expanded to up to 60 candidates (five per each of 12 filename-derived genre buckets). A candidate is only marked as passing the full-song length screen when FFprobe confirms at least 60 seconds. This is not a musical-content or genre confirmation: actual drums, bass, style and per-track rights remain pending human/source review. Short loops remain recorded but are excluded from the full-song eligible count.
+
+Use `scripts/evaluate_kick_bass_confusions.py` with reviewed CSV annotations and `real-song-events.csv` predictions to report, independently per model arm and track:
+- kick reference events matched and missed (kick recall);
+- bass-guitar events incorrectly matched by a kick prediction;
+- bass-synth/808 events incorrectly matched by a kick prediction;
+- unmatched kick predictions, kept as unknown rather than automatically called bass.
+
+Only rows with `decision=accept` enter the reference set. Rejected and uncertain rows do not count as ground truth. The test suite explicitly checks that the three error categories remain separate.
+
+The independent trainer now also requires every class to occur in both the train and track-held-out validation partitions. It writes a validation confusion matrix and per-class precision/recall/F1, in addition to the previous track-grouped split and source hashes. This prevents an apparently good aggregate accuracy from hiding an absent class in the holdout set.
