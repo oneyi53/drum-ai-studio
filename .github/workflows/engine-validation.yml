@@ -19,6 +19,7 @@ on:
       - "docs/kick-review-and-independent-training.md"
       - "scripts/test_kick_review_pack.py"
       - "scripts/train_kick_event_classifier.py"
+      - "scripts/test_train_kick_event_classifier.py"
       - "scripts/build_kick_review_pack.py"
       - "scripts/api_engine_smoke.py"
       - "scripts/score_geometry.py"
@@ -137,7 +138,7 @@ jobs:
             --output /tmp/kick-review-pack
       - name: Test human review pack and independent trainer CLI
         run: |
-          python -m pytest scripts/test_kick_review_pack.py -q
+          python -m pytest scripts/test_kick_review_pack.py scripts/test_train_kick_event_classifier.py -q
           python scripts/train_kick_event_classifier.py --help
       - name: Upload CC0 genre-balanced song pool
         if: always()
