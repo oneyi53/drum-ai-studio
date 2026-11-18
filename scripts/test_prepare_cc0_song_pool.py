@@ -13,3 +13,8 @@ def test_each_genre_has_distinct_search_terms():
 def test_audio_filter_excludes_non_audio():
     assert m.AUDIO.search("song.mp3")
     assert not m.AUDIO.search("cover.jpg")
+
+def test_full_song_duration_screen_excludes_short_loops():
+    assert m.screen_duration(12.5)=="too_short_for_full_song_benchmark"
+    assert m.screen_duration(180.0)=="full_song_length_pass"
+    assert m.screen_duration(None)=="metadata_probe_failed"
