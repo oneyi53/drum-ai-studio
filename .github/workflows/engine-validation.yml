@@ -9,6 +9,7 @@ on:
       - "scripts/engine_smoke.py"
       - "scripts/kick_stage_diagnostics.py"
       - "scripts/kick_frame_model_diagnostics.py"
+      - "scripts/export_kick_reference_checkpoint.py"
       - "scripts/test_kick_frame_model_diagnostics.py"
       - "scripts/api_engine_smoke.py"
       - "scripts/score_geometry.py"
@@ -58,7 +59,7 @@ jobs:
           git -C /tmp/DrumScript rev-parse HEAD
           echo "DRUMSCRIPT_SHA=$(git -C /tmp/DrumScript rev-parse HEAD)" >> "$GITHUB_ENV"
           python -m pip install -e /tmp/DrumScript
-          python -m pip install pytest mir-eval requests onnxruntime
+          python -m pip install pytest mir-eval requests onnxruntime onnx
       - name: Install DrumAI canonical MIDI adapter
         run: python -m pip install -e "./backend[dev]"
       - name: Verify package and CLI
@@ -78,13 +79,21 @@ jobs:
           IDMT_ROOT="$(find /tmp/idmt-dataset -type d -name annotation_xml -print -quit | xargs dirname)"
           test -d "$IDMT_ROOT/audio"
           echo "IDMT_ROOT=$IDMT_ROOT" >> "$GITHUB_ENV"
-      - name: Download reference frame-level kick model (evaluation only)
+      - name: Fetch pinned upstream checkpoint and export with recorded training config (evaluation only)
         run: |
           mkdir -p /tmp/kick-model
+          git clone --filter=blob:none https://github.com/FrancescoZumo/frame_level_drum_classifier.git /tmp/kick-model/upstream
+          git -C /tmp/kick-model/upstream fetch --depth 1 origin 32b1c9e43fbaede862116ef6241fa9defba39b90
+          git -C /tmp/kick-model/upstream checkout --detach 32b1c9e43fbaede862116ef6241fa9defba39b90
           curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
-            "https://raw.githubusercontent.com/FrancescoZumo/frame_level_drum_classifier/32b1c9e43fbaede862116ef6241fa9defba39b90/drum_cnn.onnx" \
-            --output /tmp/kick-model/drum_cnn.onnx
-          test "$(stat -c%s /tmp/kick-model/drum_cnn.onnx)" -gt 100000
+            "https://raw.githubusercontent.com/FrancescoZumo/frame_level_drum_classifier/32b1c9e43fbaede862116ef6241fa9defba39b90/checkpoints/drum_cnn_no_pos_weights.pth" \
+            --output /tmp/kick-model/checkpoint.pth
+          test "$(stat -c%s /tmp/kick-model/checkpoint.pth)" -gt 100000
+          python "$GITHUB_WORKSPACE/scripts/export_kick_reference_checkpoint.py" \
+            --checkpoint /tmp/kick-model/checkpoint.pth \
+            --upstream-root /tmp/kick-model/upstream \
+            --output /tmp/kick-model/drum_cnn.onnx \
+            --source-commit 32b1c9e43fbaede862116ef6241fa9defba39b90
       - name: Test kick frame-model evaluation helpers
         run: python -m pytest scripts/test_kick_frame_model_diagnostics.py -q
       - name: Score annotated RealDrum mixes
