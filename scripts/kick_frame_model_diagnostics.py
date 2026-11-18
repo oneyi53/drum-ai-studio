@@ -55,6 +55,22 @@ def match_count(reference: list[float], estimates: list[float], tolerance: float
     return matched
 
 
+def unmatched_prediction_times(reference: list[float], estimates: list[float], tolerance: float) -> list[float]:
+    """Return prediction timestamps not consumed by one-to-one chronological matching."""
+    refs = sorted(float(value) for value in reference)
+    preds = sorted(float(value) for value in estimates)
+    i = 0
+    false_positives: list[float] = []
+    for prediction in preds:
+        while i < len(refs) and refs[i] < prediction - tolerance:
+            i += 1
+        if i < len(refs) and abs(refs[i] - prediction) <= tolerance:
+            i += 1
+        else:
+            false_positives.append(prediction)
+    return false_positives
+
+
 def score(reference: list[float], estimates: list[float], tolerance: float) -> dict[str, int | float]:
     tp = match_count(reference, estimates, tolerance)
     fp = len(estimates) - tp
@@ -74,18 +90,18 @@ def score(reference: list[float], estimates: list[float], tolerance: float) -> d
     }
 
 
-def probabilities_to_onsets(probabilities: np.ndarray, threshold: float) -> list[float]:
+def probabilities_to_onsets(probabilities: np.ndarray, threshold: float, hop_length: int = HOP_LENGTH, sample_rate: int = MODEL_SR) -> list[float]:
     """Convert the model's frame-wise kick probability to rising-edge onsets."""
     values = np.asarray(probabilities, dtype=np.float64).reshape(-1)
     active = values >= threshold
     rising = active & ~np.concatenate(([False], active[:-1]))
-    return (np.flatnonzero(rising) * HOP_LENGTH / MODEL_SR).astype(float).tolist()
+    return (np.flatnonzero(rising) * hop_length / sample_rate).astype(float).tolist()
 
 
-def _model_features(audio_path: Path) -> np.ndarray:
+def _model_features(audio_path: Path, n_mels: int) -> np.ndarray:
     waveform, _ = librosa.load(str(audio_path), sr=MODEL_SR, mono=True)
     mel = librosa.feature.melspectrogram(
-        y=waveform, sr=MODEL_SR, n_fft=N_FFT, hop_length=HOP_LENGTH, n_mels=N_MELS
+        y=waveform, sr=MODEL_SR, n_fft=N_FFT, hop_length=HOP_LENGTH, n_mels=n_mels
     )
     log_mel = librosa.power_to_db(mel, ref=np.max)
     delta = librosa.feature.delta(log_mel)
@@ -93,13 +109,14 @@ def _model_features(audio_path: Path) -> np.ndarray:
     return np.stack((log_mel, delta, delta2), axis=0).astype(np.float32)
 
 
-def infer_frame_model(session: ort.InferenceSession, audio_path: Path) -> list[float]:
-    features = _model_features(audio_path)  # (3, 96, frames)
+def infer_frame_model(session: ort.InferenceSession, audio_path: Path, model_spec: dict[str, Any]) -> list[float]:
+    features = _model_features(audio_path, int(model_spec['n_mels']))
     frame_count = features.shape[-1]
-    pad = np.zeros((3, N_MELS, CONTEXT), dtype=np.float32)
+    context = int(model_spec['context'])
+    pad = np.zeros((3, int(model_spec['n_mels']), context), dtype=np.float32)
     padded = np.concatenate((pad, features, pad), axis=2)
     windows = np.lib.stride_tricks.sliding_window_view(
-        padded, 2 * CONTEXT + 1, axis=2
+        padded, 2 * context + 1, axis=2
     ).transpose(2, 0, 3, 1)
     input_name = session.get_inputs()[0].name
     output_name = session.get_outputs()[0].name
@@ -113,7 +130,7 @@ def infer_frame_model(session: ort.InferenceSession, audio_path: Path) -> list[f
     probabilities = np.concatenate(probability_chunks, axis=0)
     if probabilities.ndim != 2 or probabilities.shape[1] < 1:
         raise RuntimeError(f"unexpected model output shape: {probabilities.shape}")
-    return probabilities_to_onsets(probabilities[:, 0], MODEL_THRESHOLD)
+    return probabilities_to_onsets(probabilities[:, 0], MODEL_THRESHOLD, hop_length=int(model_spec['hop_length']), sample_rate=int(model_spec['sample_rate']))
 
 
 def _drumscript_kicks(audio_path: Path, lfer_min: float) -> list[float]:
@@ -167,20 +184,34 @@ def evaluate_subset(
     files = files[offset : offset + limit if limit is not None else None]
     if not files:
         raise ValueError(f"no IDMT mix files found for subset {subset_name!r}")
+    model_spec_path = model_path.with_suffix(".json")
+    if not model_spec_path.is_file():
+        raise FileNotFoundError(f"checkpoint-derived metadata missing: {model_spec_path}")
+    model_spec = json.loads(model_spec_path.read_text(encoding="utf-8"))
     session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+    input_shape = session.get_inputs()[0].shape
+    expected_shape = [None, 3, 2 * int(model_spec["context"]) + 1, int(model_spec["n_mels"])]
+    actual_shape = [None if isinstance(value, str) else value for value in input_shape]
+    if actual_shape != expected_shape:
+        raise RuntimeError(f"ONNX input shape {actual_shape} does not match checkpoint metadata {expected_shape}")
     rows: list[dict[str, Any]] = []
+    false_positive_rows: list[dict[str, Any]] = []
     tolerance = tolerance_ms / 1000.0
 
     for audio_path in files:
         references = reference_onsets_for_file(audio_path).get("KD", [])
         reference_times = [float(value) for value in references]
-        model_times = infer_frame_model(session, audio_path)
+        model_times = infer_frame_model(session, audio_path, model_spec)
         rule010_times = _drumscript_kicks(audio_path, 0.10)
         rule032_times = _drumscript_kicks(audio_path, 0.32)
         row: dict[str, Any] = {
             "track": audio_path.name,
             "subset": subset_of(audio_path),
             "tolerance_ms": tolerance_ms,
+        }
+        other_refs = {
+            "SD": [float(value) for value in reference_onsets_for_file(audio_path).get("SD", [])],
+            "HH": [float(value) for value in reference_onsets_for_file(audio_path).get("HH", [])],
         }
         for prefix, estimates in (
             ("frame_model", model_times),
@@ -190,6 +221,22 @@ def evaluate_subset(
             metrics = score(reference_times, estimates, tolerance)
             for key, value in metrics.items():
                 row[f"{prefix}_{key}"] = value
+            fp_times = unmatched_prediction_times(reference_times, estimates, tolerance)
+            row[f"{prefix}_fp_times_sec"] = json.dumps([round(t, 4) for t in fp_times])
+            for fp_time in fp_times:
+                nearest = {code: min(values, key=lambda t: abs(t - fp_time)) if values else None for code, values in other_refs.items()}
+                distances = {code: abs(value - fp_time) for code, value in nearest.items() if value is not None}
+                closest = min(distances, key=distances.get) if distances else None
+                nearest_time = nearest.get(closest) if closest else None
+                coincident = nearest_time is not None and abs(nearest_time - fp_time) <= 0.10
+                false_positive_rows.append({
+                    "track": audio_path.name, "subset": subset_of(audio_path), "arm": prefix,
+                    "fp_time_sec": round(fp_time, 4),
+                    "nearest_other_drum": closest if coincident else "",
+                    "nearest_other_drum_time_sec": round(nearest_time, 4) if nearest_time is not None else "",
+                    "nearest_other_drum_delta_ms": round((nearest_time - fp_time) * 1000, 1) if nearest_time is not None else "",
+                    "interpretation": "coincident_non_kick_drum" if coincident else "unmatched_by_IDMT_drum_annotations",
+                })
         rows.append(row)
 
     prefixes = ("frame_model", "drumscript_lfer_010", "drumscript_lfer_032")
@@ -203,6 +250,9 @@ def evaluate_subset(
         "model_source_commit": MODEL_SOURCE_COMMIT,
         "model_license": MODEL_LICENSE,
         "model_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
+        "checkpoint_training_config": model_spec,
+        "model_input_shape": input_shape,
+        "false_positive_interpretation": "IDMT annotates kick/snare/hi-hat, not bass guitar or synthesizer. False positives coincident with annotated snare/hi-hat are tagged; remaining events require stem/audio review and must not be labeled bass/synth automatically.",
         "drumscript_source_sha": os.environ.get("DRUMSCRIPT_SHA", "not-recorded"),
         "comparison_scope": (
             "All three classifiers receive the same original full mix. "
@@ -218,6 +268,12 @@ def evaluate_subset(
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+    fp_csv_path = output_path.with_name(output_path.stem + "_false_positives.csv")
+    fp_fields = ["track", "subset", "arm", "fp_time_sec", "nearest_other_drum", "nearest_other_drum_time_sec", "nearest_other_drum_delta_ms", "interpretation"]
+    with fp_csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fp_fields)
+        writer.writeheader()
+        writer.writerows(false_positive_rows)
     for prefix in prefixes:
         metrics = summary["aggregates"][prefix]
         print(
@@ -226,7 +282,7 @@ def evaluate_subset(
             f"TP={metrics['tp']} FP={metrics['fp']} FN={metrics['fn']} "
             f"P={metrics['precision']:.4f} R={metrics['recall']:.4f} F1={metrics['f1']:.4f}"
         )
-    print(f"KICK_MODEL_ARTIFACT json={output_path} csv={csv_path}")
+    print(f"KICK_MODEL_ARTIFACT json={output_path} csv={csv_path} false_positives={fp_csv_path}")
     return summary
 
 
