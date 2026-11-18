@@ -6,7 +6,7 @@ track contains drums/bass; every download remains pending audio screening and
 human review. Original repository path, commit, blob SHA and file hash are kept.
 """
 from __future__ import annotations
-import argparse, hashlib, json, random, re, time
+import argparse, hashlib, json, random, re, time, subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -34,7 +34,7 @@ def main():
  p=argparse.ArgumentParser(description=__doc__)
  p.add_argument("--output",type=Path,required=True); p.add_argument("--max-per-genre",type=int,default=4)
  p.add_argument("--max-total",type=int,default=40); p.add_argument("--max-file-mb",type=float,default=30)
- p.add_argument("--seed",type=int,default=20261118); p.add_argument("--genres",nargs="*",default=list(GENRES))
+ p.add_argument("--seed",type=int,default=20261118); p.add_argument("--genres",nargs="*",default=list(GENRES)); p.add_argument("--min-duration-seconds",type=float,default=60.0)
  a=p.parse_args()
  sess=requests.Session(); sess.headers["User-Agent"]="DrumAI-Studio-CC0-dataset-builder"
  response=sess.get(API+"/git/trees/main?recursive=1",timeout=90); response.raise_for_status()
@@ -67,10 +67,16 @@ def main():
    digest=hashlib.sha256(dest.read_bytes()).hexdigest(); size=dest.stat().st_size
   except Exception as exc:
    status="download_failed"; digest=""; size=0; error=str(exc)
-  record={"dataset":"SoundSafari CC0-1.0-Music","dataset_commit":commit,"repository_path":rel,"blob_sha":item["sha"],"genre_bucket":item["genre_bucket"],"genre_match_is_discovery_hint_only":True,"source_url":f"https://github.com/SoundSafari/CC0-1.0-Music/blob/{commit}/{quote(rel,safe='/')}","license":"CC0 1.0 (repository-declared; retain source provenance and honour takedown requests)","license_verified_per_track":False,"download_url":url,"local_path":str(dest) if status=="downloaded" else None,"sha256":digest,"bytes":size,"status":status,"audio_screening":"pending"}
+  duration=None; duration_screen="metadata_probe_failed"
+  if status=="downloaded":
+   probe=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(dest)],capture_output=True,text=True)
+   if probe.returncode==0:
+    try: duration=float(probe.stdout.strip()); duration_screen="full_song_length_pass" if duration>=a.min_duration_seconds else "too_short_for_full_song_benchmark"
+    except ValueError: duration_screen="invalid_duration"
+  record={"dataset":"SoundSafari CC0-1.0-Music","dataset_commit":commit,"repository_path":rel,"blob_sha":item["sha"],"genre_bucket":item["genre_bucket"],"genre_match_is_discovery_hint_only":True,"source_url":f"https://github.com/SoundSafari/CC0-1.0-Music/blob/{commit}/{quote(rel,safe='/')}","license":"CC0 1.0 (repository-declared; retain source provenance and honour takedown requests)","license_verified_per_track":False,"download_url":url,"local_path":str(dest) if status=="downloaded" else None,"sha256":digest,"bytes":size,"duration_seconds":duration,"full_song_length_screening":duration_screen,"eligible_for_full_song_review":status=="downloaded" and duration is not None and duration>=a.min_duration_seconds,"status":status,"audio_screening":"pending_actual_drums_bass_and_genre_review"}
   if status!="downloaded":record["error"]=error
   manifest.append(record)
   print(f"[{n}/{len(selected)}] {item['genre_bucket']} {rel} {status}",flush=True)
  (a.output/"cc0-song-pool-manifest.json").write_text(json.dumps({"created_at_utc":datetime.now(timezone.utc).isoformat(),"dataset_commit":commit,"license_notice":"Repository-level CC0 declaration is discovery evidence, not a substitute for per-track provenance review. No track is assumed to contain drums or bass.","genre_counts":counts,"tracks":manifest},indent=2,ensure_ascii=False),encoding="utf-8")
- print(json.dumps({"selected":len(selected),"downloaded":sum(x["status"]=="downloaded" for x in manifest),"genre_counts":counts,"manifest":str(a.output/"cc0-song-pool-manifest.json")},indent=2))
+ print(json.dumps({"selected":len(selected),"downloaded":sum(x["status"]=="downloaded" for x in manifest),"full_song_length_pass":sum(x.get("eligible_for_full_song_review",False) for x in manifest),"genre_counts":counts,"manifest":str(a.output/"cc0-song-pool-manifest.json")},indent=2))
 if __name__=="__main__":main()
