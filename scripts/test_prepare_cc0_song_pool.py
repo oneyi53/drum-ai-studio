@@ -30,3 +30,8 @@ def test_audio_screening_is_explicitly_non_semantic():
     result=m.screen_audio
     assert callable(result)
     assert "Non-destructive technical flags" in result.__doc__
+
+
+def test_raw_download_url_pins_commit_before_repository_path():
+    url=m.raw_download_url("abc123", "freesound.org/artist/song name.mp3")
+    assert url == "https://raw.githubusercontent.com/SoundSafari/CC0-1.0-Music/abc123/freesound.org/artist/song%20name.mp3"
