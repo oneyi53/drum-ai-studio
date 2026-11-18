@@ -1,0 +1,15 @@
+import importlib.util
+from pathlib import Path
+p=Path(__file__).with_name("prepare_cc0_song_pool.py")
+spec=importlib.util.spec_from_file_location("cc0_pool",p); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+def test_genre_buckets_cover_low_frequency_confusion_styles():
+    assert {"rock","funk","jazz","hip_hop","electronic","drum_and_bass","reggae"} <= set(m.GENRES)
+
+def test_each_genre_has_distinct_search_terms():
+    for genre,terms in m.GENRES.items():
+        assert terms and all(isinstance(x,str) and x for x in terms)
+
+def test_audio_filter_excludes_non_audio():
+    assert m.AUDIO.search("song.mp3")
+    assert not m.AUDIO.search("cover.jpg")
