@@ -82,7 +82,7 @@ jobs:
         run: |
           mkdir -p /tmp/kick-model
           curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \\
-            "https://raw.githubusercontent.com/FrancescoZumo/frame_level_drum_classifier/ef2a36c062341ab0ea585874259ea396a94ae362/drum_cnn.onnx" \\
+            "https://raw.githubusercontent.com/FrancescoZumo/frame_level_drum_classifier/32b1c9e43fbaede862116ef6241fa9defba39b90/drum_cnn.onnx" \\
             --output /tmp/kick-model/drum_cnn.onnx
           test "$(stat -c%s /tmp/kick-model/drum_cnn.onnx)" -gt 100000
       - name: Test kick frame-model evaluation helpers
