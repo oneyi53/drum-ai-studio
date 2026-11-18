@@ -29,3 +29,10 @@ The script requires at least 8 tracks and 20 accepted examples per class by defa
 - Four bass-confusion tracks have separate bass/808 stems but grouped drums, so they support bass-transient review, not kick-only ground truth.
 - STAR CNN remains evaluation-only under AGPL-3.0. No STAR weights are copied into the independent model.
 - Production inference, thresholds, MIDI mapping and exports are unchanged.
+
+
+## Independent trainer hardening (2026-11-18)
+
+The from-scratch trainer now refuses accepted annotations unless the source manifest explicitly marks `license_verified_per_track: true`, or the annotation row carries `license_verified=true`. A repository-wide CC0 badge is not sufficient. The trainer also checks any recorded audio SHA-256, rejects invalid/out-of-range annotation times, and requires each event class to occur in at least two distinct tracks before track-grouped holdout training.
+
+The event crop was lengthened from 32 to 96 hops (about 1.115 seconds at 22,050 Hz / 256 hop). This gives the classifier more low-frequency sustain/context to distinguish kick transients from bass guitar and 808 notes. It remains an experimental event classifier, not a full-song deployed transcription model. A dedicated test file covers the per-track rights gate and is run in CI.
