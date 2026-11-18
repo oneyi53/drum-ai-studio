@@ -93,8 +93,9 @@ def score(reference: list[float], estimates: list[float], tolerance: float) -> d
 def probabilities_to_onsets(probabilities: np.ndarray, threshold: float, hop_length: int = HOP_LENGTH, sample_rate: int = MODEL_SR) -> list[float]:
     """Convert the model's frame-wise kick probability to rising-edge onsets."""
     values = np.asarray(probabilities, dtype=np.float64).reshape(-1)
-    active = values >= threshold
-    rising = active & ~np.concatenate(([False], active[:-1]))
+    active = values > threshold
+    rising = np.zeros_like(active, dtype=bool)
+    rising[1:] = active[1:] & ~active[:-1]
     return (np.flatnonzero(rising) * hop_length / sample_rate).astype(float).tolist()
 
 
