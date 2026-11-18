@@ -31,6 +31,11 @@ GENRES={
 }
 AUDIO=re.compile(r"\.(mp3|wav|flac|ogg|m4a)$",re.I)
 
+def raw_download_url(commit: str, repository_path: str) -> str:
+ """Build a commit-pinned raw URL (the commit segment is required by GitHub)."""
+ return f"{RAW}/{commit}/{quote(repository_path,safe='/')}"
+
+
 def screen_duration(duration, minimum=60.0):
  if duration is None: return "metadata_probe_failed"
  if duration < minimum: return "too_short_for_full_song_benchmark"
@@ -85,7 +90,7 @@ def main():
  a.output.mkdir(parents=True,exist_ok=True); manifest=[]
  for n,item in enumerate(selected,1):
   rel=item["path"]; dest=a.output/"audio"/rel; dest.parent.mkdir(parents=True,exist_ok=True)
-  url=RAW+"/"+quote(rel,safe="/"); status="downloaded"
+  url=raw_download_url(commit,rel); status="downloaded"
   try:
    if not dest.exists():
     with sess.get(url,stream=True,timeout=(30,180)) as r:
