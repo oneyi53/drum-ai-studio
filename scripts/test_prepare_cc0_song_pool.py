@@ -42,3 +42,11 @@ def test_manifest_is_checkpointed_after_each_candidate():
     source=inspect.getsource(m.main)
     assert 'temp_manifest.replace(a.output/"cc0-song-pool-manifest.json")' in source
     assert source.index('manifest.append(record)') < source.index('temp_manifest.replace')
+
+
+def test_ffmpeg_and_ffprobe_diagnostics_decode_with_replacement():
+    import inspect
+    source=inspect.getsource(m.main)
+    screen_source=inspect.getsource(m.screen_audio)
+    assert 'encoding="utf-8",errors="replace"' in screen_source
+    assert 'encoding="utf-8",errors="replace"' in source
