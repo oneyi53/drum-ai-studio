@@ -50,3 +50,12 @@ def test_ffmpeg_and_ffprobe_diagnostics_decode_with_replacement():
     screen_source=inspect.getsource(m.screen_audio)
     assert 'encoding="utf-8",errors="replace"' in screen_source
     assert 'encoding="utf-8",errors="replace"' in source
+
+
+def test_source_paths_with_unsafe_archive_characters_are_safely_mapped():
+    first=m.safe_local_relative_path("artist/Track | Mix?.mp3")
+    second=m.safe_local_relative_path("artist/Track : Mix?.mp3")
+    assert "|" not in str(first) and "?" not in str(first)
+    assert ":" not in str(second) and "?" not in str(second)
+    assert first != second
+    assert first.parts[0] == "artist"
