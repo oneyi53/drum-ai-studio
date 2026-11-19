@@ -36,6 +36,24 @@ def raw_download_url(commit: str, repository_path: str) -> str:
  return f"{RAW}/{commit}/{quote(repository_path,safe='/')}"
 
 
+def safe_local_relative_path(repository_path: str) -> Path:
+ """Map source paths to portable artifact paths without losing provenance.
+
+ The original repository_path is retained separately in the manifest. Unsafe
+ filename characters are replaced, and a short digest prevents collisions
+ between distinct source names that sanitize to the same local path.
+ """
+ parts=[]
+ for component in Path(repository_path).parts:
+  safe=re.sub(r'[<>:"|?*\\\\\\x00-\\\\\\x1f]', "_", component).rstrip(" .")
+  if not safe: safe="_file"
+  if safe != component:
+   suffix=hashlib.sha256(component.encode("utf-8")).hexdigest()[:8]
+   safe=f"{safe}.{suffix}"
+  parts.append(safe)
+ return Path(*parts)
+
+
 def screen_duration(duration, minimum=60.0):
  if duration is None: return "metadata_probe_failed"
  if duration < minimum: return "too_short_for_full_song_benchmark"
@@ -89,7 +107,7 @@ def main():
  selected=selected[:a.max_total]
  a.output.mkdir(parents=True,exist_ok=True); manifest=[]
  for n,item in enumerate(selected,1):
-  rel=item["path"]; dest=a.output/"audio"/rel; dest.parent.mkdir(parents=True,exist_ok=True)
+  rel=item["path"]; local_rel=safe_local_relative_path(rel); dest=a.output/"audio"/local_rel; dest.parent.mkdir(parents=True,exist_ok=True)
   url=raw_download_url(commit,rel); status="downloaded"
   try:
    if not dest.exists():
@@ -108,7 +126,7 @@ def main():
     try: duration=float(probe.stdout.strip()); duration_screen=screen_duration(duration,a.min_duration_seconds)
     except ValueError: duration_screen="invalid_duration"
    technical=screen_audio(dest,duration)
-  record={"dataset":"SoundSafari CC0-1.0-Music","dataset_commit":commit,"repository_path":rel,"blob_sha":item["sha"],"genre_bucket":item["genre_bucket"],"genre_match_is_discovery_hint_only":True,"source_url":f"https://github.com/SoundSafari/CC0-1.0-Music/blob/{commit}/{quote(rel,safe='/')}","license":"CC0 1.0 (repository-declared; retain source provenance and honour takedown requests)","license_verified_per_track":False,"download_url":url,"local_path":str(dest) if status=="downloaded" else None,"sha256":digest,"bytes":size,"duration_seconds":duration,"full_song_length_screening":duration_screen,"technical_audio_screening":technical,"eligible_for_full_song_review":status=="downloaded" and duration is not None and duration>=a.min_duration_seconds,"status":status,"audio_screening":"pending_human_genre_and_instrument_review"}
+  record={"dataset":"SoundSafari CC0-1.0-Music","dataset_commit":commit,"repository_path":rel,"blob_sha":item["sha"],"genre_bucket":item["genre_bucket"],"genre_match_is_discovery_hint_only":True,"source_url":f"https://github.com/SoundSafari/CC0-1.0-Music/blob/{commit}/{quote(rel,safe='/')}","license":"CC0 1.0 (repository-declared; retain source provenance and honour takedown requests)","license_verified_per_track":False,"download_url":url,"local_path":str(dest) if status=="downloaded" else None,"local_relative_path":str(local_rel),"sha256":digest,"bytes":size,"duration_seconds":duration,"full_song_length_screening":duration_screen,"technical_audio_screening":technical,"eligible_for_full_song_review":status=="downloaded" and duration is not None and duration>=a.min_duration_seconds,"status":status,"audio_screening":"pending_human_genre_and_instrument_review"}
   if status!="downloaded":record["error"]=error
   manifest.append(record)
   # Persist after every candidate so a late download/probe failure never discards
