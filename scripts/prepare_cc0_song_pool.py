@@ -45,7 +45,7 @@ def screen_audio(path: Path, duration: float | None) -> dict:
  """Non-destructive technical flags; never treats these as musical labels."""
  cmd=["ffmpeg","-hide_banner","-nostats","-i",str(path),"-af",
       "silencedetect=noise=-55dB:d=1,astats=metadata=0:reset=0","-f","null","-"]
- run=subprocess.run(cmd,capture_output=True,text=True)
+ run=subprocess.run(cmd,capture_output=True,text=True,encoding="utf-8",errors="replace")
  log=run.stderr
  def metric(pattern):
   match=re.search(pattern,log,re.I)
@@ -103,7 +103,7 @@ def main():
    status="download_failed"; digest=""; size=0; error=str(exc)
   duration=None; duration_screen="metadata_probe_failed"; technical=None
   if status=="downloaded":
-   probe=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(dest)],capture_output=True,text=True)
+   probe=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(dest)],capture_output=True,text=True,encoding="utf-8",errors="replace")
    if probe.returncode==0:
     try: duration=float(probe.stdout.strip()); duration_screen=screen_duration(duration,a.min_duration_seconds)
     except ValueError: duration_screen="invalid_duration"
