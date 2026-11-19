@@ -45,7 +45,7 @@ def safe_local_relative_path(repository_path: str) -> Path:
  """
  parts=[]
  for component in Path(repository_path).parts:
-  safe=re.sub(r'[<>:"|?*\\\\\\x00-\\\\\\x1f]', "_", component).rstrip(" .")
+  safe="".join("_" if ord(ch)<32 or ch in '< >:"|?*'.replace(" ", "") else ch for ch in component).rstrip(" .")
   if not safe: safe="_file"
   if safe != component:
    suffix=hashlib.sha256(component.encode("utf-8")).hexdigest()[:8]
