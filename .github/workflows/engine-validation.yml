@@ -12,6 +12,7 @@ on:
       - "scripts/export_kick_reference_checkpoint.py"
       - "scripts/test_kick_frame_model_diagnostics.py"
       - "scripts/prepare_real_song_kick_corpus.py"
+      - "scripts/test_prepare_real_song_kick_corpus.py"
       - "scripts/download_kaino_cc0_music.py"
       - "scripts/score_real_song_kick.py"
       - "scripts/test_prepare_cc0_song_pool.py"
@@ -107,6 +108,7 @@ jobs:
       - name: Download and audit OnAir stem-backed real songs; discover Kaino CC0 tracks
         run: |
           python scripts/prepare_real_song_kick_corpus.py --output /tmp/real-song-corpus
+          python -m pytest scripts/test_prepare_real_song_kick_corpus.py -q
       - name: Download selected Kaino CC0 WAV full mixes
         continue-on-error: true
         run: |
