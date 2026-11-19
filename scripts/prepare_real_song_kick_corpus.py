@@ -20,7 +20,7 @@ import sys
 import time
 from datetime import datetime, timezone
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
@@ -77,7 +77,40 @@ def unpack_onair(root: Path) -> list[Path]:
                 "use the Git LFS media URL and inspect the response"
             )
         with zipfile.ZipFile(archive) as bundle:
-            bundle.extractall(extracted)
+            extraction_records = []
+            for member in bundle.infolist():
+                source_name = PurePosixPath(member.filename)
+                if source_name.is_absolute() or ".." in source_name.parts:
+                    raise RuntimeError(f"Unsafe archive member path: {member.filename!r}")
+                safe_parts = []
+                for part in source_name.parts:
+                    safe = "".join("_" if ord(ch) < 32 or ch in '<>:"|?*' else ch for ch in part).rstrip(" .")
+                    if not safe:
+                        safe = "_file"
+                    if safe != part:
+                        safe += "." + hashlib.sha256(part.encode("utf-8")).hexdigest()[:8]
+                    safe_parts.append(safe)
+                relative = Path(*safe_parts)
+                destination = extracted / relative
+                if member.is_dir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+                # Do not materialize symlinks from untrusted ZIP members.
+                mode = (member.external_attr >> 16) & 0o170000
+                if mode == 0o120000:
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with bundle.open(member) as source, destination.open("wb") as target:
+                    while True:
+                        chunk = source.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        target.write(chunk)
+                extraction_records.append({"archive": name, "source_member": member.filename,
+                                           "extracted_path": str(destination)})
+            (root / "onair-extraction-manifest.json").write_text(
+                json.dumps(extraction_records, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
     return list(extracted.rglob("*.wav"))
 
 
