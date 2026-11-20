@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+import sqlite3
 from zipfile import ZipFile
 
 import pytest
@@ -464,6 +465,161 @@ def test_batch_event_shift_and_delete_are_atomic_single_history_edits(client, mo
     midi_path = tmp_path / "batch.mid"
     midi_path.write_bytes(client.get(f"/api/projects/{project_id}/midi").content)
     assert len(midi_to_performance(midi_path).events) == 1
+
+
+def test_roll_commit_applies_add_change_remove_in_one_history_revision(client, monkeypatch, tmp_path):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("commit.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=4,
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=1.5, instrument=DrumInstrument.SNARE),
+            DrumEvent(time_seconds=2.5, instrument=DrumInstrument.CRASH),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    before = client.get(f"/api/projects/{project_id}/performance").json()["performance"]
+    by_instrument = {event["instrument"]: event for event in before["events"]}
+
+    committed = client.post(
+        f"/api/projects/{project_id}/events/commit",
+        json={
+            "added": [{"time_seconds": 3.5, "instrument": "kick", "velocity": 100}],
+            "changed": [
+                {
+                    "event_id": by_instrument["snare"]["id"],
+                    "time_seconds": 1.75,
+                    "velocity": 80,
+                }
+            ],
+            "removed": [by_instrument["crash"]["id"]],
+        },
+    )
+    assert committed.status_code == 200
+    result = committed.json()
+    assert result["added_count"] == 1
+    assert result["changed_count"] == 1
+    assert result["removed_count"] == 1
+    got = {(event["instrument"], event["time_seconds"]) for event in result["performance"]["events"]}
+    assert got == {("kick", 0.5), ("snare", 1.75), ("kick", 3.5)}
+    changed = next(
+        event for event in result["performance"]["events"] if event["instrument"] == "snare"
+    )
+    assert changed["velocity"] == 80
+    assert changed["manually_corrected"] is True
+    # One gesture, one revision — a single Ctrl+Z must undo all three parts.
+    assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 1
+
+    undone = client.post(f"/api/projects/{project_id}/undo")
+    assert undone.status_code == 200
+    restored = {(event["instrument"], event["time_seconds"]) for event in undone.json()["performance"]["events"]}
+    assert restored == {("kick", 0.5), ("snare", 1.5), ("crash", 2.5)}
+    assert undone.json()["can_redo"] is True
+
+
+def test_roll_commit_rejects_bad_payloads_without_persisting(client, monkeypatch):
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("commit.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=2,
+        events=[DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK)],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    event_id = client.get(f"/api/projects/{project_id}/performance").json()["performance"]["events"][0]["id"]
+
+    assert client.post(f"/api/projects/{project_id}/events/commit", json={}).status_code == 422
+    assert client.post(
+        f"/api/projects/{project_id}/events/commit",
+        json={"changed": [{"event_id": "missing", "velocity": 90}]},
+    ).status_code == 404
+    assert client.post(
+        f"/api/projects/{project_id}/events/commit",
+        json={
+            "changed": [{"event_id": event_id, "velocity": 90}],
+            "removed": [event_id],
+        },
+    ).status_code == 422
+    assert client.post(
+        f"/api/projects/{project_id}/events/commit",
+        json={"changed": [{"event_id": event_id}]},
+    ).status_code == 422
+    assert client.post(
+        f"/api/projects/{project_id}/events/commit",
+        json={"removed": ["missing"]},
+    ).status_code == 404
+
+    saved = client.get(f"/api/projects/{project_id}/performance").json()["performance"]
+    assert len(saved["events"]) == 1
+    assert client.get(f"/api/projects/{project_id}/history").json()["current_revision"] == 0
+
+
+def test_history_prunes_revisions_beyond_the_cap(client, monkeypatch, tmp_path):
+    assert main.MAX_HISTORY_REVISIONS == 100
+    monkeypatch.setattr(main, "MAX_HISTORY_REVISIONS", 5)
+    uploaded = client.post(
+        "/api/projects", files={"audio": ("cap.wav", b"audio-bytes", "audio/wav")}
+    ).json()
+    performance = DrumPerformance(duration_seconds=4, events=[])
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    project_id = uploaded["id"]
+    client.post(f"/api/projects/{project_id}/analyze")
+    for index in range(7):
+        created = client.post(
+            f"/api/projects/{project_id}/events",
+            json={"time_seconds": 0.5 + index * 0.1, "instrument": "kick", "velocity": 90},
+        )
+        assert created.status_code == 201
+
+    db = sqlite3.connect(tmp_path / "data" / "test.sqlite3")
+    try:
+        count, first, last = db.execute(
+            "SELECT COUNT(*), MIN(revision), MAX(revision) FROM performance_revisions"
+            " WHERE project_id=?",
+            (project_id,),
+        ).fetchone()
+    finally:
+        db.close()
+    assert (count, first, last) == (5, 3, 7)
+    history = client.get(f"/api/projects/{project_id}/history").json()
+    assert history["current_revision"] == 7
+    assert history["can_undo"] is True
+    for _ in range(4):
+        assert client.post(f"/api/projects/{project_id}/undo").status_code == 200
+    history = client.get(f"/api/projects/{project_id}/history").json()
+    assert history["current_revision"] == 3
+    assert history["can_undo"] is False
+    assert len(client.get(f"/api/projects/{project_id}/performance").json()["performance"]["events"]) == 3
 
 
 def test_duplicate_events_create_repeated_manual_hits_in_one_history_revision(client, monkeypatch, tmp_path):
