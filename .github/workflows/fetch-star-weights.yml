@@ -1,0 +1,97 @@
+# Fetch the STAR frame-model checkpoint for evaluation only.
+#
+# Manual-only workflow (workflow_dispatch). Phase 2 of the downstream plan
+# calls for measuring STAR — a frame-level kick CNN
+# (FrancescoZumo/frame_level_drum_classifier, AGPL-3.0) — against our own
+# 6 real tracks, on the same ruler as DrumScript / ADTOF / STRUM / ADT_STR.
+# STAR scored the best IDMT kick F1 of the four engines so far
+# (RealDrum 0.9768 / WaveDrum 0.9866 / TechnoDrum 0.9476 on 40 tracks),
+# but no STAR weights exist on the local machine, so the eval cannot run
+# until this workflow fetches them once in the cloud.
+#
+# Source (verified against .github/workflows/engine-validation.yml, which
+# runs the identical steps inline in CI):
+#   repo    https://github.com/FrancescoZumo/frame_level_drum_classifier
+#   commit  32b1c9e43fbaede862116ef6241fa9defba39b90
+#   file    checkpoints/drum_cnn_no_pos_weights.pth
+#   URL     https://raw.githubusercontent.com/FrancescoZumo/frame_level_drum_classifier/32b1c9e43fbaede862116ef6241fa9defba39b90/checkpoints/drum_cnn_no_pos_weights.pth
+# Exact .pth size/sha256 are NOT known before download (CI only asserts
+# size > 100000 bytes). This workflow prints both after download; record
+# them in ~/workspace/.ds-scratch/star-real-song-eval/REPORT.md.
+#
+# License status (evaluation only, never shipped or redistributed):
+# AGPL-3.0 upstream. The ONNX export is used only to measure STAR on real
+# songs; the weights never enter the repo and never enter production.
+# Any production use needs a separate deployment licence review or an
+# independently trained replacement (see
+# docs/kick-review-and-independent-training.md).
+#
+# After downloading the artifact, place it under:
+#   ~/workspace/.ds-scratch/star-real-song-eval/checkpoints/
+# (drum_cnn_no_pos_weights.pth + drum_cnn.onnx + drum_cnn.json) and verify
+# the .pth size/sha256 against the numbers printed by this run before
+# running the evaluation.
+
+name: Fetch STAR weights
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  fetch-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out DrumAI Studio
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CPU PyTorch and ONNX export deps
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install onnx
+
+      - name: Fetch pinned upstream repo and checkpoint (evaluation only)
+        run: |
+          set -euo pipefail
+          mkdir -p star-model
+          git clone --filter=blob:none https://github.com/FrancescoZumo/frame_level_drum_classifier.git star-model/upstream
+          git -C star-model/upstream fetch --depth 1 origin 32b1c9e43fbaede862116ef6241fa9defba39b90
+          git -C star-model/upstream checkout --detach 32b1c9e43fbaede862116ef6241fa9defba39b90
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
+            "https://raw.githubusercontent.com/FrancescoZumo/frame_level_drum_classifier/32b1c9e43fbaede862116ef6241fa9defba39b90/checkpoints/drum_cnn_no_pos_weights.pth" \
+            --output star-model/drum_cnn_no_pos_weights.pth
+          test "$(stat -c%s star-model/drum_cnn_no_pos_weights.pth)" -gt 100000
+          python3 -c "import hashlib; print('CHECKPOINT_SHA256 ' + hashlib.sha256(open('star-model/drum_cnn_no_pos_weights.pth','rb').read()).hexdigest())"
+          python3 -c "import os; print('CHECKPOINT_SIZE_BYTES ' + str(os.path.getsize('star-model/drum_cnn_no_pos_weights.pth')))"
+
+      - name: Export pinned checkpoint to ONNX with recorded training config
+        run: |
+          set -euo pipefail
+          python scripts/export_kick_reference_checkpoint.py \
+            --checkpoint star-model/drum_cnn_no_pos_weights.pth \
+            --upstream-root star-model/upstream \
+            --output star-model/drum_cnn.onnx \
+            --source-commit 32b1c9e43fbaede862116ef6241fa9defba39b90
+          test -s star-model/drum_cnn.onnx
+          test -s star-model/drum_cnn.json
+          cat star-model/drum_cnn.json
+
+      - name: Upload STAR checkpoint + ONNX export
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-drum-cnn-onnx
+          path: |
+            star-model/drum_cnn_no_pos_weights.pth
+            star-model/drum_cnn.onnx
+            star-model/drum_cnn.json
+          if-no-files-found: error
