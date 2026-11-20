@@ -17,6 +17,6 @@
     "jsx": "react-jsx"
   },
   "include": ["src"],
-  "exclude": ["src/drumRoll.test.ts", "src/drumStaff.test.ts"],
+  "exclude": ["src/drumRoll.test.ts", "src/drumStaff.test.ts", "src/playback.test.ts"],
   "references": []
 }
