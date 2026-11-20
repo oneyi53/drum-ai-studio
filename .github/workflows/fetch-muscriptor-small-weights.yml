@@ -1,0 +1,105 @@
+# Fetch the MuScriptor-small checkpoint for evaluation only.
+#
+# Manual-only workflow (workflow_dispatch). The breakthrough survey
+# (2026-11-21) found MuScriptor the one new engine candidate worth
+# measuring on our 6 real tracks: it is the first open transcription
+# model trained on 11,000 hours of real recordings (author-reported
+# Drums F1 50.2 on their own test set, vs 21.0 synthetic-only), and it
+# can be constrained to drums-only, so no separation step is needed.
+# This workflow only fetches the weights once in the cloud; the
+# evaluation itself runs locally (see
+# ~/workspace/.ds-scratch/muscriptor-eval/).
+#
+# Source (verified 2026-11-21 against the public HF API, no auth):
+#   repo      MuScriptor/muscriptor-small
+#   revision  8c127f603b807520fa465c838e9bfee8a91ada4e (2026-07-10)
+#   files     model.safetensors (~411,888,600 bytes, F32, 102,968,832 params)
+#             config.json (model hyper-parameters)
+#   license   CC BY-NC 4.0 (HF API tag license:cc-by-nc-4.0; model card
+#             "Code MIT, weights CC-BY-NC"); gated "auto" — the token must
+#             belong to an account that accepted the licence on the repo
+#             page. The repo also carries extra conditions of use (research
+#             purposes; no transcribing music without the necessary rights).
+#             Our 6 test tracks are copyright-free (archive.org CC-BY), so
+#             the evaluation use is covered.
+# Exact model.safetensors sha256 is NOT known before download (HF does not
+# publish per-file hashes in the public API response). This workflow
+# prints size + sha256 after download; record them in
+# ~/workspace/.ds-scratch/muscriptor-eval/REPORT.md.
+#
+# License status (evaluation only, never shipped or redistributed):
+# CC BY-NC 4.0 upstream. The checkpoint is used only to measure
+# MuScriptor-small on real songs; the weights never enter the repo and
+# never enter production. Any production use needs a separate licence
+# review or an independently trained replacement.
+#
+# Requires the repo secret HF_TOKEN (read-only token from an account that
+# accepted the MuScriptor-small licence). The token is used only for the
+# huggingface.co download in this run and is never printed.
+#
+# After downloading the artifact, place it under:
+#   ~/workspace/.ds-scratch/muscriptor-eval/checkpoints/
+# (model.safetensors + config.json) and verify size/sha256 against the
+# numbers printed by this run before running the evaluation.
+
+name: Fetch MuScriptor-small weights
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  fetch-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download MuScriptor-small from Hugging Face (evaluation only)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${HF_TOKEN:-}" || { echo "HF_TOKEN secret is empty or missing. Add a read-only HF token (from an account that accepted the MuScriptor-small CC BY-NC 4.0 licence) as the repo secret HF_TOKEN."; exit 1; }
+          python -m pip install --upgrade pip
+          python -m pip install "huggingface_hub>=0.13"
+          mkdir -p muscriptor-small
+          python3 - <<'EOF'
+          import hashlib
+          import os
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+
+          repo = "MuScriptor/muscriptor-small"
+          revision = "8c127f603b807520fa465c838e9bfee8a91ada4e"
+          token = os.environ["HF_TOKEN"]
+          out_dir = Path("muscriptor-small")
+          for filename in ("model.safetensors", "config.json"):
+              path = Path(hf_hub_download(
+                  repo_id=repo,
+                  filename=filename,
+                  revision=revision,
+                  token=token,
+                  local_dir=str(out_dir),
+              ))
+              data = path.read_bytes()
+              print(f"{filename} SIZE_BYTES {len(data)}")
+              print(f"{filename} SHA256 {hashlib.sha256(data).hexdigest()}")
+          EOF
+          test "$(stat -c%s muscriptor-small/model.safetensors)" -gt 100000000
+          test -s muscriptor-small/config.json
+          ls -la muscriptor-small/
+
+      - name: Upload MuScriptor-small checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: muscriptor-small-weights
+          path: |
+            muscriptor-small/model.safetensors
+            muscriptor-small/config.json
+          if-no-files-found: error
