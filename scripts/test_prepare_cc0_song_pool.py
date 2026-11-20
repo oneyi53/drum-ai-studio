@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 p=Path(__file__).with_name("prepare_cc0_song_pool.py")
 spec=importlib.util.spec_from_file_location("cc0_pool",p); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
@@ -59,3 +61,75 @@ def test_source_paths_with_unsafe_archive_characters_are_safely_mapped():
     assert ":" not in str(second) and "?" not in str(second)
     assert first != second
     assert first.parts[0] == "artist"
+
+
+class _FakeResponse:
+    """Minimal stand-in for a requests.Response; never touches the network."""
+
+    def __init__(self, status_code, payload=None, headers=None):
+        self.status_code = status_code
+        self._payload = payload if payload is not None else {}
+        self.headers = headers or {}
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        raise AssertionError(f"raise_for_status called on {self.status_code}")
+
+
+class _FakeSession:
+    """Records every get() call so tests can assert on headers and retries."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    def get(self, url, headers=None, timeout=None):
+        self.calls.append({"url": url, "headers": dict(headers or {}), "timeout": timeout})
+        return self._responses.pop(0)
+
+
+def test_github_api_get_sends_bearer_token_when_set(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_testtoken")
+    session = _FakeSession([_FakeResponse(200, {"sha": "abc"})])
+    response = m.github_api_get(session, "https://api.github.com/x")
+    assert response.status_code == 200
+    assert session.calls[0]["headers"] == {"Authorization": "Bearer ghp_testtoken"}
+
+
+def test_github_api_get_sends_no_auth_header_without_token(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    session = _FakeSession([_FakeResponse(200, {"sha": "abc"})])
+    response = m.github_api_get(session, "https://api.github.com/x")
+    assert response.status_code == 200
+    assert session.calls[0]["headers"] == {}
+
+
+def test_github_api_get_retries_on_403_then_succeeds(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    sleeps = []
+    session = _FakeSession([_FakeResponse(403), _FakeResponse(429), _FakeResponse(200, {"sha": "abc"})])
+    response = m.github_api_get(session, "https://api.github.com/x", sleep=sleeps.append)
+    assert response.status_code == 200
+    assert len(session.calls) == 3
+    assert sleeps == [10.0, 20.0]
+
+
+def test_github_api_get_honors_retry_after(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    sleeps = []
+    session = _FakeSession([_FakeResponse(429, headers={"Retry-After": "120"}), _FakeResponse(200)])
+    response = m.github_api_get(session, "https://api.github.com/x", sleep=sleeps.append)
+    assert response.status_code == 200
+    assert sleeps == [120.0]
+
+
+def test_github_api_get_gives_up_after_retry_budget(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    sleeps = []
+    session = _FakeSession([_FakeResponse(403)] * 5)
+    with pytest.raises(RuntimeError, match="rate limit"):
+        m.github_api_get(session, "https://api.github.com/x", sleep=sleeps.append)
+    assert len(session.calls) == 5
+    assert sleeps == [10.0, 20.0, 40.0, 80.0]
