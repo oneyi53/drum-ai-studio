@@ -1,3 +1,12 @@
+## 2026-11-21 — theDAW UI 采纳 P0 三项：跟随播放、共享缩放、原子提交撤销
+
+- 来源：theDAW UI 学习计划（`~/workspace/.ds-scratch/thedaw-ui-study/PLAN.md`），用户 2026-11-21 批“先做 P0 三项”。只做 P0，P1/P2 未动；theDAW 的转录引擎未引进。
+- P0-1 跟随播放：谱面跟随开关（默认开）+ 光标位置（左三分之一/居中，默认左三分之一）+ 已奏轨迹（保留/仅当前，默认保留）；rAF 循环读共享播放头，自动翻页、品红光标线直接写 DOM（不触发 VexFlow 重画）、轨迹圆点；seek（后退 >0.1s）清空保留轨迹。分页谱先做“页内跟随 + 自动翻页”，连续 strip 是第二步。
+- P0-2 共享缩放 + 命令式播放头：新 `frontend/src/playback.ts`（共享 `PlayheadSource` + 缩放纯函数，1–240 px/s、步进 ×1.5、滚轮因子 exp(-Δy·0.002)）；roll/谱/波形共用 `main.tsx` 的 zoom 状态（null=适应，按项目记忆）；Ctrl+滚轮三处统一（光标下时间锚定）；播放头走 ref + rAF，60fps 零 React 重渲染。
+- P0-3 通用撤销：新 `POST /api/projects/{id}/events/commit`（added/changed/removed 一次事务、一次历史版本，422 校验）；`handleRollCommit` 改走一次 commit（一手势一步撤销）；历史上限 100（超了删最老，`can_undo/can_redo` 由现存 MIN/MAX 推导）。方案抉择：未做后端逆操作（快照已存在，逆操作是重复建设）；未建前端 `history.ts`（会与后端指针打架、破坏 redo）；否决计划的 300ms 合并——现有测试证明 300ms 内两次不同操作必须是两个版本，且本 UI 一手势一提交，结构上已是一手势一步。
+- 验证（parent 亲验）：后端 202 通过 1 跳过（+3 新测试）；前端构建通过（1,588.79 kB）；`test:roll` 19 通过（+6）。Moli 实测（种子 rock-30s，309 事件）：15s 跟随翻到第 3/5 页·第 9–12 小节，光标线 + 12 个轨迹点；缩放共享端到端 12→19→31→63 px/s；撤销端到端 310 事件版本 5 → 309 事件版本 4；种子已恢复原状。
+- 仍需用户真 Chrome 核对：谱面符头与光标线/轨迹点叠在一起的样子（Moli 不渲染 webfont 的 SVG 文本，截图里符头不可见）；跟随手感（翻页是否平顺、NOW 锚点位置、Hold 轨迹密度）；波形进度（`updateProgress` 是私有 API，Moli 里跑通但真机播放表现待肉眼确认）；真触控板 Ctrl+滚轮手感。已知行为（非 bug）：谱面缩放只在 zoom × 页跨度 > 容器宽时才变宽（本项目约 140 px/s 以上），以下共享值照样联动但谱面保持适应宽度；卷帘滚轮每档约 ×2，比谱面/波形 ×1.616 大，值仍共享一致。
+
 ## 2026-11-16 — Phase 1 下游优化：管线重排 + crash 衰减抑制落地，三条规则被测量证伪回滚
 
 - 管线重排：Demucs 跑原始 mix（EQ 不再进分离），EQ 只加分离后的 drums stem（`drums-eq.wav`），`transcribe(stem, full_song=False)`；顺带消除了旧 `full_song=True` 把 `htdemucs/` 倒进 worker 目录的副作用；输出 MIDI 改由 `performance_to_midi` 从 canonical performance 写。Crash 衰减抑制：纯 1.5 s 锁仓（保留每窗第一个 crash）；"新 HF attack"测试测过后弃用（绝对 flux 与相对 attack_ratio 都不分离）。
