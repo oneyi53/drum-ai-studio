@@ -121,6 +121,8 @@ jobs:
             echo "Kaino MCP search unavailable; OnAir stem-backed corpus remains available"
           fi
       - name: Build genre-balanced CC0 full-song candidate pool
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python scripts/prepare_cc0_song_pool.py \
             --output /tmp/cc0-song-pool \
