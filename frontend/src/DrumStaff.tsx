@@ -25,12 +25,19 @@ import { BarlineType, Formatter, Renderer, Stave, StaveNote, Voice } from "vexfl
 import {
   SLOTS_PER_BAR,
   buildStaffBars,
+  findBarIndexAtTime,
   instrumentAtStep,
+  pageIndexForBar,
   positionForInstrument,
+  updateTrail,
   type StaffBar,
+  type TrailMode,
+  type TrailState,
 } from "./drumStaff";
 import type { RollCommit } from "./drumRoll";
 import { INSTRUMENT_COLORS } from "./WaveformPanel";
+import { fitZoom, wheelZoomFactor, zoomByFactor } from "./playback";
+import type { PlayheadSource } from "./playback";
 
 export type DrumEventLike = {
   id: string;
@@ -73,6 +80,12 @@ type DrumStaffProps = {
   onSelectEvents: (eventIds: string[]) => void;
   onCommit: (commit: RollCommit) => void;
   onSeek: (timeSeconds: number) => void;
+  /** Live playhead time, published outside React (see playback.ts). */
+  playheadSource: PlayheadSource;
+  /** Shared zoom in px/s (null = fit the page); owned by the parent so
+   * the roll, staff and waveform zoom together. */
+  zoom: number | null;
+  onZoomChange: (zoom: number | null) => void;
 };
 
 const BARS_PER_PAGE = 4;
@@ -132,20 +145,73 @@ export default function DrumStaff({
   onSelectEvents,
   onCommit,
   onSeek,
+  playheadSource,
+  zoom,
+  onZoomChange,
 }: DrumStaffProps) {
   const outerRef = React.useRef<HTMLDivElement | null>(null);
   const svgRef = React.useRef<HTMLDivElement | null>(null);
+  const nowlineRef = React.useRef<HTMLSpanElement | null>(null);
   const [containerWidth, setContainerWidth] = React.useState(960);
   const [page, setPage] = React.useState(0);
   const [geometry, setGeometry] = React.useState<StaffGeometry | null>(null);
   const [ghost, setGhost] = React.useState<{ x: number; y: number; label: string } | null>(null);
   const dragRef = React.useRef<DragState>(null);
   const seekCandidateRef = React.useRef<{ x: number; y: number } | null>(null);
+  /** Follow-playback (P0-1): on by default, Hold trail, now-line at the
+   * left third. §5 Q1 was left open by the plan; these are the defaults
+   * the plan itself recommends (Hold default, manual toggle to change). */
+  const [followEnabled, setFollowEnabled] = React.useState(true);
+  const [nowPosition, setNowPosition] = React.useState<"third" | "center">("third");
+  const [trailMode, setTrailMode] = React.useState<TrailMode>("hold");
+  const [trail, setTrail] = React.useState<TrailState>({ ids: [], time: -1 });
+  const trailRef = React.useRef<TrailState>({ ids: [], time: -1 });
+  const geometryRef = React.useRef<StaffGeometry | null>(null);
+  const pageRef = React.useRef(0);
+  const nowlineLeftRef = React.useRef(-1);
+  /** Bar to vertically anchor-scroll to after a follow page-turn. */
+  const followScrollPendingRef = React.useRef<number | null>(null);
+  /** {time, offsetX} to hold still across a Ctrl+wheel zoom redraw. */
+  const zoomAnchorRef = React.useRef<{ time: number; offsetX: number } | null>(null);
+  /** Latest props for the rAF / wheel listeners (attached once). The
+   * initial value is overwritten by the sync effect below before any
+   * listener reads it. */
+  const latestRef = React.useRef({
+    bars,
+    events,
+    trailMode,
+    zoom,
+    onZoomChange,
+    pageSpanSeconds: 0,
+  });
+  React.useEffect(() => {
+    latestRef.current = {
+      bars,
+      events,
+      trailMode,
+      zoom,
+      onZoomChange,
+      pageSpanSeconds,
+    };
+  });
 
   const pageCount = Math.max(1, Math.ceil(bars.length / BARS_PER_PAGE));
   const safePage = Math.min(page, pageCount - 1);
   const pageBars = bars.slice(safePage * BARS_PER_PAGE, (safePage + 1) * BARS_PER_PAGE);
+  const pageSpanSeconds =
+    pageBars.length > 0 ? pageBars[pageBars.length - 1].end - pageBars[0].start : 0;
+  const fitWidth = Math.max(320, containerWidth - 4);
+  /** Drawn page width: fit the container, or zoom px/s over the page span. */
+  const drawWidth =
+    zoom === null ? fitWidth : Math.max(fitWidth, zoom * pageSpanSeconds);
   const visibleSet = React.useMemo(() => new Set(visibleInstruments), [visibleInstruments]);
+
+  React.useEffect(() => {
+    geometryRef.current = geometry;
+  }, [geometry]);
+  React.useEffect(() => {
+    pageRef.current = safePage;
+  }, [safePage]);
 
   React.useEffect(() => {
     const el = outerRef.current;
@@ -175,7 +241,7 @@ export default function DrumStaff({
     const visibleEvents = events.filter((event) => visibleSet.has(event.instrument));
     const laid = buildStaffBars(visibleEvents, pageBars);
     host.innerHTML = "";
-    const width = Math.max(320, containerWidth - 4);
+    const width = drawWidth;
     const height = STAVE_TOP + pageBars.length * STAVE_HEIGHT + 8;
     const renderer = new Renderer(host, Renderer.Backends.SVG);
     renderer.resize(width, height);
@@ -276,7 +342,158 @@ export default function DrumStaff({
     }
     setGeometry({ hits, bars: barGeometry, pxPerStep, stepRef, yRef });
     }
-  }, [events, pageBars, safePage, visibleSet, containerWidth]);
+  }, [events, pageBars, safePage, visibleSet, containerWidth, zoom, drawWidth]);
+
+  /** Reset the trail when the bar grid is rebuilt (new project / tempo). */
+  const barsKey = bars.length
+    ? `${bars[0].number}:${bars[0].start}:${bars[bars.length - 1].end}`
+    : "";
+  React.useEffect(() => {
+    trailRef.current = { ids: [], time: -1 };
+    setTrail({ ids: [], time: -1 });
+  }, [barsKey]);
+
+  /** Ctrl+wheel zoom on the staff (native listener: React wheel handlers
+   * are passive, so preventDefault would not stop the browser zoom).
+   * The time under the cursor is held still across the redraw. */
+  React.useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const latest = latestRef.current;
+      const rect = el.getBoundingClientRect();
+      const offsetX = event.clientX - rect.left;
+      const geo = geometryRef.current;
+      let time = 0;
+      if (geo) {
+        const x = offsetX + el.scrollLeft;
+        const barGeo = geo.bars.find((bar) => x >= bar.x0 - 4 && x <= bar.x1 + 4);
+        if (barGeo) {
+          const frac = (x - barGeo.x0) / Math.max(1, barGeo.x1 - barGeo.x0);
+          time =
+            barGeo.bar.start +
+            Math.min(1, Math.max(0, frac)) * (barGeo.bar.end - barGeo.bar.start);
+        }
+      }
+      if (time === 0 && latest.bars.length > 0) {
+        time =
+          (latest.bars[0].start + latest.bars[latest.bars.length - 1].end) / 2;
+      }
+      const fit = fitZoom(el.clientWidth, latest.pageSpanSeconds);
+      zoomAnchorRef.current = { time, offsetX };
+      latest.onZoomChange(
+        zoomByFactor(latest.zoom, fit, wheelZoomFactor(event.deltaY)),
+      );
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  /** Follow-playback (P0-1): one rAF loop, no React state per frame.
+   * Reads the shared playhead source, turns the page when the current bar
+   * leaves it, moves the now-line straight in the DOM, and advances the
+   * trail (state only when the marked set changes, so no VexFlow redraw). */
+  React.useEffect(() => {
+    if (!followEnabled) {
+      const line = nowlineRef.current;
+      if (line) line.style.display = "none";
+      return;
+    }
+    let raf = 0;
+    const tick = () => {
+      const latest = latestRef.current;
+      const t = playheadSource.getSnapshot();
+      const geo = geometryRef.current;
+      if (geo && latest.bars.length > 0) {
+        const barIndex = findBarIndexAtTime(latest.bars, t);
+        if (barIndex >= 0) {
+          const targetPage = pageIndexForBar(barIndex, BARS_PER_PAGE);
+          if (targetPage !== pageRef.current) {
+            followScrollPendingRef.current = barIndex;
+            setPage(targetPage);
+          }
+          const localBar = barIndex - pageRef.current * BARS_PER_PAGE;
+          const barGeo = geo.bars[localBar];
+          const line = nowlineRef.current;
+          if (line) {
+            if (barGeo) {
+              const frac = Math.min(
+                1,
+                Math.max(
+                  0,
+                  (t - barGeo.bar.start) /
+                    Math.max(0.001, barGeo.bar.end - barGeo.bar.start),
+                ),
+              );
+              const left = barGeo.x0 + frac * (barGeo.x1 - barGeo.x0);
+              if (Math.abs(left - nowlineLeftRef.current) > 0.5 || line.style.display === "none") {
+                line.style.display = "block";
+                line.style.left = `${left}px`;
+                line.style.top = `${barGeo.y - 2}px`;
+                line.style.height = `${STAVE_HEIGHT}px`;
+                nowlineLeftRef.current = left;
+              }
+            } else if (line.style.display !== "none") {
+              line.style.display = "none";
+            }
+          }
+          const next = updateTrail(
+            trailRef.current,
+            latest.events.map((event) => ({ eventId: event.id, time: event.time_seconds })),
+            t,
+            latest.trailMode,
+          );
+          if (next.ids.join(",") !== trailRef.current.ids.join(",")) {
+            trailRef.current = next;
+            setTrail(next);
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [followEnabled, playheadSource]);
+
+  /** After a follow page-turn, scroll the active bar's row to the NOW
+   * anchor (left third / centred) inside the visible staff height; a
+   * no-op when the page fits. After a Ctrl+wheel zoom, restore the time
+   * that was under the cursor. */
+  React.useLayoutEffect(() => {
+    const outer = outerRef.current;
+    if (!outer || !geometry) return;
+    const followBar = followScrollPendingRef.current;
+    if (followBar !== null) {
+      followScrollPendingRef.current = null;
+      if (followEnabled) {
+        const localBar = followBar - safePage * BARS_PER_PAGE;
+        const barGeo = geometry.bars[localBar];
+        if (barGeo) {
+          const anchorFrac = nowPosition === "center" ? 0.5 : 1 / 3;
+          const targetTop = barGeo.y - anchorFrac * outer.clientHeight;
+          if (targetTop > 0) outer.scrollTop = targetTop;
+        }
+      }
+    }
+    const anchor = zoomAnchorRef.current;
+    if (anchor) {
+      zoomAnchorRef.current = null;
+      const barIndex = findBarIndexAtTime(bars, anchor.time);
+      if (barIndex >= 0) {
+        const localBar = barIndex - safePage * BARS_PER_PAGE;
+        const barGeo = geometry.bars[localBar];
+        if (barGeo) {
+          const frac =
+            (anchor.time - barGeo.bar.start) /
+            Math.max(0.001, barGeo.bar.end - barGeo.bar.start);
+          const x = barGeo.x0 + frac * (barGeo.x1 - barGeo.x0);
+          outer.scrollLeft = Math.max(0, x - anchor.offsetX);
+        }
+      }
+    }
+  }, [geometry, safePage, bars, followEnabled, nowPosition]);
 
   const yForStep = (step: number, geo: StaffGeometry) =>
     geo.yRef - (step - geo.stepRef) * geo.pxPerStep;
@@ -421,6 +638,10 @@ export default function DrumStaff({
   const selectedHits = (geometry?.hits ?? []).filter((hit) =>
     selectedEventIds.includes(hit.eventId),
   );
+  const trailIdSet = React.useMemo(() => new Set(trail.ids), [trail.ids]);
+  const trailHits = (geometry?.hits ?? []).filter((hit) =>
+    trailIdSet.has(hit.eventId),
+  );
 
   return (
     <div className="drum-staff-panel">
@@ -453,7 +674,46 @@ export default function DrumStaff({
         >
           下一页 →
         </button>
-        <small>每页 {BARS_PER_PAGE} 小节；只画当前页，长歌不一次画全曲。</small>
+        <span className="drum-staff-follow" role="group" aria-label="跟随播放">
+          <button
+            type="button"
+            className={followEnabled ? "drum-staff-follow-on" : ""}
+            aria-pressed={followEnabled}
+            onClick={() => setFollowEnabled((value) => !value)}
+            title="播放时谱面自动跟随：当前小节滚入视野，奏过的音符留品红墨色"
+          >
+            {followEnabled ? "跟随播放：开" : "跟随播放：关"}
+          </button>
+          {followEnabled && (
+            <>
+              <label>
+                光标位置
+                <select
+                  value={nowPosition}
+                  onChange={(event) =>
+                    setNowPosition(event.target.value as "third" | "center")
+                  }
+                >
+                  <option value="third">左三分之一</option>
+                  <option value="center">居中</option>
+                </select>
+              </label>
+              <label>
+                已奏轨迹
+                <select
+                  value={trailMode}
+                  onChange={(event) =>
+                    setTrailMode(event.target.value as TrailMode)
+                  }
+                >
+                  <option value="hold">保留</option>
+                  <option value="flash">仅当前</option>
+                </select>
+              </label>
+            </>
+          )}
+        </span>
+        <small>每页 {BARS_PER_PAGE} 小节；只画当前页，长歌不一次画全曲。Ctrl+滚轮缩放谱面。</small>
       </div>
       {pageBars.length === 0 ? (
         <p className="drum-staff-empty">暂无小节网格，先完成一次分析。</p>
@@ -475,6 +735,23 @@ export default function DrumStaff({
           onKeyDown={handleKeyDown}
         >
           <div ref={svgRef} className="drum-staff-svg" />
+          {followEnabled && (
+            <span
+              ref={nowlineRef}
+              className="drum-staff-nowline"
+              style={{ display: "none" }}
+              aria-hidden="true"
+            />
+          )}
+          {followEnabled &&
+            trailHits.map((hit) => (
+              <span
+                key={`trail-${hit.eventId}`}
+                className="drum-staff-trail"
+                style={{ left: hit.x + 7, top: hit.y }}
+                aria-hidden="true"
+              />
+            ))}
           {selectedHits.map((hit) => (
             <span
               key={hit.eventId}

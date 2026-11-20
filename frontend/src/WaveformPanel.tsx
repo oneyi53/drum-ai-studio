@@ -1,6 +1,8 @@
 import React from "react";
 import WaveSurfer from "wavesurfer.js";
 import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
+import { fitZoom, wheelZoomFactor, zoomByFactor } from "./playback";
+import type { PlayheadSource } from "./playback";
 
 /**
  * Waveform + per-bar loop panel (wavesurfer.js, BSD-3-Clause).
@@ -51,6 +53,12 @@ type WaveformPanelProps = {
   selectedEventId: string | null;
   onSelectEvent: (eventId: string, timeSeconds: number) => void;
   onWaveformPlay: () => void;
+  /** Live playhead time, published outside React (see playback.ts). */
+  playheadSource: PlayheadSource;
+  /** Shared zoom in px/s (null = fit the width); owned by the parent so
+   * the roll, staff and waveform zoom together. */
+  zoom: number | null;
+  onZoomChange: (zoom: number | null) => void;
 };
 
 export const INSTRUMENT_COLORS: Record<string, string> = {
@@ -76,7 +84,18 @@ function barAt(bars: WaveformBar[], number: number): WaveformBar | undefined {
 
 const WaveformPanel = React.forwardRef<WaveformPanelHandle, WaveformPanelProps>(
   function WaveformPanel(
-    { audioUrl, durationSeconds, bars, events, selectedEventId, onSelectEvent, onWaveformPlay },
+    {
+      audioUrl,
+      durationSeconds,
+      bars,
+      events,
+      selectedEventId,
+      onSelectEvent,
+      onWaveformPlay,
+      playheadSource,
+      zoom,
+      onZoomChange,
+    },
     ref,
   ) {
     const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -243,6 +262,86 @@ const WaveformPanel = React.forwardRef<WaveformPanelHandle, WaveformPanelProps>(
       },
     }), []);
 
+    /** Latest zoom / callbacks for the listeners below (attached once). */
+    const latestRef = React.useRef({ zoom, onZoomChange });
+    React.useEffect(() => {
+      latestRef.current = { zoom, onZoomChange };
+    });
+    const playingRef = React.useRef(false);
+    React.useEffect(() => {
+      playingRef.current = playing;
+    });
+
+    /** Shared zoom (P0-2): wavesurfer zoom is px/s, the same unit as the
+     * roll; 0 = fit the width. Regions are time-based and follow. */
+    React.useEffect(() => {
+      const ws = wavesurferRef.current;
+      if (!ws || !ready) return;
+      ws.zoom(zoom ?? 0);
+    }, [zoom, ready]);
+
+    /** Ctrl+wheel zoom on the waveform (native listener: React wheel
+     * handlers are passive, so preventDefault would not stop the browser
+     * zoom). A bare wheel scrolls the zoomed waveform as usual. */
+    React.useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const onWheel = (event: WheelEvent) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        const latest = latestRef.current;
+        const fit = fitZoom(el.clientWidth, durationSeconds);
+        latest.onZoomChange(
+          zoomByFactor(latest.zoom, fit, wheelZoomFactor(event.deltaY)),
+        );
+      };
+      el.addEventListener("wheel", onWheel, { passive: false });
+      return () => el.removeEventListener("wheel", onWheel);
+    }, [durationSeconds]);
+
+    /** Playhead (P0-2): while the <audio> element plays, mirror the
+     * shared playhead source into wavesurfer's progress — one rAF loop,
+     * no React state. `updateProgress` only re-renders the progress
+     * overlay; unlike `setTime` it never seeks the (paused) media
+     * element. It is private in the wavesurfer typings, so the call is
+     * guarded: if it ever disappears, the progress simply stays where
+     * the last seek left it (no worse than before). While WaveSurfer
+     * itself plays, its own timeupdate drives the progress instead. */
+    React.useEffect(() => {
+      if (!ready) return;
+      let raf = 0;
+      let lastRendered = -1;
+      const tick = () => {
+        const ws = wavesurferRef.current;
+        if (ws && !playingRef.current) {
+          const t = playheadSource.getSnapshot();
+          if (Math.abs(t - lastRendered) > 0.01) {
+            lastRendered = t;
+            const update = (
+              ws as unknown as { updateProgress?: (time: number) => void }
+            ).updateProgress;
+            if (typeof update === "function") update.call(ws, t);
+            // Keep the playhead in view when zoomed in (only scroll when
+            // it would leave the visible area; manual scroll is untouched
+            // otherwise).
+            if (latestRef.current.zoom !== null && ws.getDuration() > 0) {
+              const wrapper = ws.getWrapper();
+              const x = (t / ws.getDuration()) * wrapper.scrollWidth;
+              if (
+                x < wrapper.scrollLeft + 20 ||
+                x > wrapper.scrollLeft + wrapper.clientWidth - 20
+              ) {
+                wrapper.scrollLeft = Math.max(0, x - wrapper.clientWidth / 2);
+              }
+            }
+          }
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }, [ready, playheadSource]);
+
     const barHitCounts = React.useMemo(() => {
       const counts = new Map<number, number>();
       for (const bar of bars) counts.set(bar.number, 0);
@@ -298,7 +397,7 @@ const WaveformPanel = React.forwardRef<WaveformPanelHandle, WaveformPanelProps>(
           <button type="button" disabled={!ready || loopBar === null} onClick={() => setLoopBar(null)}>
             停止循环
           </button>
-          <small>点波形任意处跳转；点小节区域循环该小节；点鼓点标记跳转到该鼓点。</small>
+          <small>点波形任意处跳转；点小节区域循环该小节；点鼓点标记跳转到该鼓点。Ctrl+滚轮缩放波形。</small>
         </div>
         {ready && bars.length > 0 && (
           <div className="waveform-bars" aria-label="小节循环">

@@ -32,6 +32,8 @@ import {
   type RollCommit,
   type RollNote,
 } from "./drumRoll";
+import { zoomIn as zoomStepIn, zoomOut as zoomStepOut } from "./playback";
+import type { PlayheadSource } from "./playback";
 
 export type DrumEventLike = {
   id: string;
@@ -49,8 +51,14 @@ type DrumPianoRollProps = {
   gridStepSeconds: number;
   /** Bar starts for the ruler labels ({value: seconds, label: bar number}). */
   barMarks: { value: number; label: string }[];
-  /** Current audio time, in seconds — the playhead. */
-  playheadSeconds: number;
+  /** Live playhead time, published outside React: the Timeline follows
+   * this source straight in the DOM, so a playhead moving every frame
+   * never re-renders the roll. */
+  playheadSource: PlayheadSource;
+  /** Shared zoom in px/s (null = fit the whole song); owned by the parent
+   * so the roll, staff and waveform zoom together. */
+  zoom: number | null;
+  onZoomChange: (zoom: number | null) => void;
   selectedEventId: string | null;
   selectedEventIds: string[];
   onSelectEvent: (eventId: string | null) => void;
@@ -72,7 +80,9 @@ export default function DrumPianoRoll({
   durationSeconds,
   gridStepSeconds,
   barMarks,
-  playheadSeconds,
+  playheadSource,
+  zoom,
+  onZoomChange,
   selectedEventId,
   selectedEventIds,
   onSelectEvent,
@@ -89,11 +99,7 @@ export default function DrumPianoRoll({
   );
   const baselineRef = React.useRef<RollNote[]>(notesFromEvents(events));
   const draftIdRef = React.useRef(0);
-  const playheadDragRef = React.useRef(false);
-  const [playhead, setPlayhead] = React.useState(playheadSeconds);
   const [reclassify, setReclassify] = React.useState(false);
-  /** Zoom in px per second; null = fit the whole song in the viewport. */
-  const [zoom, setZoom] = React.useState<number | null>(null);
   const bodyRef = React.useRef<HTMLDivElement | null>(null);
 
   /** px/s that fits the whole song in the visible grid width. */
@@ -101,10 +107,8 @@ export default function DrumPianoRoll({
     const width = bodyRef.current?.clientWidth ?? 0;
     return width > 0 ? width / Math.max(1, durationSeconds) : 8;
   };
-  const zoomIn = () =>
-    setZoom((current) => Math.min(240, (current ?? fitZoom()) * 1.5));
-  const zoomOut = () =>
-    setZoom((current) => Math.max(1, (current ?? fitZoom()) / 1.5));
+  const zoomIn = () => onZoomChange(zoomStepIn(zoom, fitZoom()));
+  const zoomOut = () => onZoomChange(zoomStepOut(zoom, fitZoom()));
 
   const isLaneVisible = (instrument: string) =>
     soloLane ? soloLane === instrument : !hiddenLanes.includes(instrument);
@@ -114,10 +118,6 @@ export default function DrumPianoRoll({
     baselineRef.current = next;
     setDraftNotes(next);
   }, [events]);
-
-  React.useEffect(() => {
-    if (!playheadDragRef.current) setPlayhead(playheadSeconds);
-  }, [playheadSeconds]);
 
   const selectedNote =
     draftNotes.find((note) => String(note.id) === selectedEventId) ?? null;
@@ -184,11 +184,11 @@ export default function DrumPianoRoll({
           </label>
         )}
         <small>
-          方向键微调选中鼓点，Delete 删除；A / D 跳到上一个 / 下一个鼓点。
+          方向键微调选中鼓点，Delete 删除；A / D 跳到上一个 / 下一个鼓点；Ctrl+滚轮以光标为中心缩放。
         </small>
         <span className="drum-roll-zoom" role="group" aria-label="卷帘缩放">
           <button type="button" onClick={zoomOut} title="缩小（看到更长一段）">− 缩小</button>
-          <button type="button" onClick={() => setZoom(null)} title="整首适配到窗口宽度">适应宽度</button>
+          <button type="button" onClick={() => onZoomChange(null)} title="整首适配到窗口宽度">适应宽度</button>
           <button type="button" onClick={zoomIn} title="放大（看清单个鼓点）">放大 +</button>
           <small>{zoom === null ? "适应宽度" : `${zoom.toFixed(0)} px/s`}</small>
         </span>
@@ -203,17 +203,19 @@ export default function DrumPianoRoll({
           className="drum-roll-timeline"
           duration={durationSeconds}
           snapStep={gridStepSeconds}
-          position={playhead}
+          source={playheadSource}
           zoom={zoom ?? undefined}
           minZoom={1}
           maxZoom={240}
-          onZoomChange={(value) => setZoom(value)}
+          onZoomChange={(value) => onZoomChange(value)}
           onPositionChange={(value) => {
-            playheadDragRef.current = true;
-            setPlayhead(value);
+            // Scrubbing writes back into the same source the playhead
+            // follows, so the head tracks the drag instead of snapping
+            // back to the audio time when the gesture ends.
+            playheadSource.set(value);
           }}
           onPositionCommitted={(value) => {
-            playheadDragRef.current = false;
+            playheadSource.set(value);
             onSeek(value);
           }}
         >

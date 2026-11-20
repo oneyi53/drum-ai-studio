@@ -168,3 +168,76 @@ export function snapToSlot(time: number, barNotes: StaffBarNotes): number {
   const raw = (time - barNotes.bar.start) / barNotes.sixteenthSeconds;
   return slotTimeSeconds(barNotes, raw);
 }
+
+/** Index of the bar containing `time` (boundaries belong to the bar that
+ * starts there; a time at/past the song end stays in the last bar). */
+export function findBarIndexAtTime(bars: StaffBar[], time: number): number {
+  if (bars.length === 0) return -1;
+  let index = bars.length - 1;
+  for (let i = 0; i < bars.length; i += 1) {
+    if (time < bars[i].end) {
+      index = i;
+      break;
+    }
+  }
+  return index;
+}
+
+/** Page (0-based) holding `barIndex` at `barsPerPage` bars per page. */
+export function pageIndexForBar(barIndex: number, barsPerPage: number): number {
+  if (barIndex < 0 || barsPerPage <= 0) return 0;
+  return Math.floor(barIndex / barsPerPage);
+}
+
+/** How the follow-playback trail behaves (theDAW's TRAIL switch). */
+export type TrailMode = "hold" | "flash";
+
+export type TrailHit = { eventId: string; time: number };
+
+export type TrailState = {
+  /** Event ids the trail currently marks. */
+  ids: string[];
+  /** Playhead time the trail was last advanced to (-1 = never played). */
+  time: number;
+};
+
+/** Window around the playhead that counts as "sounding now" in Flash. */
+export const TRAIL_FLASH_WINDOW_SECONDS = 0.07;
+
+/** Backward-jump threshold that counts as a seek (clears a Hold trail). */
+export const TRAIL_SEEK_BACK_SECONDS = 0.1;
+
+/**
+ * Advance the follow-playback trail to `time` (pure: the component calls
+ * this from its rAF loop and only re-renders when the ids change).
+ *
+ * - Hold: every hit the playhead passes stays inked. The window is
+ *   (prev.time, time], so a hit is added exactly once.
+ * - Flash: only hits sounding right now (|time - hit| <= 0.07s).
+ * - A backward jump of more than 0.1s is a seek: the trail clears and
+ *   re-accumulates from the seek point (theDAW rule), it does not refill
+ *   with the notes before the seek point.
+ */
+export function updateTrail(
+  prev: TrailState,
+  hits: TrailHit[],
+  time: number,
+  mode: TrailMode,
+): TrailState {
+  if (time < prev.time - TRAIL_SEEK_BACK_SECONDS) {
+    prev = { ids: [], time };
+  }
+  if (mode === "flash") {
+    return {
+      ids: hits
+        .filter((hit) => Math.abs(hit.time - time) <= TRAIL_FLASH_WINDOW_SECONDS)
+        .map((hit) => hit.eventId),
+      time,
+    };
+  }
+  const fresh = hits
+    .filter((hit) => hit.time > prev.time && hit.time <= time)
+    .map((hit) => hit.eventId);
+  if (fresh.length === 0) return { ids: prev.ids, time };
+  return { ids: [...prev.ids, ...fresh], time };
+}

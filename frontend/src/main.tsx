@@ -1,9 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./style.css";
+import { createSource } from "@audio-ui/react/source";
 import DrumPianoRoll from "./DrumPianoRoll";
 import DrumStaff from "./DrumStaff";
 import type { RollCommit } from "./drumRoll";
+import type { PlayheadSource } from "./playback";
 import WaveformPanel, { type WaveformPanelHandle } from "./WaveformPanel";
 
 type DrumEvent = {
@@ -171,6 +173,16 @@ function App() {
   const [annotationDoneBars, setAnnotationDoneBars] = React.useState<number[]>([]);
   const [annotationNote, setAnnotationNote] = React.useState("");
   const [projectFile, setProjectFile] = React.useState<File | null>(null);
+  /** Shared zoom (P0-2) in px/s, null = fit the width: one state for the
+   * roll, staff and waveform, so they zoom together. Remembered per
+   * project (see applyZoom / refreshPerformance). */
+  const [zoom, setZoom] = React.useState<number | null>(null);
+  const zoomByProjectRef = React.useRef(new Map<string, number | null>());
+  /** Shared playhead (P0-1/P0-2): a live source published outside React
+   * (see playback.ts). The <audio> element is the only clock — the
+   * effects below mirror its currentTime into this source; the source
+   * itself never ticks on its own. */
+  const playheadSource: PlayheadSource = React.useMemo(() => createSource(0), []);
   const [timelineDragDelta, setTimelineDragDelta] = React.useState(0);
   const timelineDragRef = React.useRef<{
     mode: "select" | "move"; pointerId: number; startX: number; startY: number;
@@ -224,6 +236,36 @@ function App() {
       document.getElementById(`event-${eventId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }, 0);
   };
+
+  /** Shared zoom setter: records the zoom against the current project so
+   * switching projects restores each project's own zoom. */
+  const applyZoom = (next: number | null) => {
+    if (summary) zoomByProjectRef.current.set(summary.projectId, next);
+    setZoom(next);
+  };
+
+  /** Playback clock (P0-2): while the <audio> element plays, mirror its
+   * currentTime into the shared playhead source every animation frame.
+   * The source notifies subscribers directly in the DOM, so the roll
+   * playhead moves at 60fps without re-rendering any React component. */
+  React.useEffect(() => {
+    if (!audioPlaying) return;
+    let frame = 0;
+    const tick = () => {
+      const audio = audioRef.current;
+      if (audio && !audio.paused) playheadSource.set(audio.currentTime);
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [audioPlaying, playheadSource]);
+
+  /** Seeks and jumps while paused (slider, A / D keys, bar buttons,
+   * restore): push the new time into the source so the roll, staff and
+   * waveform follow even without playback running. */
+  React.useEffect(() => {
+    playheadSource.set(audioTime);
+  }, [audioTime, playheadSource]);
 
   React.useEffect(() => {
     if (!audioPlaying || !loopEnabled || !loopRangeValid) return;
@@ -460,6 +502,7 @@ function App() {
       throw new Error("无法读取标准鼓事件结果。");
     }
     setSummary(summarizePerformance(jobId, projectId, result.performance));
+    setZoom(zoomByProjectRef.current.get(projectId) ?? null);
     setQuantizePreview(null);
     setSelectedEventIds([]);
     const tempoResponse = await fetch(`${API_BASE}/api/projects/${projectId}/tempo`);
@@ -613,68 +656,33 @@ function App() {
     }
   }
 
-  /** Persist one piano-roll gesture: drawn notes, moves, reclassifies,
-   * velocity changes and deletions. Moves/reclassifies with the same
-   * offset and lane go through one batch call; everything else is a
-   * single PATCH per note. One refresh at the end. */
+  /** Persist one piano-roll / staff gesture as ONE history revision:
+   * the whole commit (added + changed + removed) goes through the
+   * atomic /events/commit endpoint, so one gesture is one Ctrl+Z step
+   * instead of one step per sub-call. */
   async function handleRollCommit(commit: RollCommit) {
     if (!summary) return;
+    if (!commit.added.length && !commit.changed.length && !commit.removed.length) return;
     setSaving(true);
     try {
       const projectId = summary.projectId;
-      for (const note of commit.added) {
-        await addEventAt(note.time_seconds, note.instrument, note.velocity);
-      }
-      const groups = new Map<string, { ids: string[]; offset: number; instrument?: string }>();
-      const velocityPatches: { id: string; velocity: number }[] = [];
-      for (const patch of commit.changed) {
-        const original = summary.events.find((item) => item.id === patch.eventId);
-        if (!original) continue;
-        const offset = patch.changes.time_seconds !== undefined
-          ? patch.changes.time_seconds - original.time_seconds
-          : 0;
-        if (patch.changes.velocity !== undefined) {
-          velocityPatches.push({ id: patch.eventId, velocity: patch.changes.velocity });
-        }
-        if (Math.abs(offset) >= 0.001 || patch.changes.instrument) {
-          const key = `${offset.toFixed(3)}|${patch.changes.instrument ?? ""}`;
-          const group = groups.get(key) ?? { ids: [], offset, instrument: patch.changes.instrument };
-          group.ids.push(patch.eventId);
-          groups.set(key, group);
-        }
-      }
-      for (const group of groups.values()) {
-        const response = await fetch(`${API_BASE}/api/projects/${projectId}/events/batch`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event_ids: group.ids,
-            ...(Math.abs(group.offset) >= 0.001 ? { time_offset_seconds: group.offset } : {}),
-            ...(group.instrument ? { instrument: group.instrument } : {}),
-          }),
-        });
-        const result = await response.json() as Record<string, unknown>;
-        if (!response.ok) throw new Error(responseError(result, "钢琴卷帘移动失败"));
-      }
-      for (const patch of velocityPatches) {
-        const response = await fetch(`${API_BASE}/api/projects/${projectId}/events/${patch.id}`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ velocity: patch.velocity }),
-        });
-        const result = await response.json() as Record<string, unknown>;
-        if (!response.ok) throw new Error(responseError(result, "钢琴卷帘力度保存失败"));
-      }
-      if (commit.removed.length) {
-        const response = await fetch(`${API_BASE}/api/projects/${projectId}/events/batch`, {
-          method: "DELETE", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event_ids: commit.removed }),
-        });
-        const result = await response.json() as Record<string, unknown>;
-        if (!response.ok) throw new Error(responseError(result, "钢琴卷帘删除失败"));
-      }
+      const response = await fetch(`${API_BASE}/api/projects/${projectId}/events/commit`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          added: commit.added,
+          changed: commit.changed.map((patch) => ({
+            event_id: patch.eventId,
+            ...patch.changes,
+          })),
+          removed: commit.removed,
+        }),
+      });
+      const result = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(responseError(result, "钢琴卷帘保存失败"));
       await refreshPerformance(projectId, summary.jobId);
       setSelectedEventIds((current) => current.filter((id) => !commit.removed.includes(id)));
       setMessage(
-        `钢琴卷帘已保存：新增 ${commit.added.length} 个，修改 ${commit.changed.length} 个，删除 ${commit.removed.length} 个；MIDI 已同步。`,
+        `钢琴卷帘已保存：新增 ${commit.added.length} 个，修改 ${commit.changed.length} 个，删除 ${commit.removed.length} 个；一条历史记录，MIDI 已同步。`,
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "钢琴卷帘保存失败");
@@ -1232,13 +1240,18 @@ function App() {
               revealEvent(eventId);
             }}
             onWaveformPlay={() => { audioRef.current?.pause(); }}
+            playheadSource={playheadSource}
+            zoom={zoom}
+            onZoomChange={applyZoom}
           />
           <DrumPianoRoll
             events={summary.events}
             durationSeconds={summary.durationSeconds}
             gridStepSeconds={60 / summary.bpm / 4}
             barMarks={waveformBars.map((bar) => ({ value: bar.start, label: String(bar.number) }))}
-            playheadSeconds={audioTime}
+            playheadSource={playheadSource}
+            zoom={zoom}
+            onZoomChange={applyZoom}
             selectedEventId={selectedEventId}
             selectedEventIds={selectedEventIds}
             onSelectEvent={(eventId) => {
@@ -1282,6 +1295,9 @@ function App() {
               if (audioRef.current) audioRef.current.currentTime = timeSeconds;
               setAudioTime(timeSeconds);
             }}
+            playheadSource={playheadSource}
+            zoom={zoom}
+            onZoomChange={applyZoom}
           />
           <div className="timeline-panel">
             <div className="timeline-heading">

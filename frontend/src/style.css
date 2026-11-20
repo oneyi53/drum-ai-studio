@@ -252,10 +252,19 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .drum-staff-toolbar button:disabled{opacity:.4;cursor:not-allowed}
 .drum-staff-toolbar span{font-size:12px;color:#cbd5e1}
 .drum-staff-toolbar small{color:#748096;font-size:11px}
-.drum-staff-page{position:relative;margin-top:12px;border:1px solid #22304d;border-radius:8px;background:#0b1220;overflow:hidden;touch-action:none}
+.drum-staff-page{position:relative;margin-top:12px;border:1px solid #22304d;border-radius:8px;background:#0b1220;overflow:auto;touch-action:none}
 .drum-staff-page:focus-visible{outline:2px solid #c9f36b;outline-offset:-2px}
 .drum-staff-svg svg{display:block}
 .drum-staff-selected{position:absolute;width:18px;height:20px;border:2px solid #fff;border-radius:4px;opacity:.85;pointer-events:none;z-index:3}
+/* Follow-playback: the now-line sweeps the active bar (positioned straight
+   in the DOM from the rAF loop, never through React state), and the trail
+   inks hits the playhead has passed (magenta, distinct from selection). */
+.drum-staff-nowline{position:absolute;width:2px;background:#f472b6;box-shadow:0 0 6px rgba(244,114,182,.75);pointer-events:none;z-index:4}
+.drum-staff-trail{position:absolute;width:10px;height:10px;border-radius:50%;background:#f472b6;opacity:.9;pointer-events:none;z-index:2;transform:translate(-5px,-5px)}
+.drum-staff-follow{display:flex;align-items:center;gap:8px}
+.drum-staff-follow label{display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1}
+.drum-staff-follow select{background:#1a2740;color:#e5edf7;border:1px solid #2b3d61;border-radius:6px;padding:5px;font-size:12px}
+.drum-staff-toolbar button.drum-staff-follow-on{background:#c9f36b;color:#141a0e;border-color:#c9f36b;font-weight:700}
 .drum-staff-ghost{position:absolute;z-index:4;pointer-events:none;transform:translate(-4px,-26px);background:#c9f36b;color:#141a0e;font:700 10px "DM Mono",monospace;padding:3px 6px;border-radius:5px;white-space:nowrap}
 .drum-staff-note{display:block;margin-top:10px;color:#748096;font-size:11px;line-height:1.6}
 .drum-staff-empty{color:#748096;font-size:12px;padding:18px 0}
