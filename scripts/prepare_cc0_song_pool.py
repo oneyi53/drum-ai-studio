@@ -7,7 +7,7 @@ verify musical genre, instrument presence, or per-track copyright ownership.
 Every candidate remains subject to source-provenance and human audio review.
 """
 from __future__ import annotations
-import argparse, hashlib, json, random, re, subprocess
+import argparse, hashlib, json, os, random, re, subprocess, time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -30,6 +30,64 @@ GENRES={
  "latin":("latin","salsa","bossa","reggaeton"),
 }
 AUDIO=re.compile(r"\.(mp3|wav|flac|ogg|m4a)$",re.I)
+RETRYABLE_GITHUB_STATUSES=frozenset({403,429,500,502,503,504})
+MAX_GITHUB_API_ATTEMPTS=5
+_GITHUB_BACKOFF_BASE_SECONDS=10.0
+_GITHUB_BACKOFF_CAP_SECONDS=300.0
+
+def _github_rate_limit_delay(response,attempt):
+ """Backoff before retrying a rate-limited GitHub API call.
+
+ Exponential backoff (10s, 20s, 40s, 80s) capped at 300s, honoring the
+ Retry-After header and X-RateLimit-Reset when they ask for longer.
+ """
+ delay=min(_GITHUB_BACKOFF_BASE_SECONDS*(2**attempt),_GITHUB_BACKOFF_CAP_SECONDS)
+ retry_after=response.headers.get("Retry-After")
+ if retry_after is not None:
+  try: delay=max(delay,min(float(retry_after),_GITHUB_BACKOFF_CAP_SECONDS))
+  except ValueError: pass
+ reset=response.headers.get("X-RateLimit-Reset")
+ if reset is not None:
+  try:
+   wait=float(reset)-time.time()
+   if wait>0: delay=max(delay,min(wait,_GITHUB_BACKOFF_CAP_SECONDS))
+  except ValueError: pass
+ return delay
+
+def github_api_get(session,url,timeout=90,max_attempts=MAX_GITHUB_API_ATTEMPTS,sleep=time.sleep):
+ """GET a GitHub API URL with token auth and retry on rate limiting.
+
+ Reads GITHUB_TOKEN from the environment; when set, sends
+ ``Authorization: Bearer <token>`` (the workflow passes the built-in
+ GITHUB_TOKEN, so no user-created PAT is needed). Retries HTTP 403/429
+ and transient 5xx up to ``max_attempts`` times with exponential
+ backoff. After the final attempt raises RuntimeError stating the
+ GitHub API rate limit was hit and the run should be retried later.
+ The token is never logged or printed.
+ """
+ token=os.environ.get("GITHUB_TOKEN")
+ headers={"Authorization":f"Bearer {token}"} if token else {}
+ last_status=None
+ for attempt in range(max_attempts):
+  try:
+   response=session.get(url,headers=headers,timeout=timeout)
+  except requests.RequestException as exc:
+   last_status=f"request error: {exc}"
+   if attempt==max_attempts-1: break
+   sleep(min(_GITHUB_BACKOFF_BASE_SECONDS*(2**attempt),_GITHUB_BACKOFF_CAP_SECONDS))
+   continue
+  if response.status_code==200: return response
+  last_status=f"HTTP {response.status_code}"
+  if response.status_code in RETRYABLE_GITHUB_STATUSES:
+   if attempt==max_attempts-1: break
+   sleep(_github_rate_limit_delay(response,attempt))
+   continue
+  response.raise_for_status()
+ raise RuntimeError(
+  f"GitHub API rate limit hit while fetching {url} "
+  f"({max_attempts} attempts, last: {last_status}). "
+  "The unauthenticated limit is 60 requests/hour per IP; with "
+  "GITHUB_TOKEN set the limit is much higher. Retry later.")
 
 def raw_download_url(commit: str, repository_path: str) -> str:
  """Build a commit-pinned raw URL (the commit segment is required by GitHub)."""
@@ -93,7 +151,7 @@ def main():
  p.add_argument("--seed",type=int,default=20261118); p.add_argument("--genres",nargs="*",default=list(GENRES)); p.add_argument("--min-duration-seconds",type=float,default=60.0)
  a=p.parse_args()
  sess=requests.Session(); sess.headers["User-Agent"]="DrumAI-Studio-CC0-dataset-builder"
- response=sess.get(API+"/git/trees/main?recursive=1",timeout=90); response.raise_for_status()
+ response=github_api_get(sess,API+"/git/trees/main?recursive=1")
  tree=response.json(); commit=tree["sha"]
  blobs=[x for x in tree.get("tree",[]) if x.get("type")=="blob" and AUDIO.search(x["path"]) and x.get("size",0)<=a.max_file_mb*1024*1024]
  rng=random.Random(a.seed); selected=[]; used=set(); counts={}
