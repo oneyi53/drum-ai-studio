@@ -44,6 +44,11 @@ MAX_UPLOAD_BYTES = int(os.getenv("DRUMAI_MAX_UPLOAD_BYTES", str(100 * 1024 * 102
 ALLOWED_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"}
 ENGINE_LOCK = Lock()
 
+# Undo depth (theDAW parity): the newest 100 history revisions are kept;
+# older ones are pruned when a new revision is saved, so a long proofing
+# session cannot grow the revisions table without bound.
+MAX_HISTORY_REVISIONS = 100
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -118,6 +123,26 @@ class EventBarCopyRequest(BaseModel):
     source_end_seconds: float = Field(gt=0)
     target_start_seconds: float = Field(ge=0)
     target_end_seconds: float = Field(gt=0)
+
+
+class EventCommitChange(BaseModel):
+    """One existing event changed inside a roll/staff commit."""
+
+    event_id: str
+    time_seconds: float | None = Field(default=None, ge=0)
+    instrument: DrumInstrument | None = None
+    velocity: int | None = Field(default=None, ge=1, le=127)
+
+
+class EventCommitRequest(BaseModel):
+    """One piano-roll / staff gesture: adds + changes + removals applied
+    atomically as a single history revision, so one gesture is one Ctrl+Z
+    step (the roll used to persist a gesture as several calls, and undo
+    only undid the last sub-call)."""
+
+    added: list[EventCreateRequest] = Field(default_factory=list, max_length=5000)
+    changed: list[EventCommitChange] = Field(default_factory=list, max_length=5000)
+    removed: list[str] = Field(default_factory=list, max_length=5000)
 
 
 
@@ -592,6 +617,14 @@ def _save_edited_performance(
         "UPDATE performance_history_state SET current_revision=? WHERE project_id=?",
         (next_revision, project_id),
     )
+    # Cap the history at the newest MAX_HISTORY_REVISIONS revisions:
+    # older snapshots are pruned so a long proofing session cannot grow
+    # the table without bound. _history_status derives can_undo / can_redo
+    # from the surviving MIN/MAX, so pruning needs no other change.
+    connection.execute(
+        "DELETE FROM performance_revisions WHERE project_id=? AND revision<=?",
+        (project_id, next_revision - MAX_HISTORY_REVISIONS),
+    )
     connection.execute(
         "UPDATE analysis_jobs SET performance_json=?, updated_at=? WHERE id=?",
         (performance.model_dump_json(), utc_now(), job_id),
@@ -772,6 +805,110 @@ def batch_delete_events(project_id: str, payload: EventBatchRequest) -> dict[str
         })
         _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
     return {"deleted_event_ids": payload.event_ids, "performance": updated.model_dump()}
+
+
+@app.post("/api/projects/{project_id}/events/commit")
+def commit_roll_events(project_id: str, payload: EventCommitRequest) -> dict[str, Any]:
+    """Apply one piano-roll / staff gesture atomically as ONE history revision.
+
+    A roll gesture used to reach the backend as several calls (adds, batch
+    moves, velocity patches, deletes), so one Ctrl+Z only undid the last
+    sub-call. A commit applies added + changed + removed in one transaction
+    and saves a single revision, so one gesture is one undo step. Nothing
+    is persisted when any part fails validation (the transaction rolls
+    back), matching the other batch endpoints.
+    """
+    if not payload.added and not payload.changed and not payload.removed:
+        raise HTTPException(
+            status_code=422,
+            detail="A commit must add, change or remove at least one drum event.",
+        )
+    if len(set(payload.removed)) != len(payload.removed):
+        raise HTTPException(status_code=422, detail="Removed event ids must be unique.")
+    change_ids = [change.event_id for change in payload.changed]
+    if len(set(change_ids)) != len(change_ids):
+        raise HTTPException(status_code=422, detail="Changed event ids must be unique.")
+    if any(
+        change.time_seconds is None and change.instrument is None and change.velocity is None
+        for change in payload.changed
+    ):
+        raise HTTPException(
+            status_code=422, detail="Each changed event must set at least one field."
+        )
+    if set(change_ids) & set(payload.removed):
+        raise HTTPException(
+            status_code=422,
+            detail="An event cannot be both changed and removed in one commit.",
+        )
+    with connect_db() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row, performance = _load_editable_performance(connection, project_id)
+        known = {event.id for event in performance.events}
+        missing = [
+            event_id
+            for event_id in [*change_ids, *payload.removed]
+            if event_id not in known
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=404, detail="One or more drum events were not found."
+            )
+        removed = set(payload.removed)
+        changes_by_id = {change.event_id: change for change in payload.changed}
+        updated_events: list[DrumEvent] = []
+        for event in performance.events:
+            if event.id in removed:
+                continue
+            change = changes_by_id.get(event.id)
+            if change is None:
+                updated_events.append(event)
+                continue
+            updated_events.append(
+                event.model_copy(
+                    update={
+                        **(
+                            {"time_seconds": change.time_seconds}
+                            if change.time_seconds is not None
+                            else {}
+                        ),
+                        **(
+                            {"instrument": change.instrument}
+                            if change.instrument is not None
+                            else {}
+                        ),
+                        **(
+                            {"velocity": change.velocity}
+                            if change.velocity is not None
+                            else {}
+                        ),
+                        "source": "manual",
+                        "manually_corrected": True,
+                    }
+                )
+            )
+        for new in payload.added:
+            updated_events.append(
+                DrumEvent(
+                    time_seconds=new.time_seconds,
+                    instrument=new.instrument,
+                    velocity=new.velocity,
+                    source="manual",
+                    manually_corrected=True,
+                )
+            )
+        try:
+            updated = DrumPerformance.model_validate(
+                {**performance.model_dump(), "events": updated_events}
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _save_edited_performance(connection, row["id"], row["midi_filename"], updated)
+    return {
+        "added_count": len(payload.added),
+        "changed_count": len(payload.changed),
+        "removed_count": len(payload.removed),
+        "performance": updated.model_dump(),
+    }
 
 
 
