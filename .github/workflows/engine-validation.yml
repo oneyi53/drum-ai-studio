@@ -8,6 +8,22 @@ on:
       - ".github/workflows/engine-validation.yml"
       - "scripts/engine_smoke.py"
       - "scripts/kick_stage_diagnostics.py"
+      - "scripts/kick_frame_model_diagnostics.py"
+      - "scripts/export_kick_reference_checkpoint.py"
+      - "scripts/test_kick_frame_model_diagnostics.py"
+      - "scripts/prepare_real_song_kick_corpus.py"
+      - "scripts/test_prepare_real_song_kick_corpus.py"
+      - "scripts/download_kaino_cc0_music.py"
+      - "scripts/score_real_song_kick.py"
+      - "scripts/test_prepare_cc0_song_pool.py"
+      - "scripts/prepare_cc0_song_pool.py"
+      - "docs/kick-review-and-independent-training.md"
+      - "scripts/test_kick_review_pack.py"
+      - "scripts/train_kick_event_classifier.py"
+      - "scripts/test_train_kick_event_classifier.py"
+      - "scripts/evaluate_kick_bass_confusions.py"
+      - "scripts/test_evaluate_kick_bass_confusions.py"
+      - "scripts/build_kick_review_pack.py"
       - "scripts/api_engine_smoke.py"
       - "scripts/score_geometry.py"
       - "backend/app/engine_adapter.py"
@@ -36,14 +52,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install portable FFmpeg and Python PDF renderer
+      - name: Install FFmpeg and Python PDF renderer
         run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
           python -m pip install --upgrade pip
-          python -m pip install ffmpeg-downloader==0.5.3 pypdfium2 pillow
-          mkdir -p "$HOME/.local/bin"
-          ffdl install 7@static
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.local/bin:$PATH"
+          python -m pip install pypdfium2 pillow
           command -v ffmpeg
           command -v ffprobe
           ffmpeg -version
@@ -54,8 +68,9 @@ jobs:
           python -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
           git clone --depth 1 https://github.com/DrumScript/DrumScript.git /tmp/DrumScript
           git -C /tmp/DrumScript rev-parse HEAD
+          echo "DRUMSCRIPT_SHA=$(git -C /tmp/DrumScript rev-parse HEAD)" >> "$GITHUB_ENV"
           python -m pip install -e /tmp/DrumScript
-          python -m pip install pytest mir-eval requests
+          python -m pip install pytest mir-eval requests onnxruntime onnx
       - name: Install DrumAI canonical MIDI adapter
         run: python -m pip install -e "./backend[dev]"
       - name: Verify package and CLI
@@ -75,6 +90,102 @@ jobs:
           IDMT_ROOT="$(find /tmp/idmt-dataset -type d -name annotation_xml -print -quit | xargs dirname)"
           test -d "$IDMT_ROOT/audio"
           echo "IDMT_ROOT=$IDMT_ROOT" >> "$GITHUB_ENV"
+      - name: Fetch pinned upstream checkpoint and export with recorded training config (evaluation only)
+        run: |
+          mkdir -p /tmp/kick-model
+          git clone --filter=blob:none https://github.com/FrancescoZumo/frame_level_drum_classifier.git /tmp/kick-model/upstream
+          git -C /tmp/kick-model/upstream fetch --depth 1 origin 32b1c9e43fbaede862116ef6241fa9defba39b90
+          git -C /tmp/kick-model/upstream checkout --detach 32b1c9e43fbaede862116ef6241fa9defba39b90
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
+            "https://raw.githubusercontent.com/FrancescoZumo/frame_level_drum_classifier/32b1c9e43fbaede862116ef6241fa9defba39b90/checkpoints/drum_cnn_no_pos_weights.pth" \
+            --output /tmp/kick-model/checkpoint.pth
+          test "$(stat -c%s /tmp/kick-model/checkpoint.pth)" -gt 100000
+          python "$GITHUB_WORKSPACE/scripts/export_kick_reference_checkpoint.py" \
+            --checkpoint /tmp/kick-model/checkpoint.pth \
+            --upstream-root /tmp/kick-model/upstream \
+            --output /tmp/kick-model/drum_cnn.onnx \
+            --source-commit 32b1c9e43fbaede862116ef6241fa9defba39b90
+      - name: Download and audit OnAir stem-backed real songs; discover Kaino CC0 tracks
+        run: |
+          python scripts/prepare_real_song_kick_corpus.py --output /tmp/real-song-corpus
+          python -m pytest scripts/test_prepare_real_song_kick_corpus.py -q
+      - name: Download selected Kaino CC0 WAV full mixes
+        continue-on-error: true
+        run: |
+          if test -s /tmp/real-song-corpus/kaino-search-results.json; then
+            python scripts/download_kaino_cc0_music.py \
+              --search-json /tmp/real-song-corpus/kaino-search-results.json \
+              --output /tmp/real-song-corpus/kaino \
+              --max-tracks 12
+          else
+            echo "Kaino MCP search unavailable; OnAir stem-backed corpus remains available"
+          fi
+      - name: Build genre-balanced CC0 full-song candidate pool
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/prepare_cc0_song_pool.py \
+            --output /tmp/cc0-song-pool \
+            --max-per-genre 10 \
+            --max-total 120
+          python -m pytest scripts/test_prepare_cc0_song_pool.py -q
+      - name: Discover Sound Atlas drum and bass stem candidates (metadata only)
+        run: |
+          python scripts/discover_sound_atlas_stems.py --output /tmp/sound-atlas-discovery --max-tracks 250
+          python -m pytest scripts/test_discover_sound_atlas_stems.py -q
+      - name: Compare CNN and DrumScript on identical licensed real-song mixes
+        run: |
+          python scripts/score_real_song_kick.py \
+            --manifest-root /tmp/real-song-corpus \
+            --model /tmp/kick-model/drum_cnn.onnx \
+            --output /tmp/real-song-comparison \
+            --tolerance-ms 50
+      - name: Build human kick and bass-transient review pack
+        run: |
+          python scripts/build_kick_review_pack.py \
+            --manifest-root /tmp/real-song-corpus \
+            --comparison-dir /tmp/real-song-comparison \
+            --output /tmp/kick-review-pack
+      - name: Test human review pack and independent trainer CLI
+        run: |
+          python -m pytest scripts/test_kick_review_pack.py scripts/test_train_kick_event_classifier.py scripts/test_evaluate_kick_bass_confusions.py -q
+          python scripts/evaluate_kick_bass_confusions.py --help
+          python scripts/train_kick_event_classifier.py --help
+      - name: Upload Sound Atlas stem discovery report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sound-atlas-stem-candidates
+          path: /tmp/sound-atlas-discovery/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Upload CC0 genre-balanced song pool
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc0-genre-song-pool
+          path: /tmp/cc0-song-pool/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Upload compact human-review worksheet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kick-human-review-pack
+          path: /tmp/kick-review-pack/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Upload real-song corpus, annotations and comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: licensed-real-song-kick-benchmark
+          path: |
+            /tmp/real-song-corpus/
+            /tmp/real-song-comparison/
+          if-no-files-found: ignore
+      - name: Test kick frame-model evaluation helpers
+        run: python -m pytest scripts/test_kick_frame_model_diagnostics.py -q
       - name: Score annotated RealDrum mixes
         working-directory: /tmp/DrumScript
         run: >-
@@ -97,6 +208,13 @@ jobs:
           python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset RealDrum --limit 15 --output /tmp/kick-diagnostics/realdrum.json
           python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset WaveDrum --limit 15 --output /tmp/kick-diagnostics/wavedrum.json
           python "$GITHUB_WORKSPACE/scripts/kick_stage_diagnostics.py" --root "$IDMT_ROOT" --subset TechnoDrum --limit 15 --output /tmp/kick-diagnostics/technodrum.json
+      - name: Compare STAR frame model with DrumScript on IDMT full mixes
+        working-directory: /tmp/DrumScript
+        run: |
+          mkdir -p /tmp/kick-model-diagnostics
+          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset RealDrum --model /tmp/kick-model/drum_cnn.onnx --limit 15 --output /tmp/kick-model-diagnostics/realdrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset WaveDrum --model /tmp/kick-model/drum_cnn.onnx --limit 15 --output /tmp/kick-model-diagnostics/wavedrum.json
+          python "$GITHUB_WORKSPACE/scripts/kick_frame_model_diagnostics.py" --root "$IDMT_ROOT" --subset TechnoDrum --model /tmp/kick-model/drum_cnn.onnx --limit 15 --output /tmp/kick-model-diagnostics/technodrum.json
       - name: Upload IDMT benchmark metrics
         if: always()
         uses: actions/upload-artifact@v4
@@ -105,6 +223,7 @@ jobs:
           path: |
             /tmp/DrumScript/outputs/benchmarks/
             /tmp/kick-diagnostics/
+            /tmp/kick-model-diagnostics/
           if-no-files-found: ignore
       - name: Run synthetic and repository MP3 smoke tests
         run: python scripts/engine_smoke.py

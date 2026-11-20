@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Train an independently initialized multi-class event CNN from approved labels."""
+from __future__ import annotations
+import argparse,csv,hashlib,json,random,math
+from collections import Counter
+from datetime import datetime,timezone
+from pathlib import Path
+import numpy as np
+
+# First-stage model: low-frequency discrimination only; full-kit classes come later.
+LABELS=["kick","bass_guitar","bass_synth_808"]
+ALLOW={"CC0 1.0","CC BY 4.0","CC BY 3.0","CC BY 2.0"}
+
+def load_approved(manifest_path,annotation_paths,allow_sharealike):
+    data=json.loads(manifest_path.read_text(encoding="utf-8")); sources=data if isinstance(data,list) else data.get("sources",[])
+    by_track={x.get("track") or x.get("title"):x for x in sources}; out=[]
+    for path in annotation_paths:
+        with path.open(newline="",encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if row.get("decision","").strip().lower()!="accept": continue
+                label=row.get("annotation_label","").strip().lower()
+                if label not in LABELS: continue
+                track=row.get("track",""); src=by_track.get(track,{})
+                lic=(src.get("license") or row.get("license","")).strip()
+                verified = src.get("license_verified_per_track") is True or row.get("license_verified","").strip().lower() in {"1","true","yes"}
+                if not verified:
+                    raise ValueError(f"Per-track licence is not explicitly verified for {track!r}; repository-level declarations are insufficient.")
+                if lic not in ALLOW and not (allow_sharealike and lic=="CC BY-SA 4.0"):
+                    raise ValueError(f"Non-allowlisted licence {lic!r} for {track!r}; rights review required.")
+                audio=row.get("mix_path") or src.get("mix_path") or src.get("file")
+                if not audio or not Path(audio).is_file(): raise ValueError(f"Missing audio for {track!r}")
+                try: seconds=float(row["time_seconds"])
+                except (TypeError,ValueError): raise ValueError(f"Invalid time_seconds for {track!r}")
+                if not math.isfinite(seconds) or seconds < 0: raise ValueError(f"Invalid time_seconds for {track!r}: {seconds}")
+                expected=src.get("mix_sha256") or src.get("sha256")
+                if expected and hashlib.sha256(Path(audio).read_bytes()).hexdigest()!=expected:
+                    raise ValueError(f"Audio checksum mismatch for {track!r}")
+                out.append({"track":track,"audio_path":str(audio),"time_seconds":seconds,"label":label,"license":lic})
+    return out
+
+def make_features(items):
+    import librosa
+    cache={}; feats=[]; ys=[]; groups=[]
+    for x in items:
+        if x["audio_path"] not in cache: cache[x["audio_path"]],_=librosa.load(x["audio_path"],sr=22050,mono=True)
+        y=cache[x["audio_path"]]; center=int(x["time_seconds"]*22050); length=96*256
+        if center >= len(y): raise ValueError(f"Annotation time exceeds audio duration for {x['track']!r}: {x['time_seconds']}")
+        start=max(0,center-length//2); crop=y[start:start+length]
+        if len(crop)<length: crop=np.pad(crop,(0,length-len(crop)))
+        mel=librosa.feature.melspectrogram(y=crop,sr=22050,n_fft=1024,hop_length=256,n_mels=96,power=2)
+        log_mel=librosa.power_to_db(mel,ref=np.max)
+        delta=librosa.feature.delta(log_mel)
+        delta2=librosa.feature.delta(log_mel,order=2)
+        features=np.stack((log_mel,delta,delta2),axis=0)
+        if features.shape[2]<96: features=np.pad(features,((0,0),(0,0),(0,96-features.shape[2])))
+        feats.append(features[:,:,:96].astype(np.float32)); ys.append(LABELS.index(x["label"])); groups.append(x["track"])
+    return np.stack(feats),np.asarray(ys,dtype=np.int64),np.asarray(groups)
+
+
+def split_track_groups(groups, labels, seed=2026, validation_fraction=0.15, test_fraction=0.15):
+    """Return train/validation/test indices with all labels in all song partitions."""
+    tracks=sorted(set(groups.tolist()))
+    all_classes=set(range(len(LABELS)))
+    track_classes={t:set(labels[i] for i,g in enumerate(groups) if g==t) for t in tracks}
+    insufficient={LABELS[c]:sum(c in track_classes[t] for t in tracks) for c in all_classes
+                  if sum(c in track_classes[t] for t in tracks)<3}
+    if insufficient:
+        raise ValueError(f"Each class needs at least three distinct tracks for train/validation/test: {insufficient}")
+    rng=random.Random(seed); shuffled=tracks[:]; rng.shuffle(shuffled)
+
+    def choose_holdout(remaining, fraction, reserve):
+        target=max(1,round(len(tracks)*fraction))
+        chosen=set(); covered=set()
+        while covered!=all_classes:
+            candidates=[]
+            for track in shuffled:
+                if track not in remaining or track in chosen: continue
+                rest=remaining-chosen-{track}
+                if any(sum(c in track_classes[x] for x in rest)<reserve for c in all_classes): continue
+                gain=len(track_classes[track]-covered)
+                if gain: candidates.append((gain,track))
+            if not candidates:
+                raise ValueError("Cannot form three-way song-group split with every class represented in train, validation and test.")
+            best=max(candidates,key=lambda item:(item[0],-shuffled.index(item[1])))[1]
+            chosen.add(best); covered.update(track_classes[best])
+        for track in shuffled:
+            if len(chosen)>=target: break
+            if track not in remaining or track in chosen: continue
+            rest=remaining-chosen-{track}
+            if all(sum(c in track_classes[x] for x in rest)>=reserve for c in all_classes):
+                chosen.add(track)
+        return chosen
+
+    remaining=set(tracks)
+    test_tracks=choose_holdout(remaining,test_fraction,reserve=2)
+    remaining-=test_tracks
+    validation_tracks=choose_holdout(remaining,validation_fraction,reserve=1)
+    train_tracks=remaining-validation_tracks
+    if not train_tracks or not validation_tracks or not test_tracks:
+        raise ValueError("Song-group split produced an empty partition.")
+    def indices(selected):
+        return np.asarray([i for i,t in enumerate(groups) if t in selected],dtype=np.int64)
+    return indices(train_tracks),indices(validation_tracks),indices(test_tracks),{
+        "train":sorted(train_tracks),"validation":sorted(validation_tracks),"test":sorted(test_tracks)
+    }
+
+def classification_metrics(truth, predictions):
+    confusion=np.zeros((len(LABELS),len(LABELS)),dtype=int)
+    for actual,predicted in zip(truth,predictions): confusion[int(actual),int(predicted)]+=1
+    per_class={}
+    for i,label in enumerate(LABELS):
+        tp=int(confusion[i,i]); support=int(confusion[i,:].sum()); predicted=int(confusion[:,i].sum())
+        precision=tp/predicted if predicted else 0.0; recall=tp/support if support else 0.0
+        per_class[label]={"precision":precision,"recall":recall,
+                          "f1":2*precision*recall/(precision+recall) if precision+recall else 0.0,
+                          "support":support}
+    return confusion.tolist(),per_class
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument("--manifest",type=Path,required=True); p.add_argument("--annotations",type=Path,nargs="+",required=True); p.add_argument("--output",type=Path,required=True)
+    p.add_argument("--epochs",type=int,default=30); p.add_argument("--batch-size",type=int,default=32); p.add_argument("--min-tracks",type=int,default=8); p.add_argument("--min-per-class",type=int,default=20); p.add_argument("--allow-sharealike",action="store_true"); p.add_argument("--seed",type=int,default=2026); a=p.parse_args()
+    items=load_approved(a.manifest,a.annotations,a.allow_sharealike); counts=Counter(x["label"] for x in items); tracks=sorted({x["track"] for x in items})
+    missing=[k for k in LABELS if counts[k]<a.min_per_class]
+    if len(tracks)<a.min_tracks or missing: raise SystemExit(f"Insufficient reviewed data: tracks={len(tracks)}/{a.min_tracks}; counts={dict(counts)}; underrepresented={missing}.")
+    class_track_counts={label:len({x["track"] for x in items if x["label"]==label}) for label in LABELS}
+    try:
+        X,y,groups=make_features(items)
+        tr,va,te,track_splits=split_track_groups(groups,y,a.seed)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
+    import torch
+    from torch import nn
+    from torch.utils.data import DataLoader,TensorDataset
+    class EventCNN(nn.Module):
+        def __init__(self):
+            super().__init__(); self.features=nn.Sequential(nn.Conv2d(3,16,3,padding=1),nn.BatchNorm2d(16),nn.ReLU(),nn.MaxPool2d(2),nn.Conv2d(16,32,3,padding=1),nn.BatchNorm2d(32),nn.ReLU(),nn.MaxPool2d(2),nn.Conv2d(32,64,3,padding=1),nn.ReLU(),nn.AdaptiveAvgPool2d((1,1))); self.head=nn.Linear(64,len(LABELS))
+        def forward(self,x): return self.head(self.features(x).flatten(1))
+    torch.manual_seed(a.seed); model=EventCNN(); ds=TensorDataset(torch.from_numpy(X[tr]),torch.from_numpy(y[tr])); loader=DataLoader(ds,batch_size=a.batch_size,shuffle=True)
+    vx,vy=torch.from_numpy(X[va]),torch.from_numpy(y[va]); tx,ty=torch.from_numpy(X[te]),torch.from_numpy(y[te]); opt=torch.optim.AdamW(model.parameters(),lr=1e-3,weight_decay=1e-4); loss_fn=nn.CrossEntropyLoss(); history=[]
+    for epoch in range(a.epochs):
+        model.train(); total=0
+        for xb,yb in loader:
+            opt.zero_grad(); loss=loss_fn(model(xb),yb); loss.backward(); opt.step(); total+=float(loss.item())*len(yb)
+        model.eval()
+        with torch.no_grad(): acc=float((model(vx).argmax(1)==vy).float().mean().item())
+        history.append({"epoch":epoch+1,"train_loss":total/len(ds),"track_holdout_accuracy":acc})
+    model.eval()
+    with torch.no_grad():
+        validation_predictions=model(vx).argmax(1).cpu().numpy()
+        test_predictions=model(tx).argmax(1).cpu().numpy()
+    validation_confusion,validation_per_class=classification_metrics(y[va],validation_predictions)
+    test_confusion,test_per_class=classification_metrics(y[te],test_predictions)
+    hashes={path:hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in sorted({x["audio_path"] for x in items})}; licenses=sorted({x["license"] for x in items})
+    a.output.parent.mkdir(parents=True,exist_ok=True)
+    torch.save({"state_dict":model.state_dict(),"labels":LABELS,"feature_config":{"sample_rate":22050,"n_fft":1024,"hop_length":256,"n_mels":96,"frames":96,"channels":["log_mel","delta","delta2"],"window_seconds":96*256/22050},"train_tracks":track_splits["train"],"validation_tracks":track_splits["validation"],"test_tracks":track_splits["test"],"source_licenses":licenses,"source_audio_sha256":hashes,"created_at_utc":datetime.now(timezone.utc).isoformat(),"note":"Independent initialization; no STAR/AGPL weights loaded. First-stage classes are kick, bass_guitar and bass_synth_808 only. Experimental; separate licence review required."},a.output)
+    meta={"examples":len(items),"tracks":len(tracks),"class_counts":dict(counts),"class_track_counts":class_track_counts,"track_splits":track_splits,"source_licenses":licenses,"validation_confusion_matrix":validation_confusion,"validation_per_class":validation_per_class,"untouched_test_confusion_matrix":test_confusion,"untouched_test_per_class":test_per_class,"history":history,"checkpoint":str(a.output)}
+    a.output.with_suffix(".json").write_text(json.dumps(meta,indent=2),encoding="utf-8"); print(json.dumps(meta,indent=2))
+if __name__=="__main__": main()
