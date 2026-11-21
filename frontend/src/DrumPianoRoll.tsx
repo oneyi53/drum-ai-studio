@@ -494,7 +494,7 @@ export default function DrumPianoRoll({
         </div>
       )}
       <small className="drum-roll-gesture-help">
-        点空白格 = 加音 · 点音符 = 选中 · 拖拽 = 移动 / 改类 · 方向键 = 微移（Shift 按小节）· Delete = 删除 · 右键 = 菜单 · Ctrl+滚轮 = 缩放 · A/D = 上一个/下一个鼓点
+        点空白格 = 加音 · 点音符 = 选中 · 双击音符 = 删除 · 拖拽 = 移动 / 改类 · 方向键 = 微移（Shift 按小节）· Delete = 删除 · 右键 = 菜单 · Ctrl+滚轮 = 缩放 · A/D = 上一个/下一个鼓点
       </small>
       <small className="drum-roll-note">
         鼓点是时间点：拉伸只改显示长度，不写入模型；左缘拉伸移动鼓点时间。
