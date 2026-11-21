@@ -166,6 +166,8 @@ footer{font-size:11px;line-height:1.7;color:#687286;margin-top:24px}
 .drum-roll-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
 .drum-roll-heading h3{margin:4px 0 0;font-size:15px}
 .drum-roll-heading>span{color:#748096;font-size:11px;text-align:right;max-width:46%}
+.drum-roll-heading button{background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+.drum-roll-heading button.drum-audition-on{background:#c9f36b;color:#141a0e;border-color:#c9f36b;font-weight:700}
 .drum-roll-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px}
 .drum-roll-toolbar button{background:#1a2740;color:#dbe4f0;border:1px solid #2b3d61;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer}
 .drum-roll-toolbar button.reclassify-on{background:#c9f36b;color:#141a0e;border-color:#c9f36b;font-weight:700}
