@@ -105,6 +105,8 @@ export default function DrumPianoRoll({
   const [velocityDraft, setVelocityDraft] = React.useState("");
   const [contextMenu, setContextMenu] = React.useState<{ eventId: string; x: number; y: number } | null>(null);
   const [contextIndex, setContextIndex] = React.useState(0);
+  const contextMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const velocityMenuRef = React.useRef<HTMLInputElement | null>(null);
   const bodyRef = React.useRef<HTMLDivElement | null>(null);
 
   /** px/s that fits the whole song in the visible grid width. */
@@ -136,10 +138,27 @@ export default function DrumPianoRoll({
     onCommit({ added: [], changed: [{ eventId, changes }], removed: [] });
   };
 
+  React.useEffect(() => {
+    if (!contextMenu) return;
+    contextMenuRef.current?.focus();
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !contextMenuRef.current?.contains(event.target)) setContextMenu(null);
+    };
+    const closeEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setContextMenu(null); };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeEscape);
+    return () => { document.removeEventListener("pointerdown", closeOutside); document.removeEventListener("keydown", closeEscape); };
+  }, [contextMenu]);
+
+  React.useEffect(() => {
+    if (contextMenu && contextIndex === INSTRUMENTS.length + 1) velocityMenuRef.current?.focus();
+  }, [contextMenu, contextIndex]);
+
   const commitVelocity = (eventId: string) => {
     const velocity = parseMidiVelocity(velocityDraft);
     const original = events.find((event) => event.id === eventId);
-    if (velocity === null || !original || velocity === original.velocity) {
+    const currentNote = draftNotes.find((item) => String(item.id) === eventId);
+    if (velocity === null || !original || velocity === original.velocity || (currentNote && Math.round(currentNote.velocity * 127) === velocity)) {
       setVelocityDraft(String(original?.velocity ?? ""));
       return;
     }
@@ -170,12 +189,13 @@ export default function DrumPianoRoll({
       if (event.key === "Escape") { event.preventDefault(); setContextMenu(null); return; }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
-        setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 1) % (INSTRUMENTS.length + 1));
+        setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 2) % (INSTRUMENTS.length + 2));
       }
       if (event.key === "Enter") {
         event.preventDefault();
         if (contextIndex < INSTRUMENTS.length) applyContextLane(INSTRUMENTS[contextIndex]);
-        else deleteContextNote();
+        else if (contextIndex === INSTRUMENTS.length) deleteContextNote();
+        else velocityMenuRef.current?.focus();
       }
       return;
     }
@@ -260,7 +280,7 @@ export default function DrumPianoRoll({
             选中力度
             <input aria-label="选中鼓点力度" type="number" min="0" max="127" step="1"
               value={velocityDraft || String(events.find((item) => item.id === selectedEventId)?.velocity ?? "")}
-              onFocus={() => setVelocityDraft(String(events.find((item) => item.id === selectedEventId)?.velocity ?? "")}
+              onFocus={() => setVelocityDraft(String(events.find((item) => item.id === selectedEventId)?.velocity ?? ""))}
               onChange={(input) => setVelocityDraft(input.target.value)}
               onKeyDown={(input) => { if (input.key === "Enter") { input.preventDefault(); commitVelocity(selectedEventId!); input.currentTarget.blur(); } }}
               onBlur={() => commitVelocity(selectedEventId!)} />
@@ -435,19 +455,20 @@ export default function DrumPianoRoll({
       </div>
 
       {contextMenu && (
-        <div className="drum-roll-context-menu" role="menu" aria-label="鼓点编辑菜单"
+        <div ref={contextMenuRef} tabIndex={-1} className="drum-roll-context-menu" role="menu" aria-label="鼓点编辑菜单"
           style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 1000 }}
           onMouseDown={(event) => event.stopPropagation()}
           onKeyDown={(event) => {
             if (event.key === "Escape") { event.preventDefault(); setContextMenu(null); }
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               event.preventDefault();
-              setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 1) % (INSTRUMENTS.length + 1));
+              setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 2) % (INSTRUMENTS.length + 2));
             }
             if (event.key === "Enter") {
               event.preventDefault();
               if (contextIndex < INSTRUMENTS.length) applyContextLane(INSTRUMENTS[contextIndex]);
-              else deleteContextNote();
+              else if (contextIndex === INSTRUMENTS.length) deleteContextNote();
+              else velocityMenuRef.current?.focus();
             }
           }}>
           <strong>改类到鼓件</strong>
@@ -456,8 +477,9 @@ export default function DrumPianoRoll({
               onMouseEnter={() => setContextIndex(index)} onClick={() => applyContextLane(instrument)}>{instrument}</button>
           ))}
           <button type="button" role="menuitem" className={contextIndex === INSTRUMENTS.length ? "active" : ""} onClick={deleteContextNote}>删除</button>
-          <label>设力度
-            <input aria-label="右键菜单力度" type="number" min="0" max="127" value={velocityDraft}
+          <button type="button" role="menuitem" className={contextIndex === INSTRUMENTS.length + 1 ? "active" : ""} onClick={() => velocityMenuRef.current?.focus()}>设力度</button>
+          <label>力度数值
+            <input ref={velocityMenuRef} aria-label="右键菜单力度" type="number" min="0" max="127" value={velocityDraft}
               onChange={(event) => setVelocityDraft(event.target.value)}
               onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitVelocity(contextMenu.eventId); setContextMenu(null); } }}
               onBlur={() => { if (contextMenu) commitVelocity(contextMenu.eventId); }} />
