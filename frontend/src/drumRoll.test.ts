@@ -12,6 +12,8 @@ import {
   diffNotes,
   instrumentToPitch,
   notesFromEvents,
+  nudgeRollNote,
+  parseMidiVelocity,
   pitchToInstrument,
   velocityToMidi,
   type DrumEventLike,
@@ -116,4 +118,26 @@ test("diffNotes reports a deleted note as removed", () => {
   assert.deepEqual(commit.removed, ["b"]);
   assert.deepEqual(commit.added, []);
   assert.deepEqual(commit.changed, []);
+});
+
+test("parseMidiVelocity accepts only integer values from 0 through 127", () => {
+  assert.equal(parseMidiVelocity("0"), 0);
+  assert.equal(parseMidiVelocity("127"), 127);
+  for (const value of ["", "1.5", "-1", "128", "abc"]) {
+    assert.equal(parseMidiVelocity(value), null);
+  }
+});
+
+test("nudgeRollNote moves by a sixteenth, clamps song bounds and changes adjacent lanes", () => {
+  const note = notesFromEvents(EVENTS)[0];
+  assert.equal(nudgeRollNote(note, "left", 0.125, 10).start, 0.875);
+  assert.equal(nudgeRollNote({ ...note, start: 0 }, "left", 0.125, 10).start, 0);
+  assert.equal(nudgeRollNote({ ...note, start: 9.95 }, "right", 0.125, 10).start, 10);
+  assert.equal(nudgeRollNote(note, "up", 0.125, 10).pitch, 45);
+  assert.equal(nudgeRollNote(note, "down", 0.125, 10).pitch, 46);
+});
+
+test("nudgeRollNote moves by the containing measure when requested", () => {
+  const note = { ...notesFromEvents(EVENTS)[0], start: 1.25 };
+  assert.equal(nudgeRollNote(note, "right", 0.125, 8, [{ value: 0, label: "1" }, { value: 2, label: "2" }, { value: 4, label: "3" }], true).start, 3.25);
 });
