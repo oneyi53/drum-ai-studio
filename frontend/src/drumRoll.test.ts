@@ -123,7 +123,7 @@ test("diffNotes reports a deleted note as removed", () => {
 test("parseMidiVelocity accepts only integer values from 0 through 127", () => {
   assert.equal(parseMidiVelocity("0"), 0);
   assert.equal(parseMidiVelocity("127"), 127);
-  for (const value of ["", "1.5", "-1", "128", "abc"]) {
+  for (const value of ["", "1.5", "-1", "128", "abc", "0x10", "1e2"]) {
     assert.equal(parseMidiVelocity(value), null);
   }
 });
