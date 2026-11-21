@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import sqlite3
+import tempfile
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -48,6 +49,23 @@ ENGINE_LOCK = Lock()
 # older ones are pruned when a new revision is saved, so a long proofing
 # session cannot grow the revisions table without bound.
 MAX_HISTORY_REVISIONS = 100
+
+
+def _filter_performance_instrument(
+    performance: DrumPerformance, instrument: DrumInstrument | None
+) -> DrumPerformance:
+    """Return all events or just the selected drum voice."""
+    if instrument is None:
+        return performance
+    return DrumPerformance(
+        duration_seconds=performance.duration_seconds,
+        events=[event for event in performance.events if event.instrument == instrument],
+        tempo_map=performance.tempo_map,
+    )
+
+
+def _instrument_export_suffix(instrument: DrumInstrument | None) -> str:
+    return instrument.value if instrument is not None else "drums"
 
 
 def utc_now() -> str:
@@ -1057,8 +1075,10 @@ def redo_project_edit(project_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}/musicxml")
-def download_project_musicxml(project_id: str) -> Response:
-    """Export the latest canonical performance as an editable MusicXML drum score."""
+def download_project_musicxml(
+    project_id: str, instrument: DrumInstrument | None = None
+) -> Response:
+    """Export MusicXML, optionally filtered to one drum voice."""
     with connect_db() as connection:
         row = connection.execute(
             """
@@ -1071,23 +1091,29 @@ def download_project_musicxml(project_id: str) -> Response:
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="No completed performance is available.")
-    performance = DrumPerformance.model_validate_json(row["performance_json"])
+    performance = _filter_performance_instrument(
+        DrumPerformance.model_validate_json(row["performance_json"]), instrument
+    )
     try:
         musicxml = performance_to_musicxml(performance)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    suffix = _instrument_export_suffix(instrument)
     return Response(
         content=musicxml,
         media_type="application/vnd.recordare.musicxml+xml",
         headers={
-            "Content-Disposition": f'attachment; filename="{project_id}-drums.musicxml"'
+            "Content-Disposition": f'attachment; filename="{project_id}-{suffix}.musicxml"'
         },
     )
 
 
 @app.get("/api/projects/{project_id}/pdf")
-def download_project_pdf(project_id: str, measures_per_system: int = 4) -> Response:
-    """Export the latest canonical drum performance as a printable PDF score."""
+def download_project_pdf(
+    project_id: str, measures_per_system: int = 4,
+    instrument: DrumInstrument | None = None,
+) -> Response:
+    """Export a printable PDF, optionally filtered to one drum voice."""
     with connect_db() as connection:
         row = connection.execute(
             """
@@ -1102,10 +1128,13 @@ def download_project_pdf(project_id: str, measures_per_system: int = 4) -> Respo
         raise HTTPException(status_code=404, detail="No completed performance is available.")
     if measures_per_system not in {4, 5}:
         raise HTTPException(status_code=422, detail="measures_per_system must be 4 or 5.")
-    performance = DrumPerformance.model_validate_json(row["performance_json"])
+    performance = _filter_performance_instrument(
+        DrumPerformance.model_validate_json(row["performance_json"]), instrument
+    )
+    suffix = _instrument_export_suffix(instrument)
     try:
         pdf = performance_to_pdf(
-            performance, title=f"{project_id} — Drum Score",
+            performance, title=f"{project_id} — {suffix} Drum Score",
             measures_per_system=measures_per_system,
         )
     except ValueError as exc:
@@ -1113,7 +1142,7 @@ def download_project_pdf(project_id: str, measures_per_system: int = 4) -> Respo
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{project_id}-drums.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{project_id}-{suffix}.pdf"'},
     )
 
 
@@ -1277,7 +1306,9 @@ async def import_project_file(
 
 
 @app.get("/api/projects/{project_id}/annotation.csv")
-def download_annotation_csv(project_id: str) -> Response:
+def download_annotation_csv(
+    project_id: str, instrument: DrumInstrument | None = None
+) -> Response:
     """Export the current (corrected) events as a reference CSV in the
     format scripts/evaluate_midi.py accepts: onset_seconds,instrument.
     Whatever the editor currently holds is the reference, so correct in
@@ -1296,39 +1327,49 @@ def download_annotation_csv(project_id: str) -> Response:
         raise HTTPException(
             status_code=404, detail="No completed performance is available."
         )
-    performance = DrumPerformance.model_validate_json(row["performance_json"])
+    performance = _filter_performance_instrument(
+        DrumPerformance.model_validate_json(row["performance_json"]), instrument
+    )
+    suffix = _instrument_export_suffix(instrument)
     return Response(
         content=annotation_csv_text(performance),
         media_type="text/csv",
         headers={
-            "Content-Disposition": f'attachment; filename="{project_id}-reference.csv"'
+            "Content-Disposition": f'attachment; filename="{project_id}-{suffix}-reference.csv"'
         },
     )
 
 
 @app.get("/api/projects/{project_id}/midi")
-def download_project_midi(project_id: str) -> FileResponse:
+def download_project_midi(
+    project_id: str, instrument: DrumInstrument | None = None
+) -> Response:
+    """Generate MIDI from canonical events, optionally for one drum voice."""
     with connect_db() as connection:
         row = connection.execute(
             """
-            SELECT id, midi_filename
+            SELECT performance_json
             FROM analysis_jobs
-            WHERE project_id=? AND status='completed'
+            WHERE project_id=? AND status='completed' AND performance_json IS NOT NULL
             ORDER BY created_at DESC LIMIT 1
             """,
             (project_id,),
         ).fetchone()
-    if row is None or not row["midi_filename"]:
-        raise HTTPException(status_code=404, detail="No completed MIDI export is available.")
-    filename = row["midi_filename"]
-    if Path(filename).name != filename:
-        raise HTTPException(status_code=500, detail="Stored MIDI filename is invalid.")
-    midi_path = ANALYSIS_DIR / row["id"] / filename
-    if not midi_path.is_file():
-        raise HTTPException(status_code=404, detail="Generated MIDI file is missing.")
-    return FileResponse(
-        path=midi_path,
-        media_type="audio/midi",
-        filename=f"{project_id}-drums.mid",
+    if row is None:
+        raise HTTPException(status_code=404, detail="No completed performance is available.")
+    performance = _filter_performance_instrument(
+        DrumPerformance.model_validate_json(row["performance_json"]), instrument
     )
-
+    suffix = _instrument_export_suffix(instrument)
+    try:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            midi_path = Path(temporary_directory) / f"{suffix}.mid"
+            performance_to_midi(performance, midi_path)
+            midi_content = midi_path.read_bytes()
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"MIDI export failed: {exc}") from exc
+    return Response(
+        content=midi_content,
+        media_type="audio/midi",
+        headers={"Content-Disposition": f'attachment; filename="{project_id}-{suffix}.mid"'},
+    )
