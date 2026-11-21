@@ -191,14 +191,16 @@ export default function DrumPianoRoll({
 
   const handleRollKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (contextMenu) {
-      if (event.key === "Escape") { event.preventDefault(); setContextMenu(null); return; }
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setContextMenu(null); return; }
       if ((event.target as HTMLElement).closest("input")) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
+        event.stopPropagation();
         setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 2) % (INSTRUMENTS.length + 2));
       }
       if (event.key === "Enter") {
         event.preventDefault();
+        event.stopPropagation();
         if (contextIndex < INSTRUMENTS.length) applyContextLane(INSTRUMENTS[contextIndex]);
         else if (contextIndex === INSTRUMENTS.length) deleteContextNote();
         else velocityMenuRef.current?.focus();
@@ -212,6 +214,7 @@ export default function DrumPianoRoll({
     if (!note || !selectedIsRealEvent) return;
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
+      event.stopPropagation();
       baselineRef.current = draftNotes.filter((item) => String(item.id) !== selectedEventId);
       setDraftNotes(baselineRef.current);
       onCommit({ added: [], changed: [], removed: [selectedEventId] });
@@ -220,8 +223,9 @@ export default function DrumPianoRoll({
       return;
     }
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
-    if (target.closest("button")) return;
+    if (target.closest("button") && !target.closest(".drum-roll-grid")) return;
     event.preventDefault();
+    event.stopPropagation();
     const direction = ({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" } as const)[event.key as "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown"];
     const moved = nudgeRollNote(note, direction, gridStepSeconds, durationSeconds, barMarks, event.shiftKey && (direction === "left" || direction === "right"));
     if (moved.start === note.start && moved.pitch === note.pitch) return;
@@ -243,7 +247,7 @@ export default function DrumPianoRoll({
   };
 
   return (
-    <div className="drum-roll-panel" onKeyDown={handleRollKeyDown} onContextMenu={(event) => event.preventDefault()} onPointerDownCapture={(event) => { if (event.button === 2) { event.preventDefault(); event.stopPropagation(); return; } const target = event.target as HTMLElement; if (!target.closest("input, textarea, select, button")) event.currentTarget.focus(); }} tabIndex={0}>
+    <div className="drum-roll-panel" onKeyDownCapture={handleRollKeyDown} onContextMenu={(event) => event.preventDefault()} onPointerDownCapture={(event) => { if (event.button === 2) { event.preventDefault(); event.stopPropagation(); return; } const target = event.target as HTMLElement; if (!target.closest("input, textarea, select, button")) event.currentTarget.focus(); }} tabIndex={0}>
       <div className="drum-roll-heading">
         <div>
           <p className="eyebrow">DRUM LANES · PIANO ROLL</p>
