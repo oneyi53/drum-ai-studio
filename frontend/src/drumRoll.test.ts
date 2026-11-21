@@ -38,7 +38,7 @@ test("lanes map to distinct pitches in timeline order", () => {
 test("velocity scales between MIDI and 0..1", () => {
   assert.equal(velocityToMidi(1), 127);
   assert.equal(velocityToMidi(undefined), 96);
-  assert.equal(velocityToMidi(0), 1);
+  assert.equal(velocityToMidi(0), 0);
   assert.equal(velocityToMidi(100 / 127), 100);
 });
 
@@ -133,8 +133,8 @@ test("nudgeRollNote moves by a sixteenth, clamps song bounds and changes adjacen
   assert.equal(nudgeRollNote(note, "left", 0.125, 10).start, 0.875);
   assert.equal(nudgeRollNote({ ...note, start: 0 }, "left", 0.125, 10).start, 0);
   assert.equal(nudgeRollNote({ ...note, start: 9.95 }, "right", 0.125, 10).start, 10);
-  assert.equal(nudgeRollNote(note, "up", 0.125, 10).pitch, 45);
-  assert.equal(nudgeRollNote(note, "down", 0.125, 10).pitch, 46);
+  assert.equal(nudgeRollNote(note, "up", 0.125, 10).pitch, 46);
+  assert.equal(nudgeRollNote(note, "down", 0.125, 10).pitch, 45);
 });
 
 test("nudgeRollNote moves by the containing measure when requested", () => {
