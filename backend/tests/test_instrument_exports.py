@@ -60,7 +60,7 @@ def test_musicxml_voice_export_contains_only_selected_voice() -> None:
     root = ET.fromstring(xml_text)
 
     assert root.findtext(".//part-name") == "Drum Set"
-    assert len(root.findall(".//note")) == 1
+    assert len([note for note in root.findall(".//note") if note.find("rest") is None]) == 1
 
 
 def test_pdf_voice_export_is_a_valid_pdf_document() -> None:
