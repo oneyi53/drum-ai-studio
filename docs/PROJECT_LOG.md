@@ -1,3 +1,23 @@
+## 2026-11-21 — theDAW P2：点音符试听 + 零事件导出（PR #18 草稿，未合）
+
+- P2-6 点音符试听：新 `frontend/src/lib/drumAudition.ts`（WebAudio 合成，kick/snare/hat/tom/crash 五声，ride 归 crash 声；无音色库、无新依赖）；卷帘工具栏开关默认关，AudioContext 只在开启后首次点音符时创建；点已有音符（pointerdown）与画新音（commit 时）出声，拖动只在按下时响一声、不连续触发；力度进增益（1–127 钳制）。映射与力度单测进 `test:roll`；`tsconfig.json` 把新测试文件加入 exclude（否则 `tsc -b` 会把 node:test 当应用代码查，首轮 CI 即因此失败）。
+- 零事件导出：新测试选无事件的 Ride 声部，四种导出（MIDI / MusicXML / PDF / CSV）全过；MusicXML 空谱面合法但无 `<note>`，测试只断言结构（score-partwise、part-list、measure 存在），不造假休止符。
+- P2-7 大谱面懒加载：核对后无需改——谱面已是每页 4 小节、只画当前页（`pageBars` 切片），长歌天然按需；项目缩放已按项目记忆。结论记在 `DrumStaff.tsx` 注释里。
+- 状态：分支 `exp/thedaw-p2-audition-lazyload`（8 提交，基线 main `884fd5b`），Draft PR #18，CI #621 全绿（frontend/backend/evaluation，含新 test:roll）；main 未动、README 未动、零新依赖。按用户要求不合并、分支保留，等用户真机测试：试听音色与响应、拖动不连响、关试听后静音、超 60 小节翻页与缩放恢复、空鼓件四种格式下载。
+
+## 2026-11-21 — theDAW P1-4/P1-5 合进 main（PR #17，squash，884fd5b）
+
+- P1-4 音符精修：方向键微移（←/→ 一 16 分音符，Shift 按小节；↑/↓ 换 lane）、力度数值输入（1–127）、右键菜单（改鼓件/删除/设力度，键盘导航）、中文手势提示栏；P1-5 统一导出菜单（11 lane + 全部 × MIDI/MusicXML/PDF/标注 CSV，单鼓件导出走 `?part=` 过滤）；`test:roll` 进前端 CI；MIDI 导出改为从 canonical performance 重建（人工修正后导出即生效，不再发旧存盘文件）。
+- 力度域定为 1–127（后端 `ge=1` 为准）：MIDI 里 velocity 0 等于 note-off，0 力度事件导出即消失；前端输入 1–127，`parseMidiVelocity` 只认严格十进制整数。
+- 验收：CI #617 全绿（frontend/backend/evaluation，含新 test:roll 步）；diff 8 文件 +513/−44 全读；分支 39 ahead。经 Ready for review → Squash and merge 合进 main；合并信息沿用了默认的 “WIP…(draft, CI only)” 标题，内容无误、标题略糙，不返工。
+- 仍需用户真机核对：右键菜单、力度输入、撤销、单鼓件导出下载后能否正常打开；零事件鼓件导出边界已由 P2 补测试覆盖。
+
+## 2026-11-21 — 引擎终局：五个新引擎同地证伪，瓶颈是真歌训练数据
+
+- STAR 评测（PR #16，2026-11-21 00:07 合进 main，squash `dea5478`）：IDMT kick F1 RealDrum 0.9768 / WaveDrum 0.9866 / TechnoDrum 0.9476（仅回归检查）；真歌方向性 kick F1 rock 0.3513、电子 0.1943（precision 仅 0.13）、blues 0 kick；17 个贝斯藏底鼓只找回 3 个。AGPL-3.0，仅评测用，不换引擎，列入 Phase 2 重打分名单。CI 限流修复同批进 main（`prepare_cc0_song_pool.py` 的 `github_api_get` + workflow 传 `GITHUB_TOKEN`，不再需要用户 PAT）。
+- MuScriptor-small Phase B 证伪（2026-11-21 02:31）：电子 kick 方向性 F1 0.0000——整轨 0 个鼓事件（无约束重跑也 0 个音符，不是鼓组过滤、不是文件问题：同文件 STAR 185 kick、DrumScript 448）；贝斯藏底鼓 0/17；rock kick 0.4431（参考本身是规则输出，排名不作数）；推理 0.53× 实时。权重 412 MB（CC BY-NC 4.0，HF gated，`HF_TOKEN` 已进仓库 secret），评测报告在 `~/workspace/.ds-scratch/muscriptor-eval/REPORT.md`。
+- 结论（已报用户）：五个新引擎（STRUM、ADTOF、ADT_STR、STAR、MuScriptor-small）在同一处失败；生产引擎 DrumScript 亦然（真歌方向性 rock 0.334、电子 0.379）。瓶颈确认是真歌训练数据，不是引擎；不再找第六个引擎。下一步：五路投票伪标签已做完（7,977 簇出 2,579 个，32.3%；funk 73.6%、latin 45%、rock 31.3%、jazz 18.3%、电子 1 个、blues 0 个；电子/blues 无共识可纠，需从头全转；open hat 永远拿不到 3 票）；DrumScript 过打已量化（电子 1,334 + blues 945 个无伪标签事件）；短版标注清单 18 段（3 分钟）已备好，严格版（12 jazz + 6 rock）与均衡版（每轨 3 段）待用户选。Phase 2/3 都等用户的人工基准（约 1.5–2.5 小时，或短版 30–45 分钟）。
+
 ## 2026-11-21 — theDAW UI 采纳 P0 三项：跟随播放、共享缩放、原子提交撤销
 
 - 来源：theDAW UI 学习计划（`~/workspace/.ds-scratch/thedaw-ui-study/PLAN.md`），用户 2026-11-21 批“先做 P0 三项”。只做 P0，P1/P2 未动；theDAW 的转录引擎未引进。
