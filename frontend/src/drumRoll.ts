@@ -77,8 +77,10 @@ export function notesFromEvents(events: DrumEventLike[]): RollNote[] {
 /** Validate a user-entered MIDI velocity without silently coercing invalid input. */
 export function parseMidiVelocity(value: string): number | null {
   if (value.trim() === "") return null;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 127) return null;
+  const normalized = value.trim();
+  if (!/^\\d+$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 127) return null;
   return parsed;
 }
 
