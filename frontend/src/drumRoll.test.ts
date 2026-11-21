@@ -123,7 +123,7 @@ test("diffNotes reports a deleted note as removed", () => {
 test("parseMidiVelocity accepts only integer values from 0 through 127", () => {
   assert.equal(parseMidiVelocity("0"), 0);
   assert.equal(parseMidiVelocity("127"), 127);
-  for (const value of ["", "1.5", "-1", "128", "abc", "0x10", "1e2"]) {
+  for (const value of ["", "1.5", "-1", "+2", "128", "abc", "0x10", "1e2"]) {
     assert.equal(parseMidiVelocity(value), null);
   }
 });
@@ -135,6 +135,10 @@ test("nudgeRollNote moves by a sixteenth, clamps song bounds and changes adjacen
   assert.equal(nudgeRollNote({ ...note, start: 9.95 }, "right", 0.125, 10).start, 10);
   assert.equal(nudgeRollNote(note, "up", 0.125, 10).pitch, 46);
   assert.equal(nudgeRollNote(note, "down", 0.125, 10).pitch, 45);
+  const bottom = { ...note, pitch: 36 };
+  assert.equal(nudgeRollNote(bottom, "down", 0.125, 10).pitch, 36);
+  const secondLane = { ...note, pitch: 45 };
+  assert.equal(nudgeRollNote(secondLane, "up", 0.125, 10).pitch, 46);
 });
 
 test("nudgeRollNote moves by the containing measure when requested", () => {
