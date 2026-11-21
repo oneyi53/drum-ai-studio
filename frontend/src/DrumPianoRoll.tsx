@@ -243,7 +243,7 @@ export default function DrumPianoRoll({
   };
 
   return (
-    <div className="drum-roll-panel" onKeyDown={handleRollKeyDown} onPointerDownCapture={(event) => { if (event.button === 2) { event.preventDefault(); event.stopPropagation(); return; } const target = event.target as HTMLElement; if (!target.closest("input, textarea, select, button")) event.currentTarget.focus(); }} tabIndex={0}>
+    <div className="drum-roll-panel" onKeyDown={handleRollKeyDown} onContextMenu={(event) => event.preventDefault()} onPointerDownCapture={(event) => { if (event.button === 2) { event.preventDefault(); event.stopPropagation(); return; } const target = event.target as HTMLElement; if (!target.closest("input, textarea, select, button")) event.currentTarget.focus(); }} tabIndex={0}>
       <div className="drum-roll-heading">
         <div>
           <p className="eyebrow">DRUM LANES · PIANO ROLL</p>
