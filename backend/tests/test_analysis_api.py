@@ -1084,7 +1084,7 @@ def test_voice_filtered_exports_support_all_four_formats(client, monkeypatch, tm
 
     musicxml = client.get(f"{project_url}/musicxml?instrument=snare")
     assert musicxml.status_code == 200
-    assert len(ET.fromstring(musicxml.text).findall(".//note")) == 1
+    assert len([note for note in ET.fromstring(musicxml.text).findall(".//note") if note.find("rest") is None]) == 1
 
     pdf = client.get(f"{project_url}/pdf?instrument=snare")
     assert pdf.status_code == 200
