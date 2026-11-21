@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
+import xml.etree.ElementTree as ET
 from io import BytesIO
 from pathlib import Path
-import sqlite3
 from zipfile import ZipFile
-import xml.etree.ElementTree as ET
 
 import pytest
 from fastapi.testclient import TestClient
