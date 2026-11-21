@@ -383,7 +383,7 @@ export default function DrumPianoRoll({
                           note={note}
                           className={isLaneVisible(instrument) ? undefined : "drum-roll-hidden"}
                         >
-                          16676<span
+                          <span
                             className="drum-note-fill"
                             onContextMenu={(event: React.MouseEvent) => {
                             event.preventDefault();
