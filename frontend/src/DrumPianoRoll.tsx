@@ -200,11 +200,21 @@ export default function DrumPianoRoll({
       return;
     }
     if (event.ctrlKey || event.metaKey || event.altKey || !selectedEventId) return;
-    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
     const target = event.target as HTMLElement;
-    if (target.closest("input, textarea, select, button")) return;
+    if (target.closest("input, textarea, select")) return;
     const note = draftNotes.find((item) => String(item.id) === selectedEventId);
     if (!note || !selectedIsRealEvent) return;
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      baselineRef.current = draftNotes.filter((item) => String(item.id) !== selectedEventId);
+      setDraftNotes(baselineRef.current);
+      onCommit({ added: [], changed: [], removed: [selectedEventId] });
+      onSelectEvent(null);
+      onSelectEvents([]);
+      return;
+    }
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    if (target.closest("button")) return;
     event.preventDefault();
     const direction = ({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" } as const)[event.key as "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown"];
     const moved = nudgeRollNote(note, direction, gridStepSeconds, durationSeconds, barMarks, event.shiftKey && (direction === "left" || direction === "right"));
@@ -458,19 +468,7 @@ export default function DrumPianoRoll({
         <div ref={contextMenuRef} tabIndex={-1} className="drum-roll-context-menu" role="menu" aria-label="鼓点编辑菜单"
           style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 1000 }}
           onMouseDown={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") { event.preventDefault(); setContextMenu(null); }
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 2) % (INSTRUMENTS.length + 2));
-            }
-            if (event.key === "Enter") {
-              event.preventDefault();
-              if (contextIndex < INSTRUMENTS.length) applyContextLane(INSTRUMENTS[contextIndex]);
-              else if (contextIndex === INSTRUMENTS.length) deleteContextNote();
-              else velocityMenuRef.current?.focus();
-            }
-          }}>
+
           <strong>改类到鼓件</strong>
           {INSTRUMENTS.map((instrument, index) => (
             <button key={instrument} type="button" role="menuitem" className={contextIndex === index ? "active" : ""}
@@ -487,7 +485,7 @@ export default function DrumPianoRoll({
         </div>
       )}
       <small className="drum-roll-gesture-help">
-        点空白格 = 加音 · 点音符 = 选中 / 再点 = 删除 · 拖拽 = 移动 / 改类 · 方向键 = 微移（Shift 按小节）· Delete = 删除 · 右键 = 菜单 · Ctrl+滚轮 = 缩放 · A/D = 上一个/下一个鼓点
+        点空白格 = 加音 · 点音符 = 选中 · 拖拽 = 移动 / 改类 · 方向键 = 微移（Shift 按小节）· Delete = 删除 · 右键 = 菜单 · Ctrl+滚轮 = 缩放 · A/D = 上一个/下一个鼓点
       </small>
       <small className="drum-roll-note">
         鼓点是时间点：拉伸只改显示长度，不写入模型；左缘拉伸移动鼓点时间。
