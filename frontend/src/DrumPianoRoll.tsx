@@ -173,8 +173,10 @@ export default function DrumPianoRoll({
 
   const applyContextLane = (instrument: string) => {
     if (!contextMenu) return;
+    const lane = DRUM_LANES.find((item) => item.instrument === instrument);
+    if (!lane || note.pitch === lane.pitch) { setContextMenu(null); return; }
     const next = draftNotes.map((item) => String(item.id) === contextMenu.eventId
-      ? { ...item, pitch: DRUM_LANES.find((lane) => lane.instrument === instrument)!.pitch } : item);
+      ? { ...item, pitch: lane.pitch } : item);
     commitSingleNote(contextMenu.eventId, { instrument }, next);
     setContextMenu(null);
   };
@@ -182,6 +184,7 @@ export default function DrumPianoRoll({
   const deleteContextNote = () => {
     if (!contextMenu) return;
     const id = contextMenu.eventId;
+    if (!events.some((event) => event.id === id)) { setContextMenu(null); return; }
     const next = draftNotes.filter((item) => String(item.id) !== id);
     baselineRef.current = next;
     setDraftNotes(next);
