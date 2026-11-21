@@ -35,10 +35,10 @@ test("lanes map to distinct pitches in timeline order", () => {
   assert.equal(instrumentToPitch("unknown-instrument"), instrumentToPitch("other"));
 });
 
-test("velocity scales between MIDI and 0..1", () => {
+test("velocity scales between MIDI and 1..127", () => {
   assert.equal(velocityToMidi(1), 127);
   assert.equal(velocityToMidi(undefined), 96);
-  assert.equal(velocityToMidi(0), 0);
+  assert.equal(velocityToMidi(0), 1);
   assert.equal(velocityToMidi(100 / 127), 100);
 });
 
@@ -120,10 +120,10 @@ test("diffNotes reports a deleted note as removed", () => {
   assert.deepEqual(commit.changed, []);
 });
 
-test("parseMidiVelocity accepts only integer values from 0 through 127", () => {
-  assert.equal(parseMidiVelocity("0"), 0);
+test("parseMidiVelocity accepts only integer values from 1 through 127", () => {
+  assert.equal(parseMidiVelocity("1"), 1);
   assert.equal(parseMidiVelocity("127"), 127);
-  for (const value of ["", "1.5", "-1", "+2", "128", "abc", "0x10", "1e2"]) {
+  for (const value of ["", "0", "1.5", "-1", "+2", "128", "abc", "0x10", "1e2"]) {
     assert.equal(parseMidiVelocity(value), null);
   }
 });
