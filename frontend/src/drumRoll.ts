@@ -58,7 +58,7 @@ export function pitchToInstrument(pitch: number): string {
 
 export function velocityToMidi(velocity01: number | undefined): number {
   if (velocity01 === undefined) return 96;
-  return Math.max(0, Math.min(127, Math.round(velocity01 * 127)));
+  return Math.max(1, Math.min(127, Math.round(velocity01 * 127)));
 }
 
 export function notesFromEvents(events: DrumEventLike[]): RollNote[] {
@@ -69,7 +69,7 @@ export function notesFromEvents(events: DrumEventLike[]): RollNote[] {
       pitch: instrumentToPitch(event.instrument),
       start: event.time_seconds,
       length: HIT_NOTE_LENGTH,
-      velocity: Math.max(0, Math.min(127, event.velocity)) / 127,
+      velocity: Math.max(1, Math.min(127, event.velocity)) / 127,
     }));
 }
 
@@ -80,7 +80,7 @@ export function parseMidiVelocity(value: string): number | null {
   const normalized = value.trim();
   if (!/^\d+$/.test(normalized)) return null;
   const parsed = Number(normalized);
-  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 127) return null;
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 127) return null;
   return parsed;
 }
 
