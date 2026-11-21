@@ -301,7 +301,7 @@ export default function DrumPianoRoll({
         {selectedNote && selectedIsRealEvent && (
           <label className="drum-roll-velocity-input">
             选中力度
-            <input aria-label="选中鼓点力度" type="number" min="0" max="127" step="1"
+            <input aria-label="选中鼓点力度" type="number" min="1" max="127" step="1"
               value={velocityDraft || String(events.find((item) => item.id === selectedEventId)?.velocity ?? "")}
               onFocus={() => setVelocityDraft(String(events.find((item) => item.id === selectedEventId)?.velocity ?? ""))}
               onChange={(input) => setVelocityDraft(input.target.value)}
@@ -489,7 +489,7 @@ export default function DrumPianoRoll({
           <button type="button" role="menuitem" className={contextIndex === INSTRUMENTS.length ? "active" : ""} onClick={deleteContextNote}>删除</button>
           <button type="button" role="menuitem" className={contextIndex === INSTRUMENTS.length + 1 ? "active" : ""} onClick={() => velocityMenuRef.current?.focus()}>设力度</button>
           <label>力度数值
-            <input ref={velocityMenuRef} aria-label="右键菜单力度" type="number" min="0" max="127" value={velocityDraft}
+            <input ref={velocityMenuRef} aria-label="右键菜单力度" type="number" min="1" max="127" value={velocityDraft}
               onChange={(event) => setVelocityDraft(event.target.value)}
               onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); commitVelocity(contextMenu.eventId); setContextMenu(null); } }}
               onBlur={() => { if (contextMenu) commitVelocity(contextMenu.eventId); }} />
