@@ -381,7 +381,11 @@ export default function DrumPianoRoll({
                         <PianoRoll.Note
                           key={note.id}
                           note={note}
-                          onContextMenu={(event: React.MouseEvent) => {
+                          className={isLaneVisible(instrument) ? undefined : "drum-roll-hidden"}
+                        >
+                          16676<span
+                            className="drum-note-fill"
+                            onContextMenu={(event: React.MouseEvent) => {
                             event.preventDefault();
                             event.stopPropagation();
                             const id = String(note.id);
@@ -392,10 +396,6 @@ export default function DrumPianoRoll({
                             setContextIndex(0);
                             setContextMenu({ eventId: id, x: event.clientX, y: event.clientY });
                           }}
-                          className={isLaneVisible(instrument) ? undefined : "drum-roll-hidden"}
-                        >
-                          <span
-                            className="drum-note-fill"
                             style={{
                               background:
                                 INSTRUMENT_COLORS[instrument] ?? "#94a3b8",
