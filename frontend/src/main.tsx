@@ -694,6 +694,34 @@ function App() {
     }
   }
 
+  async function downloadSourceAudio() {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/audio`);
+      if (!response.ok) throw new Error("下载原始音频失败");
+      const blob = await response.blob();
+      const mime = blob.type.toLowerCase();
+      const extension = mime.includes("mpeg") ? "mp3"
+        : mime.includes("wav") ? "wav"
+        : mime.includes("flac") ? "flac"
+        : mime.includes("ogg") ? "ogg"
+        : mime.includes("mp4") || mime.includes("m4a") ? "m4a"
+        : "audio";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${summary.projectId}-source.${extension}`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage("原始音频已导出。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "下载原始音频失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function downloadProjectFile() {
     if (!summary) return;
     setSaving(true);
@@ -1122,7 +1150,7 @@ function App() {
                 </select>
               </label>
               {exportTarget === "source-audio" ? (
-                <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/audio`} download>下载原始音频</a>
+                <button type="button" disabled={saving} onClick={() => void downloadSourceAudio()}>下载原始音频</button>
               ) : (
                 <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/${exportFormat === "midi" ? "midi" : exportFormat === "musicxml" ? "musicxml" : exportFormat === "pdf" ? `pdf?measures_per_system=${pdfMeasuresPerSystem}` : "annotation.csv"}`} download>
                   下载 {exportFormat.toUpperCase()} 鼓谱
