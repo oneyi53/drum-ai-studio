@@ -28,6 +28,8 @@ import {
   MIN_PITCH,
   diffNotes,
   notesFromEvents,
+  nudgeRollNote,
+  parseMidiVelocity,
   pitchToInstrument,
   type RollCommit,
   type RollNote,
@@ -100,6 +102,9 @@ export default function DrumPianoRoll({
   const baselineRef = React.useRef<RollNote[]>(notesFromEvents(events));
   const draftIdRef = React.useRef(0);
   const [reclassify, setReclassify] = React.useState(false);
+  const [velocityDraft, setVelocityDraft] = React.useState("");
+  const [contextMenu, setContextMenu] = React.useState<{ eventId: string; x: number; y: number } | null>(null);
+  const [contextIndex, setContextIndex] = React.useState(0);
   const bodyRef = React.useRef<HTMLDivElement | null>(null);
 
   /** px/s that fits the whole song in the visible grid width. */
@@ -124,6 +129,73 @@ export default function DrumPianoRoll({
   const selectedIsRealEvent =
     selectedNote !== null && events.some((event) => event.id === selectedNote.id);
 
+
+  const commitSingleNote = (eventId: string, changes: { time_seconds?: number; instrument?: string; velocity?: number }, nextNotes?: RollNote[]) => {
+    if (!events.some((event) => event.id === eventId)) return;
+    if (nextNotes) { baselineRef.current = nextNotes; setDraftNotes(nextNotes); }
+    onCommit({ added: [], changed: [{ eventId, changes }], removed: [] });
+  };
+
+  const commitVelocity = (eventId: string) => {
+    const velocity = parseMidiVelocity(velocityDraft);
+    const original = events.find((event) => event.id === eventId);
+    if (velocity === null || !original || velocity === original.velocity) {
+      setVelocityDraft(String(original?.velocity ?? ""));
+      return;
+    }
+    const next = draftNotes.map((item) => String(item.id) === eventId ? { ...item, velocity: velocity / 127 } : item);
+    commitSingleNote(eventId, { velocity }, next);
+  };
+
+  const applyContextLane = (instrument: string) => {
+    if (!contextMenu) return;
+    const next = draftNotes.map((item) => String(item.id) === contextMenu.eventId
+      ? { ...item, pitch: DRUM_LANES.find((lane) => lane.instrument === instrument)!.pitch } : item);
+    commitSingleNote(contextMenu.eventId, { instrument }, next);
+    setContextMenu(null);
+  };
+
+  const deleteContextNote = () => {
+    if (!contextMenu) return;
+    const id = contextMenu.eventId;
+    const next = draftNotes.filter((item) => String(item.id) !== id);
+    baselineRef.current = next;
+    setDraftNotes(next);
+    onCommit({ added: [], changed: [], removed: [id] });
+    setContextMenu(null);
+  };
+
+  const handleRollKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (contextMenu) {
+      if (event.key === "Escape") { event.preventDefault(); setContextMenu(null); return; }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 1) % (INSTRUMENTS.length + 1));
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (contextIndex < INSTRUMENTS.length) applyContextLane(INSTRUMENTS[contextIndex]);
+        else deleteContextNote();
+      }
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey || !selectedEventId) return;
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("input, textarea, select, button")) return;
+    const note = draftNotes.find((item) => String(item.id) === selectedEventId);
+    if (!note || !selectedIsRealEvent) return;
+    event.preventDefault();
+    const direction = ({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" } as const)[event.key as "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown"];
+    const moved = nudgeRollNote(note, direction, gridStepSeconds, durationSeconds, barMarks, event.shiftKey && (direction === "left" || direction === "right"));
+    if (moved.start === note.start && moved.pitch === note.pitch) return;
+    const next = draftNotes.map((item) => String(item.id) === selectedEventId ? moved : item);
+    commitSingleNote(selectedEventId, {
+      ...(moved.start !== note.start ? { time_seconds: moved.start } : {}),
+      ...(moved.pitch !== note.pitch ? { instrument: pitchToInstrument(moved.pitch) } : {}),
+    }, next);
+  };
+
   const handleCommitted = (value: readonly RollNote[]) => {
     const next = [...value];
     const commit = diffNotes(baselineRef.current, next, events);
@@ -135,7 +207,7 @@ export default function DrumPianoRoll({
   };
 
   return (
-    <div className="drum-roll-panel">
+    <div className="drum-roll-panel" onKeyDown={handleRollKeyDown} tabIndex={0}>
       <div className="drum-roll-heading">
         <div>
           <p className="eyebrow">DRUM LANES · PIANO ROLL</p>
@@ -183,9 +255,17 @@ export default function DrumPianoRoll({
             </select>
           </label>
         )}
-        <small>
-          方向键微调选中鼓点，Delete 删除；A / D 跳到上一个 / 下一个鼓点；Ctrl+滚轮以光标为中心缩放。
-        </small>
+        {selectedNote && selectedIsRealEvent && (
+          <label className="drum-roll-velocity-input">
+            选中力度
+            <input aria-label="选中鼓点力度" type="number" min="0" max="127" step="1"
+              value={velocityDraft || String(events.find((item) => item.id === selectedEventId)?.velocity ?? "")}
+              onFocus={() => setVelocityDraft(String(events.find((item) => item.id === selectedEventId)?.velocity ?? "")}
+              onChange={(input) => setVelocityDraft(input.target.value)}
+              onKeyDown={(input) => { if (input.key === "Enter") { input.preventDefault(); commitVelocity(selectedEventId!); input.currentTarget.blur(); } }}
+              onBlur={() => commitVelocity(selectedEventId!)} />
+          </label>
+        )}
         <span className="drum-roll-zoom" role="group" aria-label="卷帘缩放">
           <button type="button" onClick={zoomOut} title="缩小（看到更长一段）">− 缩小</button>
           <button type="button" onClick={() => onZoomChange(null)} title="整首适配到窗口宽度">适应宽度</button>
@@ -261,6 +341,17 @@ export default function DrumPianoRoll({
                         <PianoRoll.Note
                           key={note.id}
                           note={note}
+                          onContextMenu={(event: React.MouseEvent) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const id = String(note.id);
+                            if (!events.some((item) => item.id === id)) return;
+                            onSelectEvent(id);
+                            onSelectEvents([id]);
+                            setVelocityDraft(String(events.find((item) => item.id === id)?.velocity ?? ""));
+                            setContextIndex(0);
+                            setContextMenu({ eventId: id, x: event.clientX, y: event.clientY });
+                          }}
                           className={isLaneVisible(instrument) ? undefined : "drum-roll-hidden"}
                         >
                           <span
@@ -342,6 +433,40 @@ export default function DrumPianoRoll({
           </div>
         </Timeline.Root>
       </div>
+
+      {contextMenu && (
+        <div className="drum-roll-context-menu" role="menu" aria-label="鼓点编辑菜单"
+          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 1000 }}
+          onMouseDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") { event.preventDefault(); setContextMenu(null); }
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 1) % (INSTRUMENTS.length + 1));
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              if (contextIndex < INSTRUMENTS.length) applyContextLane(INSTRUMENTS[contextIndex]);
+              else deleteContextNote();
+            }
+          }}>
+          <strong>改类到鼓件</strong>
+          {INSTRUMENTS.map((instrument, index) => (
+            <button key={instrument} type="button" role="menuitem" className={contextIndex === index ? "active" : ""}
+              onMouseEnter={() => setContextIndex(index)} onClick={() => applyContextLane(instrument)}>{instrument}</button>
+          ))}
+          <button type="button" role="menuitem" className={contextIndex === INSTRUMENTS.length ? "active" : ""} onClick={deleteContextNote}>删除</button>
+          <label>设力度
+            <input aria-label="右键菜单力度" type="number" min="0" max="127" value={velocityDraft}
+              onChange={(event) => setVelocityDraft(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitVelocity(contextMenu.eventId); setContextMenu(null); } }}
+              onBlur={() => { if (contextMenu) commitVelocity(contextMenu.eventId); }} />
+          </label>
+        </div>
+      )}
+      <small className="drum-roll-gesture-help">
+        点空白格 = 加音 · 点音符 = 选中 / 再点 = 删除 · 拖拽 = 移动 / 改类 · 方向键 = 微移（Shift 按小节）· Delete = 删除 · 右键 = 菜单 · Ctrl+滚轮 = 缩放 · A/D = 上一个/下一个鼓点
+      </small>
       <small className="drum-roll-note">
         鼓点是时间点：拉伸只改显示长度，不写入模型；左缘拉伸移动鼓点时间。
         力度条在下方，拖动改力度。画下的新鼓点保存后即为人工修订。
