@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test:roll": "esbuild src/drumRoll.test.ts src/drumStaff.test.ts src/playback.test.ts --bundle --platform=node --format=esm --resolve-extensions=.ts,.tsx,.js,.json --outdir=/tmp/drum-tests --log-level=error && node --test /tmp/drum-tests/drumRoll.test.js /tmp/drum-tests/drumStaff.test.js /tmp/drum-tests/playback.test.js"
+    "test:roll": "esbuild src/drumRoll.test.ts src/drumStaff.test.ts src/playback.test.ts src/drumAudition.test.ts --bundle --platform=node --format=esm --resolve-extensions=.ts,.tsx,.js,.json --outdir=/tmp/drum-tests --log-level=error && node --test /tmp/drum-tests/drumRoll.test.js /tmp/drum-tests/drumStaff.test.js /tmp/drum-tests/playback.test.js /tmp/drum-tests/drumAudition.test.js"
   },
   "dependencies": {
     "@audio-ui/react": "^0.16.2",

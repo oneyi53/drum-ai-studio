@@ -21,6 +21,7 @@ import React from "react";
 import { PianoRoll, Timeline } from "@audio-ui/react";
 
 import { INSTRUMENT_COLORS } from "./WaveformPanel";
+import { playDrumHit } from "./lib/drumAudition";
 import {
   DRUM_LANES,
   HIT_NOTE_LENGTH,
@@ -109,6 +110,16 @@ export default function DrumPianoRoll({
   const velocityMenuRef = React.useRef<HTMLInputElement | null>(null);
   const lastVelocityCommitRef = React.useRef<string | null>(null);
   const bodyRef = React.useRef<HTMLDivElement | null>(null);
+  const [auditionEnabled, setAuditionEnabled] = React.useState(false);
+  const auditionContextRef = React.useRef<AudioContext | null>(null);
+
+  const audition = (instrument: string, velocity: number) => {
+    if (!auditionEnabled || typeof window === "undefined" || !window.AudioContext) return;
+    const context = auditionContextRef.current ?? new window.AudioContext();
+    auditionContextRef.current = context;
+    if (context.state === "suspended") void context.resume();
+    playDrumHit(context, instrument, velocity);
+  };
 
   /** px/s that fits the whole song in the visible grid width. */
   const fitZoom = () => {
@@ -256,6 +267,7 @@ export default function DrumPianoRoll({
     baselineRef.current = next;
     setDraftNotes(next);
     if (commit.added.length || commit.changed.length || commit.removed.length) {
+      commit.added.forEach((note) => audition(note.instrument, note.velocity));
       onCommit(commit);
     }
   };
@@ -271,6 +283,10 @@ export default function DrumPianoRoll({
           {draftNotes.length} 个鼓点 · 点击空白处画音，拖动移音，拖到别的
           lane 改鼓件
         </span>
+        <button type="button" className={auditionEnabled ? "drum-audition-on" : ""}
+          aria-pressed={auditionEnabled} onClick={() => setAuditionEnabled((enabled) => !enabled)}>
+          {auditionEnabled ? "点音试听：开" : "点音试听：关"}
+        </button>
       </div>
       <div className="drum-roll-toolbar">
         <button
@@ -399,6 +415,7 @@ export default function DrumPianoRoll({
                         >
                           <span
                             className="drum-note-fill"
+                            onPointerDown={() => audition(instrument, Math.max(1, Math.round((note.velocity ?? 0.756) * 127)))}
                             onContextMenu={(event: React.MouseEvent) => {
                               event.preventDefault();
                               event.stopPropagation();
