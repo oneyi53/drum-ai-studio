@@ -59,7 +59,7 @@ def test_musicxml_voice_export_contains_only_selected_voice() -> None:
     xml_text = performance_to_musicxml(filtered)
     root = ET.fromstring(xml_text)
 
-    assert root.findtext(".//part-name") == "Drums"
+    assert root.findtext(".//part-name") == "Drum Set"
     assert len(root.findall(".//note")) == 1
 
 
