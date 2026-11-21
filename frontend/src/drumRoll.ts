@@ -78,7 +78,7 @@ export function notesFromEvents(events: DrumEventLike[]): RollNote[] {
 export function parseMidiVelocity(value: string): number | null {
   if (value.trim() === "") return null;
   const normalized = value.trim();
-  if (!/^\\d+$/.test(normalized)) return null;
+  if (!/^\d+$/.test(normalized)) return null;
   const parsed = Number(normalized);
   if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 127) return null;
   return parsed;
