@@ -163,7 +163,7 @@ export default function DrumPianoRoll({
     const velocity = parseMidiVelocity(velocityDraft);
     const original = events.find((event) => event.id === eventId);
     const currentNote = draftNotes.find((item) => String(item.id) === eventId);
-    if (velocity === null || !original || velocity === original.velocity || (currentNote && Math.round(currentNote.velocity * 127) === velocity)) {
+    if (velocity === null || !original || velocity === original.velocity || (currentNote?.velocity !== undefined && Math.round(currentNote.velocity * 127) === velocity)) {
       setVelocityDraft(String(original?.velocity ?? ""));
       return;
     }
