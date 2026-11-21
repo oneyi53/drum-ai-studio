@@ -82,7 +82,8 @@ def test_empty_voice_exports_are_valid_across_all_formats(tmp_path) -> None:
 
     xml_root = ET.fromstring(performance_to_musicxml(filtered))
     assert xml_root.tag == "score-partwise"
-    assert xml_root.findall(".//note")
+    assert xml_root.find(".//part-list") is not None
+    assert xml_root.find(".//measure") is not None
 
     pdf = performance_to_pdf(filtered, title="Empty Ride")
     assert pdf.startswith(b"%PDF-")
