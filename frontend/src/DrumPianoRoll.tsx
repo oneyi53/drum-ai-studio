@@ -121,6 +121,11 @@ export default function DrumPianoRoll({
     soloLane ? soloLane === instrument : !hiddenLanes.includes(instrument);
 
   React.useEffect(() => {
+    const selected = events.find((event) => event.id === selectedEventId);
+    setVelocityDraft(selected ? String(selected.velocity) : "");
+  }, [selectedEventId, events]);
+
+  React.useEffect(() => {
     const next = notesFromEvents(events);
     baselineRef.current = next;
     setDraftNotes(next);
@@ -467,8 +472,7 @@ export default function DrumPianoRoll({
       {contextMenu && (
         <div ref={contextMenuRef} tabIndex={-1} className="drum-roll-context-menu" role="menu" aria-label="鼓点编辑菜单"
           style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 1000 }}
-          onMouseDown={(event) => event.stopPropagation()}
-
+          onMouseDown={(event) => event.stopPropagation()}>
           <strong>改类到鼓件</strong>
           {INSTRUMENTS.map((instrument, index) => (
             <button key={instrument} type="button" role="menuitem" className={contextIndex === index ? "active" : ""}
