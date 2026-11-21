@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
+import xml.etree.ElementTree as ET
 from io import BytesIO
 from pathlib import Path
-import sqlite3
 from zipfile import ZipFile
 
 import pytest
@@ -40,7 +41,7 @@ def test_upload_creates_project_and_rejects_unsupported_type(client):
     assert unsupported.status_code == 415
 
 
-def test_analysis_job_persists_canonical_performance(client, monkeypatch):
+def test_analysis_job_persists_canonical_performance(client, monkeypatch, tmp_path):
     uploaded = client.post(
         "/api/projects",
         files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
@@ -74,7 +75,10 @@ def test_analysis_job_persists_canonical_performance(client, monkeypatch):
     assert result.json()["midi_filename"] == "performance.mid"
     download = client.get(f"/api/projects/{uploaded['id']}/midi")
     assert download.status_code == 200
-    assert download.content == b"fake-midi"
+    midi_path = tmp_path / "downloaded.mid"
+    midi_path.write_bytes(download.content)
+    exported = midi_to_performance(midi_path)
+    assert [event.instrument for event in exported.events] == [DrumInstrument.KICK]
 
 
 def test_duplicate_active_job_is_rejected(client, monkeypatch):
@@ -1044,3 +1048,48 @@ def test_musicxml_and_pdf_exports_preserve_irregular_rhythm(client, monkeypatch)
     assert pdf.status_code == 200
     assert b"<score-partwise" in musicxml.content
     assert pdf.content.startswith(b"%PDF")
+
+
+
+def test_voice_filtered_exports_support_all_four_formats(client, monkeypatch, tmp_path):
+    uploaded = client.post(
+        "/api/projects",
+        files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
+    ).json()
+    performance = DrumPerformance(
+        duration_seconds=3,
+        events=[
+            DrumEvent(time_seconds=0.5, instrument=DrumInstrument.KICK),
+            DrumEvent(time_seconds=1.0, instrument=DrumInstrument.SNARE),
+        ],
+    )
+
+    class FakeEngine:
+        def analyze(self, audio_path: Path, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            midi_path = output_dir / "performance.mid"
+            midi_path.write_bytes(b"fake-midi")
+            return performance, midi_path
+
+    monkeypatch.setattr(main, "DrumScriptEngine", FakeEngine)
+    client.post(f"/api/projects/{uploaded['id']}/analyze")
+    project_url = f"/api/projects/{uploaded['id']}"
+
+    midi = client.get(f"{project_url}/midi?instrument=snare")
+    assert midi.status_code == 200
+    midi_path = tmp_path / "snare-only.mid"
+    midi_path.write_bytes(midi.content)
+    midi_events = midi_to_performance(midi_path).events
+    assert [event.instrument for event in midi_events] == [DrumInstrument.SNARE]
+
+    musicxml = client.get(f"{project_url}/musicxml?instrument=snare")
+    assert musicxml.status_code == 200
+    assert len([note for note in ET.fromstring(musicxml.text).findall(".//note") if note.find("rest") is None]) == 1
+
+    pdf = client.get(f"{project_url}/pdf?instrument=snare")
+    assert pdf.status_code == 200
+    assert pdf.content.startswith(b"%PDF-")
+
+    csv = client.get(f"{project_url}/annotation.csv?instrument=snare")
+    assert csv.status_code == 200
+    assert csv.text.splitlines() == ["onset_seconds,instrument", "1.000,snare"]

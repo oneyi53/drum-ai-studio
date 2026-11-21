@@ -36,6 +36,9 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+      - name: Run focused roll tests
+        working-directory: frontend
+        run: npm run test:roll
 
   evaluation:
     runs-on: ubuntu-latest

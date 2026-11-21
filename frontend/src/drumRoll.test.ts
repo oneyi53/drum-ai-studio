@@ -12,6 +12,8 @@ import {
   diffNotes,
   instrumentToPitch,
   notesFromEvents,
+  nudgeRollNote,
+  parseMidiVelocity,
   pitchToInstrument,
   velocityToMidi,
   type DrumEventLike,
@@ -33,7 +35,7 @@ test("lanes map to distinct pitches in timeline order", () => {
   assert.equal(instrumentToPitch("unknown-instrument"), instrumentToPitch("other"));
 });
 
-test("velocity scales between MIDI and 0..1", () => {
+test("velocity scales between MIDI and 1..127", () => {
   assert.equal(velocityToMidi(1), 127);
   assert.equal(velocityToMidi(undefined), 96);
   assert.equal(velocityToMidi(0), 1);
@@ -116,4 +118,30 @@ test("diffNotes reports a deleted note as removed", () => {
   assert.deepEqual(commit.removed, ["b"]);
   assert.deepEqual(commit.added, []);
   assert.deepEqual(commit.changed, []);
+});
+
+test("parseMidiVelocity accepts only integer values from 1 through 127", () => {
+  assert.equal(parseMidiVelocity("1"), 1);
+  assert.equal(parseMidiVelocity("127"), 127);
+  for (const value of ["", "0", "1.5", "-1", "+2", "128", "abc", "0x10", "1e2"]) {
+    assert.equal(parseMidiVelocity(value), null);
+  }
+});
+
+test("nudgeRollNote moves by a sixteenth, clamps song bounds and changes adjacent lanes", () => {
+  const note = notesFromEvents(EVENTS)[0];
+  assert.equal(nudgeRollNote(note, "left", 0.125, 10).start, 0.875);
+  assert.equal(nudgeRollNote({ ...note, start: 0 }, "left", 0.125, 10).start, 0);
+  assert.equal(nudgeRollNote({ ...note, start: 9.95 }, "right", 0.125, 10).start, 10);
+  assert.equal(nudgeRollNote(note, "up", 0.125, 10).pitch, 46);
+  assert.equal(nudgeRollNote(note, "down", 0.125, 10).pitch, 45);
+  const bottom = { ...note, pitch: 36 };
+  assert.equal(nudgeRollNote(bottom, "down", 0.125, 10).pitch, 36);
+  const secondLane = { ...note, pitch: 45 };
+  assert.equal(nudgeRollNote(secondLane, "up", 0.125, 10).pitch, 46);
+});
+
+test("nudgeRollNote moves by the containing measure when requested", () => {
+  const note = { ...notesFromEvents(EVENTS)[0], start: 1.25 };
+  assert.equal(nudgeRollNote(note, "right", 0.125, 8, [{ value: 0, label: "1" }, { value: 2, label: "2" }, { value: 4, label: "3" }], true).start, 3.25);
 });

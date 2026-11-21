@@ -73,6 +73,43 @@ export function notesFromEvents(events: DrumEventLike[]): RollNote[] {
     }));
 }
 
+
+/** Validate a user-entered MIDI velocity without silently coercing invalid input. */
+export function parseMidiVelocity(value: string): number | null {
+  if (value.trim() === "") return null;
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 127) return null;
+  return parsed;
+}
+
+/** Move a note by one sixteenth or one measure, or to an adjacent drum lane. */
+export function nudgeRollNote(
+  note: RollNote,
+  direction: "left" | "right" | "up" | "down",
+  gridStepSeconds: number,
+  durationSeconds: number,
+  barMarks: { value: number; label: string }[] = [],
+  byMeasure = false,
+): RollNote {
+  if (direction === "up" || direction === "down") {
+    const current = DRUM_LANES.findIndex((lane) => lane.pitch === note.pitch);
+    const next = Math.max(0, Math.min(DRUM_LANES.length - 1, current + (direction === "up" ? -1 : 1)));
+    return { ...note, pitch: DRUM_LANES[next].pitch };
+  }
+  let step = gridStepSeconds;
+  if (byMeasure) {
+    const starts = [...barMarks].map((mark) => mark.value).sort((a, b) => a - b);
+    if (!starts.length || starts[0] > 0.000001) starts.unshift(0);
+    starts.push(durationSeconds);
+    const index = Math.max(0, starts.findIndex((start, i) => note.start >= start - 1e-9 && note.start < (starts[i + 1] ?? Infinity)));
+    step = Math.max(gridStepSeconds, (starts[index + 1] ?? durationSeconds) - starts[index]);
+  }
+  const delta = direction === "left" ? -step : step;
+  return { ...note, start: Math.max(0, Math.min(Math.max(0, durationSeconds), note.start + delta)) };
+}
+
 export type NotePatch = {
   eventId: string;
   changes: {

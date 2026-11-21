@@ -143,6 +143,9 @@ function App() {
   const [newInstrument, setNewInstrument] = React.useState("kick");
   const [newVelocity, setNewVelocity] = React.useState("96");
   const [pdfMeasuresPerSystem, setPdfMeasuresPerSystem] = React.useState<"4" | "5">("4");
+  const [exportTarget, setExportTarget] = React.useState<"drum-score" | "source-audio">("drum-score");
+  const [exportFormat, setExportFormat] = React.useState<"midi" | "musicxml" | "pdf" | "csv">("midi");
+  const [exportInstrument, setExportInstrument] = React.useState("all");
   const [quantizeSubdivision, setQuantizeSubdivision] = React.useState("1/16");
   const [quantizeStrength, setQuantizeStrength] = React.useState(100);
   const [quantizePreview, setQuantizePreview] = React.useState<Performance | null>(null);
@@ -692,6 +695,34 @@ function App() {
     }
   }
 
+  async function downloadSourceAudio() {
+    if (!summary) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/projects/${summary.projectId}/audio`);
+      if (!response.ok) throw new Error("下载原始音频失败");
+      const blob = await response.blob();
+      const mime = blob.type.toLowerCase();
+      const extension = mime.includes("mpeg") ? "mp3"
+        : mime.includes("wav") ? "wav"
+        : mime.includes("flac") ? "flac"
+        : mime.includes("ogg") ? "ogg"
+        : mime.includes("mp4") || mime.includes("m4a") ? "m4a"
+        : "audio";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${summary.projectId}-source.${extension}`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage("原始音频已导出。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "下载原始音频失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function downloadProjectFile() {
     if (!summary) return;
     setSaving(true);
@@ -1102,15 +1133,57 @@ function App() {
               <span key={name}><strong>{name}</strong><small>{count}</small></span>
             ))}
           </div>
-          <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/midi`} download>下载最新鼓谱 MIDI</a>
-          <label className="pdf-layout-control">每行小节数
-            <select value={pdfMeasuresPerSystem} onChange={(event) => setPdfMeasuresPerSystem(event.target.value as "4" | "5")}>
-              <option value="4">4 小节</option>
-              <option value="5">5 小节</option>
-            </select>
-          </label>
-          <a className="download-link pdf-link" href={`${API_BASE}/api/projects/${summary.projectId}/pdf?measures_per_system=${pdfMeasuresPerSystem}`} download>下载打印版 PDF 鼓谱（每行 {pdfMeasuresPerSystem} 小节）</a>
-          <a className="download-link musicxml-link" href={`${API_BASE}/api/projects/${summary.projectId}/musicxml`} download>下载可编辑 MusicXML 乐谱</a>
+          <div className="project-file-panel" aria-label="导出菜单">
+            <div><p className="eyebrow">EXPORT · SOUND × FORMAT</p><h3>导出菜单</h3></div>
+            <div className="project-file-actions">
+              <label>声音 / 声部
+                <select value={exportTarget} onChange={(event) => setExportTarget(event.target.value as "drum-score" | "source-audio")}>
+                  <option value="drum-score">鼓谱声部</option>
+                  <option value="source-audio">原始音频</option>
+                </select>
+              </label>
+              {exportTarget === "drum-score" && (
+                <label>鼓件
+                  <select value={exportInstrument} onChange={(event) => setExportInstrument(event.target.value)}>
+                    <option value="all">完整鼓组</option>
+                    <option value="kick">底鼓 Kick</option>
+                    <option value="snare">军鼓 Snare</option>
+                    <option value="closed_hihat">闭合踩镲</option>
+                    <option value="open_hihat">开放踩镲</option>
+                    <option value="pedal_hihat">脚踩镲</option>
+                    <option value="ride">Ride</option>
+                    <option value="crash">Crash</option>
+                    <option value="high_tom">高桶鼓</option>
+                    <option value="mid_tom">中桶鼓</option>
+                    <option value="low_tom">低桶鼓</option>
+                    <option value="other">其他</option>
+                  </select>
+                </label>
+              )}
+              <label>格式
+                <select value={exportFormat} disabled={exportTarget === "source-audio"} onChange={(event) => setExportFormat(event.target.value as "midi" | "musicxml" | "pdf" | "csv")}>
+                  <option value="midi">MIDI</option>
+                  <option value="musicxml">MusicXML</option>
+                  <option value="pdf">PDF</option>
+                  <option value="csv">CSV（onset_seconds, instrument）</option>
+                </select>
+              </label>
+              {exportTarget === "source-audio" ? (
+                <button type="button" disabled={saving} onClick={() => void downloadSourceAudio()}>下载原始音频</button>
+              ) : (
+                <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/${exportFormat === "midi" ? "midi" : exportFormat === "musicxml" ? "musicxml" : exportFormat === "pdf" ? "pdf" : "annotation.csv"}${exportFormat === "pdf" ? `?measures_per_system=${pdfMeasuresPerSystem}` : ""}${exportInstrument === "all" ? "" : `${exportFormat === "pdf" ? "&" : "?"}instrument=${exportInstrument}`}`} download>
+                  下载 {exportFormat.toUpperCase()} {exportInstrument === "all" ? "完整鼓组" : exportInstrument}
+                </a>
+              )}
+              <label className="pdf-layout-control">PDF 每行小节数
+                <select value={pdfMeasuresPerSystem} onChange={(event) => setPdfMeasuresPerSystem(event.target.value as "4" | "5")}>
+                  <option value="4">4 小节</option>
+                  <option value="5">5 小节</option>
+                </select>
+              </label>
+            </div>
+            <small>MIDI、MusicXML、PDF 与 CSV 均支持完整鼓组或单独鼓件；原始音频按上传时的格式导出。</small>
+          </div>
           <a className="download-link" href={`${API_BASE}/api/projects/${summary.projectId}/bundle?measures_per_system=${pdfMeasuresPerSystem}`} download>下载完整项目备份（原音频 + 鼓谱文件）</a>
           <div className="project-file-panel">
             <div><p className="eyebrow">PROJECT FILE · ANNOTATION</p><h3>工程文件与人工标注</h3></div>
