@@ -41,7 +41,7 @@ def test_upload_creates_project_and_rejects_unsupported_type(client):
     assert unsupported.status_code == 415
 
 
-def test_analysis_job_persists_canonical_performance(client, monkeypatch):
+def test_analysis_job_persists_canonical_performance(client, monkeypatch, tmp_path):
     uploaded = client.post(
         "/api/projects",
         files={"audio": ("demo.wav", b"audio-bytes", "audio/wav")},
@@ -75,7 +75,7 @@ def test_analysis_job_persists_canonical_performance(client, monkeypatch):
     assert result.json()["midi_filename"] == "performance.mid"
     download = client.get(f"/api/projects/{uploaded['id']}/midi")
     assert download.status_code == 200
-    midi_path = Path("downloaded.mid")
+    midi_path = tmp_path / "downloaded.mid"
     midi_path.write_bytes(download.content)
     exported = midi_to_performance(midi_path)
     assert [event.instrument for event in exported.events] == [DrumInstrument.KICK]
