@@ -192,6 +192,7 @@ export default function DrumPianoRoll({
   const handleRollKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (contextMenu) {
       if (event.key === "Escape") { event.preventDefault(); setContextMenu(null); return; }
+      if ((event.target as HTMLElement).closest("input")) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         setContextIndex((current) => (current + (event.key === "ArrowDown" ? 1 : -1) + INSTRUMENTS.length + 2) % (INSTRUMENTS.length + 2));
@@ -242,7 +243,7 @@ export default function DrumPianoRoll({
   };
 
   return (
-    <div className="drum-roll-panel" onKeyDown={handleRollKeyDown} tabIndex={0}>
+    <div className="drum-roll-panel" onKeyDown={handleRollKeyDown} onPointerDownCapture={(event) => { const target = event.target as HTMLElement; if (!target.closest("input, textarea, select, button")) event.currentTarget.focus(); }} tabIndex={0}>
       <div className="drum-roll-heading">
         <div>
           <p className="eyebrow">DRUM LANES · PIANO ROLL</p>
@@ -483,7 +484,7 @@ export default function DrumPianoRoll({
           <label>力度数值
             <input ref={velocityMenuRef} aria-label="右键菜单力度" type="number" min="0" max="127" value={velocityDraft}
               onChange={(event) => setVelocityDraft(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitVelocity(contextMenu.eventId); setContextMenu(null); } }}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); commitVelocity(contextMenu.eventId); setContextMenu(null); } }}
               onBlur={() => { if (contextMenu) commitVelocity(contextMenu.eventId); }} />
           </label>
         </div>
