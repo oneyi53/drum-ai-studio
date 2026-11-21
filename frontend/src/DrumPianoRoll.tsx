@@ -107,6 +107,7 @@ export default function DrumPianoRoll({
   const [contextIndex, setContextIndex] = React.useState(0);
   const contextMenuRef = React.useRef<HTMLDivElement | null>(null);
   const velocityMenuRef = React.useRef<HTMLInputElement | null>(null);
+  const lastVelocityCommitRef = React.useRef<string | null>(null);
   const bodyRef = React.useRef<HTMLDivElement | null>(null);
 
   /** px/s that fits the whole song in the visible grid width. */
@@ -167,6 +168,15 @@ export default function DrumPianoRoll({
       setVelocityDraft(String(original?.velocity ?? ""));
       return;
     }
+    // Enter commits before it blurs the field. The blur handler can run
+    // before React has re-rendered the updated draft, so deduplicate the
+    // same event/value pair to guarantee one backend commit per gesture.
+    const commitKey = `${eventId}:${velocity}`;
+    if (lastVelocityCommitRef.current === commitKey) {
+      setVelocityDraft(String(velocity));
+      return;
+    }
+    lastVelocityCommitRef.current = commitKey;
     const next = draftNotes.map((item) => String(item.id) === eventId ? { ...item, velocity: velocity / 127 } : item);
     commitSingleNote(eventId, { velocity }, next);
   };
