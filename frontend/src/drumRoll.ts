@@ -58,7 +58,7 @@ export function pitchToInstrument(pitch: number): string {
 
 export function velocityToMidi(velocity01: number | undefined): number {
   if (velocity01 === undefined) return 96;
-  return Math.max(1, Math.min(127, Math.round(velocity01 * 127)));
+  return Math.max(0, Math.min(127, Math.round(velocity01 * 127)));
 }
 
 export function notesFromEvents(events: DrumEventLike[]): RollNote[] {
@@ -69,8 +69,43 @@ export function notesFromEvents(events: DrumEventLike[]): RollNote[] {
       pitch: instrumentToPitch(event.instrument),
       start: event.time_seconds,
       length: HIT_NOTE_LENGTH,
-      velocity: Math.max(1, Math.min(127, event.velocity)) / 127,
+      velocity: Math.max(0, Math.min(127, event.velocity)) / 127,
     }));
+}
+
+
+/** Validate a user-entered MIDI velocity without silently coercing invalid input. */
+export function parseMidiVelocity(value: string): number | null {
+  if (value.trim() === "") return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 127) return null;
+  return parsed;
+}
+
+/** Move a note by one sixteenth or one measure, or to an adjacent drum lane. */
+export function nudgeRollNote(
+  note: RollNote,
+  direction: "left" | "right" | "up" | "down",
+  gridStepSeconds: number,
+  durationSeconds: number,
+  barMarks: { value: number; label: string }[] = [],
+  byMeasure = false,
+): RollNote {
+  if (direction === "up" || direction === "down") {
+    const current = DRUM_LANES.findIndex((lane) => lane.pitch === note.pitch);
+    const next = Math.max(0, Math.min(DRUM_LANES.length - 1, current + (direction === "up" ? -1 : 1)));
+    return { ...note, pitch: DRUM_LANES[next].pitch };
+  }
+  let step = gridStepSeconds;
+  if (byMeasure) {
+    const starts = [...barMarks].map((mark) => mark.value).sort((a, b) => a - b);
+    if (!starts.length || starts[0] > 0.000001) starts.unshift(0);
+    starts.push(durationSeconds);
+    const index = Math.max(0, starts.findIndex((start, i) => note.start >= start - 1e-9 && note.start < (starts[i + 1] ?? Infinity)));
+    step = Math.max(gridStepSeconds, (starts[index + 1] ?? durationSeconds) - starts[index]);
+  }
+  const delta = direction === "left" ? -step : step;
+  return { ...note, start: Math.max(0, Math.min(Math.max(0, durationSeconds), note.start + delta)) };
 }
 
 export type NotePatch = {
