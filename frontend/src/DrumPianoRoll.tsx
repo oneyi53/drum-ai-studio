@@ -174,7 +174,8 @@ export default function DrumPianoRoll({
   const applyContextLane = (instrument: string) => {
     if (!contextMenu) return;
     const lane = DRUM_LANES.find((item) => item.instrument === instrument);
-    if (!lane || note.pitch === lane.pitch) { setContextMenu(null); return; }
+    const currentNote = draftNotes.find((item) => String(item.id) === contextMenu.eventId);
+    if (!lane || !currentNote || currentNote.pitch === lane.pitch) { setContextMenu(null); return; }
     const next = draftNotes.map((item) => String(item.id) === contextMenu.eventId
       ? { ...item, pitch: lane.pitch } : item);
     commitSingleNote(contextMenu.eventId, { instrument }, next);
