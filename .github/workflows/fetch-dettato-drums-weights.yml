@@ -1,0 +1,82 @@
+# Fetch the dettato-drums checkpoint for evaluation only.
+#
+# Manual-only workflow (workflow_dispatch). The 2026-11-24 tech sweep
+# found dettato the cheapest credible new lead worth measuring on our
+# 6 real tracks: the drum-kit model is only ~189k parameters with
+# velocity output, Apache-2.0, and self-reported drums F1 47.1 on
+# RWC/Slakh -- but the 4-model chain was never scored end-to-end and
+# the benchmark sets are not our worst genres (electronic/blues). Only
+# the drums stage is evaluated (see
+# ~/workspace/.ds-scratch/dettato-eval/run_dettato_eval.py), so only
+# the dettato-drums repo is fetched, not the other three models.
+# This workflow only fetches the weights once in the cloud; the
+# evaluation itself runs locally.
+#
+# Source (verified 2026-11-24 against the public HF API, no auth):
+#   repo      kobimusic/dettato-drums (public, not gated)
+#   files     model.safetensors (~5.0M params total: 189k drum-kit +
+#             3x 1.6M orchestral experts; exact bytes printed by this run)
+#             config.json (model hyper-parameters + thresholds)
+#   license   Apache-2.0 for code + weights (repo README); the README
+#             licence section notes some training datasets carry
+#             non-commercial terms. Evaluation use only, personal use;
+#             the weights never enter the repo and never enter production.
+#
+# After downloading the artifact, place it under:
+#   ~/workspace/.ds-scratch/dettato-eval/weights/dettato-drums/
+# (model.safetensors + config.json) and verify size/sha256 against the
+# numbers printed by this run before running the evaluation.
+
+name: Fetch dettato-drums weights
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  fetch-weights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download dettato-drums from Hugging Face (evaluation only)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "huggingface_hub>=0.23"
+          mkdir -p dettato-drums
+          python3 - <<'EOF'
+          import hashlib
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+
+          repo = "kobimusic/dettato-drums"
+          out_dir = Path("dettato-drums")
+          for filename in ("model.safetensors", "config.json"):
+              path = Path(hf_hub_download(
+                  repo_id=repo,
+                  filename=filename,
+                  local_dir=str(out_dir),
+              ))
+              data = path.read_bytes()
+              print(f"{filename} SIZE_BYTES {len(data)}")
+              print(f"{filename} SHA256 {hashlib.sha256(data).hexdigest()}")
+          EOF
+          test -s dettato-drums/model.safetensors
+          test -s dettato-drums/config.json
+          ls -la dettato-drums/
+
+      - name: Upload dettato-drums checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: dettato-drums-weights
+          path: |
+            dettato-drums/model.safetensors
+            dettato-drums/config.json
+          if-no-files-found: error
