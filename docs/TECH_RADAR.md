@@ -182,9 +182,15 @@ dettato / Training data / MVSep / Photon / Notation below.
   sets. Caveats: the 4-model chain was never scored end-to-end (author's
   own words); benchmark sets are RWC/Slakh, not electronic/blues real
   songs; training audio not released; README warns some training data
-  carries non-commercial terms. Verdict 2026-11-24: TEST NOW on the
-  app's own real-song set, per-class, before believing 47.1; do not
-  adopt yet.
+  carries non-commercial terms. MEASURED 2026-11-24 on the app's own
+  6-track set (drums-only, 100 ms, directional vs first-pass refs):
+  electronic kick F1 0.1514 (P 0.091, 308 pred vs 62 ref), snare /
+  closed-hat / open-hat all 0.0000; bass-hidden 7/17 by over-fire
+  (precision 0.091); router sent electronic to orchestral, and a
+  forced-kit rerun was worse (kick 0.1283) — the kit model itself
+  cannot hear electronic snare/hats. Rock kick 0.4554 (circular ref).
+  Self-reported 47.1 does not transfer. Verdict: DO NOT SWAP.
+  Report: ~/workspace/.ds-scratch/dettato-eval/REPORT.md (local).
 
 ## Notation tooling
 
