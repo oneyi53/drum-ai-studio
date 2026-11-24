@@ -141,31 +141,6 @@ def _apply_system_breaks(score_root: ET.Element, measures_per_system: int) -> No
             measure.insert(0, ET.Element("print", {"new-system": "yes"}))
 
 
-def _strip_redundant_time_signatures(score_root: ET.Element) -> int:
-    """Keep <time> only in the first measure and where the meter changes.
-
-    performance_to_musicxml emits <attributes><time> in every measure, and
-    Verovio prints each one, so every bar started with "4/4". The meter
-    applies until changed, so later identical signatures are redundant.
-    This touches only the printable PDF score: the MusicXML download is built
-    separately and keeps its per-measure attributes.
-    """
-    previous: tuple[str | None, str | None] | None = None
-    removed = 0
-    for measure in score_root.findall("./part/measure"):
-        attributes = measure.find("attributes")
-        time = None if attributes is None else attributes.find("time")
-        if time is None:
-            continue
-        signature = (time.findtext("beats"), time.findtext("beat-type"))
-        if previous is None or signature != previous:
-            previous = signature
-        else:
-            attributes.remove(time)
-            removed += 1
-    return removed
-
-
 def _verovio_options(measure_count: int, measures_per_system: int) -> dict:
     """Verovio layout options for the printable score.
 
@@ -203,7 +178,7 @@ def _prepare_print_score(
 
     Applies the print-only transformations that must never leak into the
     downloadable MusicXML: silent-tail trimming, explicit system breaks,
-    redundant time-signature removal, and the metronome-to-words swap for the
+    and the metronome-to-words swap for the
     SMuFL glyph missing from some packaged font sets.
     """
     if measures_per_system not in {4, 5}:
@@ -216,7 +191,6 @@ def _prepare_print_score(
     _trim_trailing_empty_measures(score_root)
     # Explicit MusicXML system breaks keep each printed line to four or five bars.
     _apply_system_breaks(score_root, measures_per_system)
-    _strip_redundant_time_signatures(score_root)
     for metronome in score_root.findall(".//metronome"):
         direction_type = next(
             (parent for parent in score_root.iter() if metronome in list(parent)),
