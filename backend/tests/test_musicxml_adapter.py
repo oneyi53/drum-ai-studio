@@ -191,11 +191,13 @@ def test_chord_tie_marks_parent_pitch_only():
 
 
 def test_note_children_follow_xsd_element_order():
-    # MusicXML XSD note complexType (musicxml.xsd): full-note
+    # MusicXML 4.0 XSD note complexType (musicxml.xsd): full-note
     # (chord?, pitch|unpitched|rest), duration, tie*, instrument?,
     # editorial-voice (voice), type?, dot*, time-modification?, stem?,
-    # notehead?, beam*, notations*. <play> is excluded here: it is not in
-    # the schema at all, a separate pre-existing issue.
+    # notehead?, beam*, notations*, lyric*, play?, listen?. <play> is
+    # schema-valid (last-but-one) and carries the per-note MIDI velocity
+    # via <other-play type="midi-velocity">, so it is checked like any
+    # other child.
     xsd_order = [
         "chord",
         "pitch",
@@ -217,6 +219,8 @@ def test_note_children_follow_xsd_element_order():
         "beam",
         "notations",
         "lyric",
+        "play",
+        "listen",
     ]
     performance = DrumPerformance(
         duration_seconds=4.0,
@@ -239,7 +243,7 @@ def test_note_children_follow_xsd_element_order():
     assert any(note.find("rest") is not None for note in notes)
     assert any(note.findall("beam") for note in notes)
     for note in notes:
-        tags = [child.tag for child in note if child.tag != "play"]
+        tags = [child.tag for child in note]
         positions = [xsd_order.index(tag) for tag in tags]
         assert positions == sorted(positions), tags
         if "instrument" in tags:
