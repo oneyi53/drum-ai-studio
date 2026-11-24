@@ -1,3 +1,12 @@
+## 2026-11-24 — 技术扫荡：无新引擎，训练数据仍是出路（dettato 待测、STAR Drums 181 GB 纠正）
+
+- 全网扫荡（ISMIR 2026、dettato、STAR Drums、MVSep Mega 53、Photon、VexFlow/OSMD/Verovio、2026 新数据集）：11 月 21 日的结论不变——没有新的全曲真歌转录引擎；瓶颈仍是真歌训练数据。报告在 `~/workspace/research_notes/drum-ai-studio-tech-sweep-20261124-20261124-1125/report.md`（本地）。
+- dettato（2026-11-16 建，Apache-2.0）：4 模型链共 28.1M，鼓模型仅 189k 参数、带力度输出；自报 drums F1 47.1（RWC/Slakh，50ms，精确 GM 键），但四模型链从未端到端打分，测试集不是电子/blues 真歌；需 ≥40kHz 音源。最便宜的新线索，先在自家测试集上跑分再信。
+- STAR Drums 纠正：总量 181.2 GB，不是之前记的 30 GB（30 GB 是分卷大小）；124.5 小时、18 类、48kHz；鼓是 HTDemucs + 2018 CRNN 伪标签再合成，无单一许可证（按轨混合）。最可用的结论是 §4.2.4：原曲 + 伪标签训练 ≈ 再合成训练（5 类 F1 0.78/0.80/0.60 vs 0.79/0.77/0.62），不用再合成也能做自己的电子/blues 伪标签集。
+- MVSep Mega 53：53 轨、≥16GB 显存、权重 MIT 待核实（二级来源）；分轨重叠不求和、无电子底鼓落在哪轨的证据，只作离线实验。Photon：$349、$259 到 12 月 7 日、14 天试用；零独立实测，只有厂商给的早期体验评价，暂不考虑，试用最多。
+- 记谱：VexFlow 5.10.1（2026-11-24）是当前版；OSMD 3.0.0（2026-11-21）待在 npm 上核实再升；Verovio 不作网页谱面。MuseScore 力度：无证据表明它读 `<play><other-play type="midi-velocity">`，它读标准 `<note dynamics="…">`（MIDI 力度的百分比，forte 90 为基准）；规则是 MusicXML 里同时写 dynamics 属性、MIDI 里保留权威力度，导入实测后再定。
+- 下一步：dettato-drums 在自家 6 首测试歌上跑分（按类对比）；MusicXML 加 dynamics 属性（待定）。
+
 ## 2026-11-21 — theDAW P2：点音符试听 + 零事件导出（PR #18 草稿，未合）
 
 - P2-6 点音符试听：新 `frontend/src/lib/drumAudition.ts`（WebAudio 合成，kick/snare/hat/tom/crash 五声，ride 归 crash 声；无音色库、无新依赖）；卷帘工具栏开关默认关，AudioContext 只在开启后首次点音符时创建；点已有音符（pointerdown）与画新音（commit 时）出声，拖动只在按下时响一声、不连续触发；力度进增益（1–127 钳制）。映射与力度单测进 `test:roll`；`tsconfig.json` 把新测试文件加入 exclude（否则 `tsc -b` 会把 node:test 当应用代码查，首轮 CI 即因此失败）。

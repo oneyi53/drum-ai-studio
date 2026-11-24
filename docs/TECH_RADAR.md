@@ -5,7 +5,7 @@ work session on this project; add new entries with date, license, and a
 one-line verdict. Nothing here is adopted until it is installed, run, and
 measured against the project's own benchmark (see `KICK_RECALL_RESEARCH.md`).
 
-Last sweep: 2026-11-21.
+Last sweep: 2026-11-24.
 
 ## Selection principle (user decision, 2026-11-13)
 
@@ -26,6 +26,11 @@ human-annotated references (Phase 2) and training from pseudo-labels
 (five-way voting: 2,579 pseudo-labels from 7,977 clusters, 32.3%),
 not another off-the-shelf model. Details per engine below; the full
 evaluation reports live under `~/workspace/.ds-scratch/` (local only).
+2026-11-24 sweep: still no new full-mix real-song engine (ISMIR 2026
+papers are drum-only or synthetic); the new leads are dettato (test
+now), STAR Drums for training, and STAR's pseudo-label result (train
+on original mixes + pseudo-labels, no resynthesis needed). See
+dettato / Training data / MVSep / Photon / Notation below.
 
 ## Engines in play
 
@@ -124,7 +129,31 @@ evaluation reports live under `~/workspace/.ds-scratch/` (local only).
 - **HTDemucs stays** as the project's separator. SCNet XL IHF,
   HTDemucs FT, MDX23C, BS-RoFormer-SW, and DrumSep 5+6 were each
   measured and rejected: none routes electronic kicks back into the
-  drums stem. MVSep Mega 53 untried (MIT, >=16 GB VRAM, low priority).
+  drums stem. MVSep Mega 53 (53 stems incl. kick/snare/hat/toms,
+  >=16 GB VRAM, ~1.37 GB checkpoint; weights claimed MIT, secondary
+  attribution only): stems overlap and do not sum; no published SDR
+  and no evidence on electronic-kick placement — offline experiment
+  only, must be measured on the app's own electronic tracks.
+
+## Training data
+
+- **STAR Drums** (TISMIR 2025, Zenodo 15690078): 124.5 h, 18 classes,
+  48 kHz FLAC; drums are resynthesised pseudo-labels (HTDemucs +
+  Vogl 2018 CRNN + 20 Komplete kits, 5 electronic). **181.2 GB total,
+  not ~30 GB** (30 GB is the chunk size). No single licence — mixed
+  per-track (MUSDB18 only 48/150 tracks redistributable as remixes).
+  CRNN baseline 5-class F1 0.79 MDB / 0.77 ENST / 0.62 RBMA13.
+  Most actionable result (§4.2.4): training on original mixes +
+  pseudo-labels ≈ resynthesis (5-class 0.78/0.80/0.60) — build own
+  pseudo-labelled electronic/blues sets without resynthesis.
+  Verdict 2026-11-24: ADOPT FOR TRAINING (data, not engine).
+- **E-GMD** (2020, CC BY 4.0): 444 h, 43 kits, human velocity — largest
+  human-performed drum-only set; drum-only, no full mix.
+- **ADTOS** (Zehren et al. 2024): human e-drum performances + hundreds
+  of presets; dataset not available online — recipe only.
+- **TuttiCorpus** (Sep 2026): 363,666 pieces, ~8.3 TB, classical /
+  multi-instrument, not drums. **MIMuT_Data_v2**: 151 GB repackaging
+  of 13 existing sets, mixed licences — not a new dataset.
 
 ## Adjacent projects (reference only, do not copy)
 
@@ -143,17 +172,49 @@ evaluation reports live under `~/workspace/.ds-scratch/` (local only).
   `~/workspace/.ds-scratch/thedaw-ui-study/PLAN.md`): P0 follow-playback
   / shared zoom / atomic undo and P1 note refinement / per-voice export
   are in main; P2 click-note audition is in draft PR #18.
-- **dettato** (kobimusic/dettato on Hugging Face): self-reported
-  composite 59.2 / drums 47.1, author claims unverified — follow-up
-  candidate only, not evaluated.
+- **dettato** (kobimusic/dettato, GitHub created 2026-11-16, Apache-2.0):
+  4-model chain, 28.1M total; drum-kit model only 189k params, velocity
+  output, needs sources recorded at >=40 kHz. Self-reported (NO
+  independent evaluation): composite 59.2 = mean(onset 67.2, frame 77.9,
+  offset 44.8, drums 47.1); drums F1 = onsets within 50 ms on the exact
+  GM key (RWC Royalty-Free 65.4, Slakh 54.4, Popular 50.6, Classical
+  39.6, Genre 36.3, Jazz 36.3); MuScriptor 1.3B 45.1/34.0 on the same
+  sets. Caveats: the 4-model chain was never scored end-to-end (author's
+  own words); benchmark sets are RWC/Slakh, not electronic/blues real
+  songs; training audio not released; README warns some training data
+  carries non-commercial terms. Verdict 2026-11-24: TEST NOW on the
+  app's own real-song set, per-class, before believing 47.1; do not
+  adopt yet.
+
+## Notation tooling
+
+- **VexFlow 5.10.1** (npm, published 2026-11-24, MIT): current; the
+  app's staff renderer. No drum-specific feature in this release.
+  Verdict: ADOPT (stay current).
+- **OpenSheetMusicDisplay 3.0.0** (2026-11-21): breaking cleanup,
+  `destroy()` for SPAs, no more `Array.prototype` pollution, 7.3 MB
+  vs 21 MB install — verify on npm before upgrading (blog fetch
+  failed once; npm still showed 2.3.1 on 2026-11-18). Verdict: WATCH.
+- **Verovio 6.4.1** (2026-11-03, LGPL, WASM ~2.28 MB gzip): no
+  drum-specific changes in 6.3/6.4. Verdict: IGNORE for the web view
+  (the PDF path already uses it; no change).
+- **MuseScore velocity**: no evidence MuseScore reads
+  `<play><other-play type="midi-velocity">` (`midi-velocity` is not
+  a standardised type value in MusicXML 4.0). It DOES read the
+  standard `<note dynamics="...">` attribute (velocity as % of forte
+  90). Rule: emit velocity in both places — `dynamics` in MusicXML
+  and the authoritative velocity in the parallel MIDI export — and
+  verify with a test import into MuseScore 4.5+ before shipping.
+  (Caveat: USER_VAL notes ignore dynamic marks, issue #27934.)
 
 ## Commercial / closed (excluded)
 - MVSEP, Klangio, Moises, Songscription: hosted/paid services. Not
   dependencies; may be used only as manual accuracy references.
 - **Photon** (iZotope, launched 2026-11-03): Drums 5 Stems
   (kick/snare/hat/toms/cymbals) from a drum bus or full song; $349,
-  $259 until 2026-12-07; free trial exists; macOS 14+ Apple Silicon.
+  $259 until 2026-12-07; 14-day trial; macOS 14+ Apple Silicon.
   Closed, no CLI/API — manual reference use only, cannot enter the
-  pipeline. A free-trial run (electronic + rock through Drums 5 Stems,
-  checking the 17 bass-hidden kicks) is pending the user's decision;
-  verify macOS >= 14 first.
+  pipeline. No independent measurement exists (only a qualitative
+  early-access review: drums "relatively clean", bass bleed noted).
+  Verdict 2026-11-24: IGNORE FOR NOW (trial at most); do not buy on
+  current evidence.
