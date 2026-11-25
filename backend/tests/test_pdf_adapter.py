@@ -149,6 +149,18 @@ def test_pdf_export_falls_back_when_verovio_font_resources_are_unavailable(monke
     assert pdf_adapter.performance_to_pdf(performance) == b'%PDF-fallback'
 
 
+def test_pdf_export_falls_back_when_native_cairo_library_is_missing(monkeypatch):
+    # Regression: on macOS without `brew install cairo`, `import cairosvg`
+    # raises OSError (cairocffi dlopen), not ImportError, so the old handler
+    # let it escape as a 500 instead of using the ReportLab fallback.
+    performance = DrumPerformance(duration_seconds=1, events=[])
+    def missing_native_cairo(*args, **kwargs):
+        raise OSError('no library called "cairo" was found')
+    monkeypatch.setattr(pdf_adapter, '_render_with_verovio', missing_native_cairo)
+    monkeypatch.setattr(pdf_adapter, '_render_fallback_pdf', lambda *args: b'%PDF-fallback')
+    assert pdf_adapter.performance_to_pdf(performance) == b'%PDF-fallback'
+
+
 
 def test_pdf_renderer_trims_silent_tail_measures_only():
     score = ET.fromstring(

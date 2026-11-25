@@ -4,7 +4,7 @@
  *
  * Layout: one system per bar, four bars per page — a long song is never
  * drawn in one go. Each bar is a 4/4 voice of 16 sixteenth slots
- * (see drumStaff.ts for the slot layout); empty slots are rests.
+ * (see drumStaffUtils.ts for the slot layout); empty slots are rests.
  * Cymbal-only slots get x noteheads; a slot mixing cymbals and drums
  * renders with normal heads (VexFlow carries one head type per note).
  *
@@ -33,7 +33,7 @@ import {
   type StaffBar,
   type TrailMode,
   type TrailState,
-} from "./drumStaff";
+} from "./drumStaffUtils";
 import type { RollCommit } from "./drumRoll";
 import { INSTRUMENT_COLORS } from "./WaveformPanel";
 import { fitZoom, wheelZoomFactor, zoomByFactor } from "./playback";
@@ -197,7 +197,12 @@ export default function DrumStaff({
 
   const pageCount = Math.max(1, Math.ceil(bars.length / BARS_PER_PAGE));
   const safePage = Math.min(page, pageCount - 1);
-  const pageBars = bars.slice(safePage * BARS_PER_PAGE, (safePage + 1) * BARS_PER_PAGE);
+  // Memoized: a fresh slice every render would retrigger the VexFlow draw
+  // effect (pageBars is in its deps) and redraw the staff in a loop.
+  const pageBars = React.useMemo(
+    () => bars.slice(safePage * BARS_PER_PAGE, (safePage + 1) * BARS_PER_PAGE),
+    [bars, safePage],
+  );
   const pageSpanSeconds =
     pageBars.length > 0 ? pageBars[pageBars.length - 1].end - pageBars[0].start : 0;
   const fitWidth = Math.max(320, containerWidth - 4);

@@ -1,5 +1,5 @@
 /**
- * Unit tests for the DrumEvent <-> staff mapping (drumStaff.ts).
+ * Unit tests for the DrumEvent <-> staff mapping (drumStaffUtils.ts).
  * Run with: npm run test:roll
  * (esbuild bundles the test files to /tmp and node --test runs them;
  * no test runner dependency is added to the repo.)
@@ -16,7 +16,7 @@ import {
   slotTimeSeconds,
   snapToSlot,
   type StaffBar,
-} from "./drumStaff";
+} from "./drumStaffUtils";
 
 const BARS: StaffBar[] = [
   { number: 1, start: 0, end: 2 },

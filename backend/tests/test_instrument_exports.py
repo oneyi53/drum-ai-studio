@@ -68,3 +68,25 @@ def test_pdf_voice_export_is_a_valid_pdf_document() -> None:
     pdf = performance_to_pdf(filtered, title="Kick only")
 
     assert pdf.startswith(b"%PDF-")
+
+def test_empty_voice_exports_are_valid_across_all_formats(tmp_path) -> None:
+    """Selecting a drum voice with no hits must still produce valid empty exports."""
+    filtered = _filter_performance_instrument(
+        sample_performance(), DrumInstrument.RIDE
+    )
+    assert filtered.events == []
+
+    midi_path = tmp_path / "empty-ride.mid"
+    performance_to_midi(filtered, midi_path)
+    assert midi_to_performance(midi_path).events == []
+
+    xml_root = ET.fromstring(performance_to_musicxml(filtered))
+    assert xml_root.tag == "score-partwise"
+    assert xml_root.find(".//part-list") is not None
+    assert xml_root.find(".//measure") is not None
+
+    pdf = performance_to_pdf(filtered, title="Empty Ride")
+    assert pdf.startswith(b"%PDF-")
+
+    csv_text = annotation_csv_text(filtered)
+    assert csv_text.splitlines() == ["onset_seconds,instrument"]
