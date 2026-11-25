@@ -385,7 +385,11 @@ def performance_to_pdf(
         if missing not in {"verovio", "cairosvg", "pypdf"}:
             raise
         return _render_fallback_pdf(performance, title, measures_per_system)
-    except (ValueError, RuntimeError):
+    except (ValueError, RuntimeError, OSError):
         # Verovio can be installed while its SMuFL font resources are absent
-        # from a minimal container. Keep exports usable through the fallback.
+        # from a minimal container, and CairoSVG can be installed while its
+        # native Cairo library is missing (macOS without `brew install cairo`:
+        # `import cairosvg` then raises OSError, not ImportError). Either way
+        # the engraving stack is unusable, so keep exports working through
+        # the fallback instead of failing the download.
         return _render_fallback_pdf(performance, title, measures_per_system)
