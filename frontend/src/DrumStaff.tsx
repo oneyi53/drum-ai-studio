@@ -197,7 +197,12 @@ export default function DrumStaff({
 
   const pageCount = Math.max(1, Math.ceil(bars.length / BARS_PER_PAGE));
   const safePage = Math.min(page, pageCount - 1);
-  const pageBars = bars.slice(safePage * BARS_PER_PAGE, (safePage + 1) * BARS_PER_PAGE);
+  // Memoized: a fresh slice every render would retrigger the VexFlow draw
+  // effect (pageBars is in its deps) and redraw the staff in a loop.
+  const pageBars = React.useMemo(
+    () => bars.slice(safePage * BARS_PER_PAGE, (safePage + 1) * BARS_PER_PAGE),
+    [bars, safePage],
+  );
   const pageSpanSeconds =
     pageBars.length > 0 ? pageBars[pageBars.length - 1].end - pageBars[0].start : 0;
   const fitWidth = Math.max(320, containerWidth - 4);
