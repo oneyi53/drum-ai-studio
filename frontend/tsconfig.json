@@ -25,7 +25,7 @@
   ],
   "exclude": [
     "src/drumRoll.test.ts",
-    "src/drumStaff.test.ts",
+    "src/drumStaffUtils.test.ts",
     "src/playback.test.ts",
     "src/drumAudition.test.ts"
   ],
