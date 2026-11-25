@@ -4,7 +4,7 @@
  *
  * Layout: one system per bar, four bars per page — a long song is never
  * drawn in one go. Each bar is a 4/4 voice of 16 sixteenth slots
- * (see drumStaff.ts for the slot layout); empty slots are rests.
+ * (see drumStaffUtils.ts for the slot layout); empty slots are rests.
  * Cymbal-only slots get x noteheads; a slot mixing cymbals and drums
  * renders with normal heads (VexFlow carries one head type per note).
  *
@@ -33,7 +33,7 @@ import {
   type StaffBar,
   type TrailMode,
   type TrailState,
-} from "./drumStaff";
+} from "./drumStaffUtils";
 import type { RollCommit } from "./drumRoll";
 import { INSTRUMENT_COLORS } from "./WaveformPanel";
 import { fitZoom, wheelZoomFactor, zoomByFactor } from "./playback";

@@ -1,6 +1,6 @@
 /**
  * Unit tests for the shared playback helpers (playback.ts) and the
- * staff follow-playback helpers (drumStaff.ts additions).
+ * staff follow-playback helpers (drumStaffUtils.ts additions).
  * Run with: npm run test:roll
  * (esbuild bundles the test files to /tmp and node --test runs them;
  * no test runner dependency is added to the repo.)
@@ -24,7 +24,7 @@ import {
   updateTrail,
   type StaffBar,
   type TrailHit,
-} from "./drumStaff";
+} from "./drumStaffUtils";
 
 test("zoom clamps to 1–240 px/s and null (fit) passes through", () => {
   assert.equal(clampZoom(null), null);
