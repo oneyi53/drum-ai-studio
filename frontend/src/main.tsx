@@ -232,14 +232,6 @@ function App() {
     () => (summary ? summary.events.filter((event) => effectiveVisibleLanes.includes(event.instrument)) : []),
     [summary, effectiveVisibleLanes],
   );
-  /** Open the (collapsed) event table and scroll to one event row. */
-  const revealEvent = (eventId: string) => {
-    setEventTableOpen(true);
-    window.setTimeout(() => {
-      document.getElementById(`event-${eventId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }, 0);
-  };
-
   /** Shared zoom setter: records the zoom against the current project so
    * switching projects restores each project's own zoom. */
   const applyZoom = (next: number | null) => {
@@ -1310,7 +1302,6 @@ function App() {
             selectedEventId={selectedEventId}
             onSelectEvent={(eventId) => {
               setSelectedEventId(eventId);
-              revealEvent(eventId);
             }}
             onWaveformPlay={() => { audioRef.current?.pause(); }}
             playheadSource={playheadSource}
@@ -1329,7 +1320,6 @@ function App() {
             selectedEventIds={selectedEventIds}
             onSelectEvent={(eventId) => {
               setSelectedEventId(eventId);
-              if (eventId) revealEvent(eventId);
             }}
             onSelectEvents={(eventIds) => {
               setSelectedEventIds(eventIds);
@@ -1357,7 +1347,6 @@ function App() {
             selectedEventIds={selectedEventIds}
             onSelectEvent={(eventId) => {
               setSelectedEventId(eventId);
-              if (eventId) revealEvent(eventId);
             }}
             onSelectEvents={(eventIds) => {
               setSelectedEventIds(eventIds);
@@ -1421,7 +1410,7 @@ function App() {
                     const previewLeft = selectedEventIds.includes(event.id) && timelineDragDelta
                       ? `calc(${basePercent}% + ${timelineDragDelta / summary.durationSeconds * 100}%)`
                       : `${basePercent}%`;
-                    return <button key={event.id} data-event-id={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id || selectedEventIds.includes(event.id) ? "selected" : ""} ${activeEventId === event.id ? "active" : ""}`} style={{ left: previewLeft, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { if (suppressTimelineClickRef.current) { suppressTimelineClickRef.current = false; return; } setSelectedEventId(event.id); if (audioRef.current) audioRef.current.currentTime = event.time_seconds; setAudioTime(event.time_seconds); revealEvent(event.id); }} />;
+                    return <button key={event.id} data-event-id={event.id} type="button" className={`timeline-hit ${selectedEventId === event.id || selectedEventIds.includes(event.id) ? "selected" : ""} ${activeEventId === event.id ? "active" : ""}`} style={{ left: previewLeft, opacity: 0.45 + (event.velocity / 127) * 0.55 }} title={`${lane} · ${event.time_seconds.toFixed(3)}s · velocity ${event.velocity}`} aria-label={`选择 ${lane} ${event.time_seconds.toFixed(3)} 秒鼓点`} onClick={() => { if (suppressTimelineClickRef.current) { suppressTimelineClickRef.current = false; return; } setSelectedEventId(event.id); if (audioRef.current) audioRef.current.currentTime = event.time_seconds; setAudioTime(event.time_seconds); }} />;
                   })}
                 </div></div>;
               })}
